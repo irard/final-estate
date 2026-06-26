@@ -1,0 +1,3700 @@
+if (!defined('ABSPATH')) exit;
+if (!function_exists('ef_get_tenant_due_day')) {
+    function ef_get_tenant_due_day($t_id) {
+        $d = get_field('rent_due_day', $t_id) ?: get_field('due_day', $t_id) ?: get_post_meta($t_id, 'rent_due_day', true) ?: get_post_meta($t_id, 'due_day', true);
+        if (!$d) return 5;
+        if (is_numeric($d)) {
+            $v = intval($d);
+            if ($v >= 1 && $v <= 31) return $v;
+            if (strlen((string)$v) === 8) return intval(substr((string)$v, 6, 2));
+        }
+        $ts = strtotime((string)$d);
+        return $ts ? intval(date('j', $ts)) : 5;
+    }
+}
+if (!function_exists('ef_is_tenant_billable')) {
+    function ef_is_tenant_billable($t_id, $m, $y) {
+        $s_str = get_field('tenant_start', $t_id) ?: get_post_meta($t_id, 'tenant_start', true);
+        $e_str = get_field('tenant_end', $t_id) ?: get_post_meta($t_id, 'tenant_end', true);
+        if (!$s_str) return true;
+
+        $dd = ef_get_tenant_due_day($t_id);
+        $dim = (int)date('t', strtotime("$y-$m-01"));
+        $due_date_str = "$y-$m-" . str_pad(min($dd, $dim), 2, '0', STR_PAD_LEFT);
+        
+        if ($s_str > $due_date_str) return false;
+        if ($e_str && $e_str < "$y-$m-01") return false;
+
+        $start_ts = strtotime($s_str);
+        $due_ts = strtotime($due_date_str);
+        $diff_days = round(($due_ts - $start_ts) / (60 * 60 * 24));
+        
+        if ($diff_days < 25) return false;
+        if ($e_str && $e_str < $due_date_str) return false;
+
+        return true;
+    }
+}
+if ( ! defined( "ABSPATH" ) ) exit; 
+
+add_shortcode('add_tenant', function(){ 
+    if (!is_user_logged_in()) return ''; 
+    ob_start(); ?> 
+    <button id="atc-open" class="atc-open-btn">+ Add tenant</button> 
+    <div id="atc-modal" class="atc-modal" aria-hidden="true" style="display:none;" onclick="if(event.target === this) { this.style.display='none'; document.body.classList.remove('ef-no-scroll'); }"> 
+      <div class="atc-panel" role="dialog" aria-modal="true" aria-labelledby="atc-title"> 
+        <div class="atc-header"> 
+          <h3 id="atc-title">Add New Tenant</h3> 
+          <button id="atc-close" class="atc-close" aria-label="Close">&times;</button> 
+        </div> 
+        <form id="atc-form" class="atc-form" autocomplete="off"> 
+          <?php wp_nonce_field('create_tenant_action','create_tenant_nonce'); ?> 
+          <div class="atc-row-full"><label class="atc-label">Name <input id="atc-name" name="tenant_name" required></label></div> 
+          <div class="atc-row-full"><label class="atc-label">Property <select id="atc-property" name="property_id" required><option value="">Loading properties…</option></select></label></div> 
+          <div class="atc-row"><label class="atc-label">Unit <input id="atc-unit" name="tenant_unit" value="1" readonly></label> 
+                               <label class="atc-label">Rent (AED) <input id="atc-rent" name="tenant_rent" type="number" step="100" value="" placeholder="Enter Amount" min="1000" required></label></div> 
+          <div class="atc-row"><label class="atc-label">Email <input id="atc-email" name="tenant_email" type="email" required></label> 
+                               <label class="atc-label">Phone <input id="atc-phone" name="tenant_phone" type="tel" required></label></div> 
+          <div class="atc-row-full"><label class="atc-label">Address <input id="atc-address" name="tenant_address"></label></div> 
+          <div class="atc-row contract"><label class="atc-label">Contract start <input id="atc-start" name="tenant_start" type="date" required></label> 
+                               <label class="atc-label">Contract end <input id="atc-end" name="tenant_end" type="date" required></label> 
+                               <label class="atc-label">Due day <input id="atc-due-display" type="text" required placeholder="Select day" readonly></label></div> 
+          <div id="atc-due-popup" class="atc-due-popup"><div class="atc-due-grid"><?php for ($i=1;$i<=31;$i++) echo "<button type='button' class='atc-due-box' data-day='$i'>$i</button>"; ?></div></div> 
+          <input type="hidden" id="atc-due" name="tenant_due_day" required> 
+          <div class="atc-actions"><button type="button" id="atc-cancel" class="atc-btn-cancel">Cancel</button><button type="submit" class="atc-btn-primary">Add tenant</button></div> 
+        </form> 
+      </div> 
+    </div> 
+    <script> 
+    (function(){ 
+      const ajax = '<?php echo admin_url("admin-ajax.php"); ?>'; 
+      document.addEventListener('DOMContentLoaded', function(){ 
+        const openBtn = document.getElementById('atc-open'), modal = document.getElementById('atc-modal'), closeBtn = document.getElementById('atc-close'), cancelBtn = document.getElementById('atc-cancel'), form = document.getElementById('atc-form'), propSelect = document.getElementById('atc-property'); 
+        if (!openBtn || !modal || !form) return; 
+        function openModal(){ 
+            modal.style.display = 'flex'; 
+            document.body.classList.add('ef-no-scroll'); 
+            loadProperties(); 
+        } 
+        function closeModal(){ 
+            modal.style.display = 'none'; 
+            document.body.classList.remove('ef-no-scroll'); 
+            form.reset(); 
+        } 
+        openBtn.onclick = (e) => { e.preventDefault(); openModal(); }; 
+        closeBtn.onclick = cancelBtn.onclick = () => closeModal(); 
+        modal.onclick = (e) => { if(e.target===modal) closeModal(); }; 
+        function loadProperties(){ 
+          propSelect.innerHTML = '<option value="">Loading…</option>'; 
+          fetch(ajax + '?action=eftm_get_properties').then(r=>r.json()).then(res=>{ 
+              propSelect.innerHTML = '<option value="">Select property</option>'; 
+              res.data.forEach(p=>{ 
+                  const opt=document.createElement('option'); opt.value=p.id; opt.textContent=p.name; 
+                  opt.dataset.rent=p.rent; opt.dataset.start=p.date; opt.dataset.end=p.end_date; opt.dataset.due=p.due_day; 
+                  propSelect.appendChild(opt); 
+              }); 
+          }); 
+        } 
+        propSelect.onchange = function(){ 
+            const pid = this.value; if(!pid) return; 
+            const unitInput = document.getElementById('atc-unit'); 
+            unitInput.value = 'Checking availability...'; 
+            fetch(ajax, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({action:'eftm_check_property_availability', property_id:pid, security:'<?php echo wp_create_nonce("property_availability_nonce"); ?>'}) }) 
+            .then(r=>r.json()).then(res=>{ 
+                if(res.success){ 
+                    document.getElementById('atc-address').value = res.data.property_address; 
+                    if(res.data.all_occupied){ 
+                        unitInput.value = 'Not available'; 
+                        unitInput.setAttribute('data-status', 'not-available'); 
+                        form.querySelector('button[type="submit"]').disabled=true; 
+                    } 
+                    else { 
+                        unitInput.value = 'Available'; 
+                        unitInput.setAttribute('data-status', 'available'); 
+                        form.querySelector('button[type="submit"]').disabled=false; 
+                        const opt = propSelect.selectedOptions[0]; 
+                        document.getElementById('atc-rent').value = opt.dataset.rent || 1000; 
+                        if(opt.dataset.start) document.getElementById('atc-start').value = new Date(opt.dataset.start).toISOString().split('T')[0]; 
+                        if(opt.dataset.end) document.getElementById('atc-end').value = new Date(opt.dataset.end).toISOString().split('T')[0]; 
+                        if(opt.dataset.due){ document.getElementById('atc-due').value=opt.dataset.due; document.getElementById('atc-due-display').value=opt.dataset.due; } 
+                    } 
+                } 
+            }); 
+        }; 
+        const dueDisp=document.getElementById('atc-due-display'), duePop=document.getElementById('atc-due-popup'), dueInp=document.getElementById('atc-due'); 
+        dueDisp.onclick = () => duePop.style.display='flex'; 
+        duePop.onclick = e => { 
+          if(e.target.dataset.day){ dueInp.value=e.target.dataset.day; dueDisp.value=e.target.dataset.day; duePop.style.display='none'; } 
+          else if(e.target === duePop) { duePop.style.display = 'none'; } 
+        }; 
+        form.onsubmit = e => { 
+          e.preventDefault(); const fd=new FormData(form); fd.append('action','eftm_create_tenant'); 
+          fetch(ajax,{method:'POST', body:fd}).then(r=>r.json()).then(res=>{ if(res.success){ alert('Added!'); document.body.classList.remove('ef-no-scroll'); location.reload(); } }); 
+        }; 
+      }); 
+    })(); 
+    </script> 
+    <?php return ob_get_clean(); 
+}); 
+
+add_shortcode('tenant_header', function() { 
+    $q = new WP_Query(['post_type'=>'ef_tenant', 'post_status'=>'publish', 'posts_per_page'=>-1]); 
+    $count = $q->found_posts; 
+    wp_reset_postdata(); 
+    return '<div style="margin-bottom:16px;"> 
+            <div style="font-size:15px; color:#64748b; font-weight:500;">' . $count . ' active tenants</div> 
+        </div>'; 
+}); 
+
+$tenant_list_logic = function() { 
+    $payment_post_type = 'payment'; $tenant_meta_key = 'associated_tenant'; 
+    $paged = max(1, get_query_var('paged'), (isset($_GET['paged']) ? intval($_GET['paged']) : 1));
+    $q = new WP_Query(['post_type'=>'ef_tenant', 'post_status'=>'publish', 'posts_per_page'=>5, 'paged' => $paged, 'order'=>'ASC']); 
+    $total_pages = $q->max_num_pages;
+    ob_start(); ?> 
+    <div class="ef-dashboard-sidebar-independent"> 
+        <input type="text" class="ef-search-box" placeholder="Search tenants..." id="efTenantSearch"> 
+        <div id="properties-dashboard-wrapper">
+            <div id="properties-dashboard-grid" class="properties-dashboard-grid"> 
+                <?php if ($q->have_posts()) : while ($q->have_posts()) : $q->the_post(); 
+                    $tid=get_the_ID(); $rent=get_field('monthly_rent', $tid) ?: get_post_meta($tid, 'monthly_rent', true); $name=get_the_title(); 
+                    $pid=get_field('property_id', $tid) ?: get_post_meta($tid, 'property_id', true); 
+                    $addr=$pid?(get_field('add_address',$pid)?:get_post_meta($pid,'add_address',true)?:get_the_title($pid)):'No Address'; 
+                    $paid_this_month = 0.00; 
+                    $current_month=date('m'); $current_year=date('Y');
+                    $p_query = new WP_Query(['post_type'=>$payment_post_type,'post_status'=>['publish', 'future'],'posts_per_page'=>-1,'date_query'=>[['year'=>$current_year,'month'=>$current_month]],'meta_query'=>[['key'=>$tenant_meta_key,'value'=>$tid,'compare'=>'=']]]); 
+                    if($p_query->have_posts()){ while($p_query->have_posts()){$p_query->the_post(); $p_id = get_the_ID(); $paid_this_month+=floatval(get_field('amount_paid',$p_id) ?: get_post_meta($p_id, 'amount_paid', true));}wp_reset_postdata();} 
+                    $initials=''; $words=explode(' ', $name); foreach($words as $w) $initials.=strtoupper(substr($w,0,1)); 
+                ?> 
+                    <div class="ef-tenant-card-item" data-id="<?php echo $tid; ?>" id="tenant-row-<?php echo $tid; ?>" onclick="efDispatchGlobalView(<?php echo $tid; ?>)"> 
+                        <div class="ef-tenant-meta"><div class="ef-avatar-circle"><?php echo substr($initials,0,2); ?></div> 
+                            <div class="ef-tenant-info-text"><div class="ef-tenant-name"><?php echo esc_html($name); ?></div><div class="ef-tenant-location"><?php echo esc_html($addr); ?></div></div> 
+                        </div> 
+                        <div class="ef-tenant-right-aside"><div class="ef-tenant-rent-badge">AED <span class="tenant-list-rent"><?php echo number_format(floatval($rent)); ?></span><div style="font-size:10px; font-weight:400; color:#64748b; margin-top:-2px;">monthly</div></div> 
+                            <?php if (floatval($rent) <= 0): ?><div style="font-size: 10px; color: #64748b; margin-top:4px;">No Rent Set</div> 
+                            <?php elseif ($paid_this_month >= floatval($rent)): ?><div class="ef-payment-status-badge status-paid">Paid</div>
+                            <?php elseif ($paid_this_month > 0): ?><div class="ef-payment-status-badge status-partial">Partial</div>
+                            <?php else: ?><div class="ef-payment-status-badge status-unpaid">Unpaid</div><?php endif; ?> 
+                        </div> 
+                    </div> 
+                <?php endwhile; wp_reset_postdata(); endif; ?> 
+            </div>
+            <div class="properties-dashboard-nav">
+                <button id="prev-page" class="prop-nav-btn" <?php echo ($paged <= 1) ? 'disabled' : ''; ?> onclick="window.location.href='<?php echo esc_url(add_query_arg('paged', $paged - 1)); ?>'">Previous</button>
+                <span id="page-info">Page <?php echo $paged; ?> of <?php echo $total_pages; ?></span>
+                <button id="next-page" class="prop-nav-btn" <?php echo ($paged >= $total_pages) ? 'disabled' : ''; ?> onclick="window.location.href='<?php echo esc_url(add_query_arg('paged', $paged + 1)); ?>'">Next</button>
+            </div>
+        </div> 
+    </div> 
+    <script> 
+    function efDispatchGlobalView(tid){ 
+        window.dispatchEvent(new CustomEvent('ef_load_tenant',{detail:{id:tid}})); 
+        document.querySelectorAll('.ef-tenant-card-item').forEach(c=>c.classList.remove('ef-active-tenant')); 
+        document.getElementById('tenant-row-'+tid).classList.add('ef-active-tenant'); 
+    } 
+    document.getElementById('efTenantSearch').oninput=function(){ 
+        let f=this.value.toLowerCase(); 
+        document.querySelectorAll('.ef-tenant-card-item').forEach(c=>{ 
+            c.style.display=c.querySelector('.ef-tenant-name').textContent.toLowerCase().includes(f)?'flex':'none'; 
+        }); 
+    }; 
+    </script> 
+    <?php return ob_get_clean(); 
+};
+add_shortcode('tenant_list', $tenant_list_logic);
+add_shortcode('student_list', $tenant_list_logic);
+add_shortcode('properties_page_grid', $tenant_list_logic);
+
+add_shortcode('tenant_profile', function() { 
+    ob_start(); ?> 
+     
+    <div id="efTenantProfileModal" class="ef-popup-modal-container" style="display:none;" onclick="if(event.target === this) { this.style.display='none'; efToggleScrollLock(); }"> 
+        <div class="ef-popup-modal-box" style="max-width: 800px; width: 90%; position: relative;"> 
+            <button onclick="document.getElementById('efTenantProfileModal').style.display='none'; efToggleScrollLock();" style="position: absolute; top: 15px; right: 15px; border: none; background: transparent; font-size: 20px; cursor: pointer; color: #64748b;">✕</button> 
+            <div id="efWorkspaceDynamicScreen"> 
+                <div style="text-align:center; padding: 40px; color: #64748b;">Select a tenant to view profile.</div> 
+            </div> 
+        </div> 
+    </div> 
+    <div id="efGlobalRightEditModal" class="ef-popup-modal-container" style="display:none;" onclick="if(event.target === this) { efCloseEditModal(); }"> 
+        <div class="ef-popup-modal-box" style="position: relative;"> 
+            <button onclick="efCloseEditModal()" style="position: absolute; top: 15px; right: 15px; border: none; background: transparent; font-size: 20px; cursor: pointer; color: #64748b;">✕</button> 
+            <h3 style="margin-top:0;">Modify Tenant Profile</h3> 
+            <input type="hidden" id="modal_field_id"> 
+            <div class="ef-form-group"><label>Name</label><input type="text" id="modal_field_name" class="ef-form-input-box"></div> 
+            <div class="ef-form-group"><label>Property</label><select id="modal_field_property" class="ef-form-input-box"></select></div> 
+            <div class="ef-grid-modal-2col"> 
+                <div class="ef-form-group"><label>Unit</label><input type="text" id="modal_field_unit" class="ef-form-input-box" readonly></div> 
+                <div class="ef-form-group"><label>Rent (AED)</label><input type="number" id="modal_field_rent" class="ef-form-input-box" step="0.01"></div> 
+            </div> 
+            <div class="ef-grid-modal-2col"> 
+                <div class="ef-form-group"><label>Email</label><input type="email" id="modal_field_email" class="ef-form-input-box"></div> 
+                <div class="ef-form-group"><label>Phone</label><input type="text" id="modal_field_phone" class="ef-form-input-box"></div> 
+            </div> 
+            <div class="ef-form-group"><label>Address</label><input type="text" id="modal_field_address" class="ef-form-input-box"></div> 
+            <div class="ef-grid-modal-2col contract"> 
+                <div class="ef-form-group"><label>Start Date</label><input type="date" id="modal_field_start" class="ef-form-input-box"></div> 
+                <div class="ef-form-group"><label>End Date</label><input type="date" id="modal_field_end" class="ef-form-input-box"></div> 
+            </div> 
+            <div class="ef-form-group"><label>Due Day</label><input type="text" id="modal_field_due_day_display" class="ef-form-input-box" readonly></div> 
+            <input type="hidden" id="modal_field_due"> 
+            <div id="ef-modal-due-popup" class="ef-modal-due-popup"><div class="ef-due-grid"><?php for($i=1;$i<=31;$i++)echo "<button class='ef-due-box' data-day='$i'>$i</button>"; ?></div></div> 
+            <div style="display:flex; justify-content:flex-end; gap:12px; margin-top:10px;"> 
+                <button onclick="efCloseEditModal()" class="ef-btn-action">Cancel</button> 
+                <button onclick="efSubmitModalFormEdits()" id="efModalActionBtn" class="ef-btn-action">Save changes</button> 
+            </div> 
+        </div> 
+    </div> 
+    <div id="receipt-template" style="display:none;"> 
+        <div class="receipt-container" style="padding:40px; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color:#334155; width:800px; background:#fff;"> 
+            <div class="receipt-header" style="display:flex; justify-content:space-between; border-bottom:2px solid #f1f5f9; padding-bottom:20px;"> 
+                <div style="display:flex; align-items:center; gap:15px;"> 
+                    <img src="https://estateflow.digital/wp-content/uploads/2026/06/cropped-estate.png" style="width:48px; height:48px; object-fit:contain;"> 
+                    <div> 
+                        <div style="color:#0f172a; font-size:22px; font-weight:800; letter-spacing:-0.5px;"><span style ="color:#27784e;">AS Alhajeri</span>Estate</div>
+                        <div style="color:#64748b; font-size:13px; font-weight:500;">Property Suite</div> 
+                    </div> 
+                </div> 
+                <div style="text-align:right;"> 
+                    <div style="color:#00a86b; font-size:24px; font-weight:800; margin-bottom:4px; letter-spacing:-0.5px;">PAYMENT RECEIPT</div> 
+                    <div style="color:#64748b; font-size:13px;">Receipt Voucher: <span id="r-ref" style="font-weight:700; color:#0f172a;"></span></div> 
+                </div> 
+            </div> 
+            <div style="display:flex; justify-content:space-between; margin:32px 0;"> 
+                <div> 
+                    <div style="color:#94a3b8; font-size:11px; font-weight:700; text-transform:uppercase; margin-bottom:12px; letter-spacing:0.5px;">Received From</div> 
+                    <div id="r-tenant" style="font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px;"></div> 
+                    <div id="r-prop" style="color:#64748b; font-size:14px;"></div> 
+                </div> 
+                <div style="text-align:right; min-width:240px;"> 
+                    <div style="color:#94a3b8; font-size:11px; font-weight:700; text-transform:uppercase; margin-bottom:12px; letter-spacing:0.5px;">Transaction Details</div> 
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px 16px; font-size:13px; text-align:left;"> 
+                        <span style="color:#64748b; font-weight:600;">Ref/Cheque No.:</span><span id="r-cheque" style="text-align:right; font-weight:700; color:#0f172a;"></span>
+                        <span style="color:#64748b; font-weight:600;">Payment Date:</span><span id="r-date" style="text-align:right; font-weight:700; color:#0f172a;"></span> 
+                        <span style="color:#64748b; font-weight:600;">Allocation Period:</span><span id="r-period" style="text-align:right; font-weight:700; color:#0f172a;"></span> 
+                        <span style="color:#64748b; font-weight:600;">Method:</span><span id="r-method" style="text-align:right; font-weight:700; color:#0f172a;"></span> 
+                    </div> 
+                </div> 
+            </div> 
+            <table style="width:100%; border-collapse:collapse; margin-top:32px;"> 
+                <thead> 
+                    <tr> 
+                        <th style="text-align:left; border-bottom:1px solid #e2e8f0; padding:12px 0; color:#94a3b8; font-size:11px; text-transform:uppercase; letter-spacing:0.5px;">Description</th> 
+                        <th style="text-align:right; border-bottom:1px solid #e2e8f0; padding:12px 0; color:#94a3b8; font-size:11px; text-transform:uppercase; letter-spacing:0.5px;">Total Allocation</th> 
+                    </tr> 
+                </thead> 
+                <tbody> 
+                    <tr> 
+                        <td style="padding:20px 0; border-bottom:1px solid #f1f5f9;"> 
+                            <div style="font-weight:700; color:#0f172a; margin-bottom:4px; font-size:15px;">Rental Payment Allocation</div> 
+                            <div id="r-desc" style="color:#64748b; font-size:13px;"></div> 
+                        </td> 
+                        <td style="text-align:right; padding:20px 0; border-bottom:1px solid #f1f5f9; font-weight:700; font-size:16px; color:#0f172a;"> 
+                            AED <span id="r-amt-table"></span> 
+                        </td> 
+                    </tr> 
+                </tbody> 
+            </table> 
+            <div style="display:flex; justify-content:flex-end; align-items:center; gap:32px; margin-top:32px;"> 
+                <span style="font-weight:700; color:#0f172a; font-size:15px;">Amount Paid:</span> 
+                <span style="color:#00a86b; font-size:24px; font-weight:800; letter-spacing:-0.5px;">AED <span id="r-amt-total"></span></span> 
+            </div> 
+            <div style="text-align:center; color:#94a3b8; font-size:11px; margin-top:60px; padding-top:20px; border-top:1px solid #f1f5f9;"> 
+                This is an electronically generated document. No physical signature is required.<br> 
+                <span style="font-style:italic; color:#cbd5e1; margin-top:8px; display:block;">Thank you for your business!</span> 
+            </div> 
+        </div> 
+    </div> 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script> 
+    <script> 
+    (function(){ 
+        const ajax = '<?php echo admin_url('admin-ajax.php'); ?>'; 
+
+        window.efToggleScrollLock = function() {
+            const profileVisible = document.getElementById('efTenantProfileModal').style.display === 'flex';
+            const editVisible = document.getElementById('efGlobalRightEditModal').style.display === 'flex';
+            const addVisible = document.getElementById('atc-modal') ? document.getElementById('atc-modal').style.display === 'flex' : false;
+            
+            if (profileVisible || editVisible || addVisible) {
+                document.body.classList.add('ef-no-scroll');
+            } else {
+                document.body.classList.remove('ef-no-scroll');
+            }
+        };
+
+        window.efCloseEditModal = function() {
+            document.getElementById('efGlobalRightEditModal').style.display = 'none';
+            efToggleScrollLock();
+        };
+
+        window.addEventListener('ef_load_tenant', e => { 
+            const screen = document.getElementById('efWorkspaceDynamicScreen'); 
+            const modal = document.getElementById('efTenantProfileModal'); 
+            if (window.innerWidth <= 768) { 
+                modal.style.display = 'flex'; 
+                efToggleScrollLock();
+            } 
+            screen.innerHTML = '<div style="text-align:center; padding:40px;">Loading profile...</div>'; 
+            const fd = new FormData(); fd.append('action', 'eftm_render_tenant_profile'); fd.append('tenant_id', e.detail.id); 
+            fetch(ajax, { method: 'POST', body: fd }).then(r => r.text()).then(html => { 
+                screen.innerHTML = html; attachReceiptEvents(); 
+            }); 
+        }); 
+
+        window.attachReceiptEvents = function() { 
+            document.querySelectorAll('.ef-btn-receipt').forEach(btn => { 
+                btn.onclick = () => { 
+                    const d = btn.dataset; 
+                    document.getElementById('r-ref').innerText = d.ref; document.getElementById('r-tenant').innerText = d.tenant; document.getElementById('r-prop').innerText = d.prop; 
+                    document.getElementById('r-cheque').innerText = d.cheque || '';
+                    document.getElementById('r-date').innerText = d.date; document.getElementById('r-period').innerText = d.period; document.getElementById('r-method').innerText = d.method; 
+                    document.getElementById('r-amt-table').innerText = d.amount; document.getElementById('r-amt-total').innerText = d.amount; 
+                    document.getElementById('r-desc').innerText = `Unit Reference: ${d.prop} (${d.period})`; 
+                    const element = document.querySelector('#receipt-template .receipt-container'); 
+                    html2pdf().from(element).set({ 
+                        margin: 0.2, 
+                        filename: `Receipt-${d.ref}.pdf`, 
+                        image: { type: 'jpeg', quality: 0.98 }, 
+                        html2canvas: { scale: 2, logging: false, useCORS: true }, 
+                        jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' } 
+                    }).save(); 
+                }; 
+            }); 
+        } 
+        window.efTriggerFormPopup = function(btn) { 
+            const d = btn.dataset; 
+            document.getElementById('modal_field_id').value = d.id; 
+            document.getElementById('modal_field_name').value = d.name; 
+            document.getElementById('modal_field_unit').value = d.unit; 
+            document.getElementById('modal_field_rent').value = d.rent; 
+            document.getElementById('modal_field_address').value = d.address; 
+            document.getElementById('modal_field_email').value = d.email; 
+            document.getElementById('modal_field_phone').value = d.phone; 
+            document.getElementById('modal_field_start').value = d.start; 
+            document.getElementById('modal_field_end').value = d.end; 
+            document.getElementById('modal_field_due').value = d.due; 
+            document.getElementById('modal_field_due_day_display').value = d.due; 
+            loadEditProps(d.propertyId); 
+            document.getElementById('efGlobalRightEditModal').style.display = 'flex'; 
+            efToggleScrollLock();
+        } 
+        function loadEditProps(sel){ 
+            const s = document.getElementById('modal_field_property'); s.innerHTML='<option>Loading...</option>'; 
+            fetch(ajax+'?action=eftm_get_properties').then(r=>r.json()).then(res=>{ 
+                s.innerHTML='<option value="">Select property</option>'; 
+                res.data.forEach(p=>{ const o=document.createElement('option'); o.value=p.id; o.textContent=p.name; o.dataset.rent=p.rent; o.dataset.start=p.date; o.dataset.end=p.end_date; o.dataset.due=p.due_day; if(p.id==sel) o.selected=true; s.appendChild(o); }); 
+                if(sel) s.dispatchEvent(new Event('change')); 
+            }); 
+        } 
+        document.getElementById('modal_field_property').onchange = function(){ 
+            const pid = this.value; if(!pid) return; 
+            const u = document.getElementById('modal_field_unit'); u.value='Checking...'; 
+            fetch(ajax, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:new URLSearchParams({action:'eftm_check_property_availability', property_id:pid, tenant_id:document.getElementById('modal_field_id').value, security:'<?php echo wp_create_nonce("property_availability_nonce"); ?>'}) }) 
+            .then(r=>r.json()).then(res=>{ 
+                if(res.success){ 
+                    document.getElementById('modal_field_address').value = res.data.property_address; 
+                    if(res.data.all_occupied){ 
+                        u.value = 'Not available'; 
+                        u.setAttribute('data-status', 'not-available'); 
+                        document.getElementById('efModalActionBtn').disabled=true; 
+                    } 
+                    else { 
+                        u.value = 'Available'; 
+                        u.setAttribute('data-status', 'available'); 
+                        document.getElementById('efModalActionBtn').disabled=false; 
+                        const opt = this.selectedOptions[0]; 
+                        document.getElementById('modal_field_rent').value = opt.dataset.rent || 1000; 
+                        if(opt.dataset.start) document.getElementById('modal_field_start').value = new Date(opt.dataset.start).toISOString().split('T')[0]; 
+                        if(opt.dataset.end) document.getElementById('modal_field_end').value = new Date(opt.dataset.end).toISOString().split('T')[0]; 
+                        if(opt.dataset.due){ document.getElementById('modal_field_due').value=opt.dataset.due; document.getElementById('modal_field_due_day_display').value=opt.dataset.due; } 
+                    } 
+                } 
+            }); 
+        }; 
+        const mDueDisp=document.getElementById('modal_field_due_day_display'), mDuePop=document.getElementById('ef-modal-due-popup'), mDueInp=document.getElementById('modal_field_due'); 
+        mDueDisp.onclick=()=>mDuePop.style.display='flex'; 
+        mDuePop.onclick=e=>{ 
+          if(e.target.dataset.day){mDueInp.value=e.target.dataset.day; mDueDisp.value=e.target.dataset.day; mDuePop.style.display='none';} 
+          else if(e.target === mDuePop) { mDuePop.style.display = 'none'; } 
+        }; 
+        window.efSubmitModalFormEdits = function(){ 
+            const b = document.getElementById('efModalActionBtn'); b.disabled=true; 
+            const fd = new FormData(); fd.append('action','eftm_edit_tenant'); fd.append('security','<?php echo wp_create_nonce("edit_tenant_nonce"); ?>'); 
+            fd.append('tenant_id', document.getElementById('modal_field_id').value); fd.append('new_name', document.getElementById('modal_field_name').value); 
+            fd.append('new_property_id', document.getElementById('modal_field_property').value); fd.append('new_unit', document.getElementById('modal_field_unit').value); 
+            fd.append('new_rent', document.getElementById('modal_field_rent').value); fd.append('new_address', document.getElementById('modal_field_address').value); 
+            fd.append('new_email', document.getElementById('modal_field_email').value); fd.append('new_phone', document.getElementById('modal_field_phone').value); 
+            fd.append('new_start', document.getElementById('modal_field_start').value); fd.append('new_end', document.getElementById('modal_field_end').value); 
+            fd.append('new_due_day', document.getElementById('modal_field_due').value); 
+            fetch(ajax, {method:'POST', body:fd}).then(r=>r.json()).then(res=>{ if(res.success){ alert('Saved!'); efCloseEditModal(); location.reload(); } }); 
+        } 
+        window.efLiveDeleteTenant = function(id, name) { 
+            if (confirm(`Delete ${name}?`)) { 
+                const fd = new FormData(); fd.append('action', 'eftm_delete_tenant'); fd.append('tenant_id', id); fd.append('security', '<?php echo wp_create_nonce("delete_tenant_nonce"); ?>'); 
+                fetch(ajax, { method: 'POST', body: fd }).then(r => r.json()).then(res => { if (res.success) location.reload(); }); 
+            } 
+        } 
+    })(); 
+    </script> 
+    <?php return ob_get_clean(); 
+}); 
+
+add_shortcode('tenant_manager', function(){ 
+    return '<div style="font-family:system-ui, sans-serif;">' . 
+           do_shortcode('[tenant_header]') . 
+           '<div style="display:flex; gap:24px; flex-wrap:wrap; align-items:flex-start;">' . 
+           do_shortcode('[tenant_list]') . 
+           do_shortcode('[tenant_profile]') . 
+           '</div></div>'; 
+}); 
+
+add_action('wp_ajax_eftm_create_tenant', 'eftm_handle_create_tenant'); 
+add_action('wp_ajax_eftm_check_property_availability', 'eftm_handle_check_property_availability'); 
+add_action('wp_ajax_eftm_render_tenant_profile', 'eftm_handle_ajax_tenant_breakdown'); 
+add_action('wp_ajax_nopriv_eftm_render_tenant_profile', 'eftm_handle_ajax_tenant_breakdown'); 
+add_action('wp_ajax_eftm_edit_tenant', 'eftm_execute_ajax_tenant_modification'); 
+add_action('wp_ajax_eftm_delete_tenant', 'eftm_execute_ajax_tenant_deletion'); 
+add_action('wp_ajax_eftm_get_properties', 'eftm_global_execute_properties_fetch'); 
+
+if ( ! function_exists('eftm_get_total_units') ) { 
+    function eftm_get_total_units($property_id) { 
+        $units = get_field('number_unit', $property_id); 
+        if (!$units) $units = get_post_meta($property_id, 'number_unit', true); 
+        if (!$units) $units = get_field('property_units', $property_id); 
+        if (!$units) $units = get_post_meta($property_id, 'property_units', true); 
+        return intval($units ?: 1); 
+    } 
+} 
+if ( ! function_exists('eftm_get_occupied_count') ) { 
+    function eftm_get_occupied_count($property_id, $exclude_tenant_id = 0) { 
+        $args = [ 
+            'post_type' => 'ef_tenant', 
+            'posts_per_page' => -1, 
+            'fields' => 'ids', 
+            'meta_query' => [ 
+                'relation' => 'OR', 
+                [ 
+                    'key' => 'property_id', 
+                    'value' => $property_id, 
+                    'compare' => '=' 
+                ], 
+                [ 
+                    'key' => 'property_id', 
+                    'value' => '"' . $property_id . '"', 
+                    'compare' => 'LIKE' 
+                ], 
+                [ 
+                    'key' => 'property_id', 
+                    'value' => 'i:' . $property_id . ';', 
+                    'compare' => 'LIKE' 
+                ], 
+                [ 
+                    'key' => 'property_id', 
+                    'value' => 's:' . strlen($property_id) . ':"' . $property_id . '";', 
+                    'compare' => 'LIKE' 
+                ] 
+            ] 
+        ]; 
+        if ($exclude_tenant_id) { 
+            $args['post__not_in'] = [$exclude_tenant_id]; 
+        } 
+        $tenants = get_posts($args); 
+        return count($tenants); 
+    } 
+} 
+
+function eftm_handle_create_tenant() { 
+    if ( ! isset($_POST['create_tenant_nonce']) || ! wp_verify_nonce($_POST['create_tenant_nonce'], 'create_tenant_action') ) { 
+        wp_send_json_error('Invalid request (nonce).', 403); 
+    } 
+    if (!is_user_logged_in()) { 
+        wp_send_json_error('Unauthorized.', 403); 
+    } 
+    $name   = sanitize_text_field($_POST['tenant_name'] ?? ''); 
+    $email  = sanitize_email($_POST['tenant_email'] ?? ''); 
+    $phone  = sanitize_text_field($_POST['tenant_phone'] ?? ''); 
+    $address= sanitize_text_field($_POST['tenant_address'] ?? ''); 
+    $unit   = intval($_POST['tenant_unit'] ?? 1); 
+    $rent   = floatval($_POST['tenant_rent'] ?? 0); 
+    $start  = sanitize_text_field($_POST['tenant_start'] ?? ''); 
+    $end    = sanitize_text_field($_POST['tenant_end'] ?? ''); 
+    $due    = intval($_POST['tenant_due_day'] ?? 0); 
+    $propId = intval($_POST['property_id'] ?? 0); 
+    if ( empty($name) ) wp_send_json_error('Name is required.'); 
+    if ( empty($email) || ! is_email($email) ) wp_send_json_error('Valid email is required.'); 
+    $tenant_id = wp_insert_post([ 
+        'post_type'   => 'ef_tenant', 
+        'post_title'  => $name, 
+        'post_status' => 'publish', 
+    ], true); 
+    if ( is_wp_error($tenant_id) || ! $tenant_id ) wp_send_json_error('Could not create tenant'); 
+    $meta = [ 
+        'tenant_email' => $email, 'tenant_phone' => $phone, 'tenant_address' => $address, 
+        'tenant_unit' => $unit, 'monthly_rent' => $rent, 'tenant_start' => $start, 
+        'tenant_end' => $end, 'rent_due_day' => $due, 'property_id' => $propId 
+    ]; 
+    foreach ($meta as $k => $v) { 
+        if ( function_exists('update_field') ) update_field($k, $v, $tenant_id); 
+        else update_post_meta($tenant_id, $k, $v); 
+    } 
+    wp_send_json_success(['id' => $tenant_id]); 
+} 
+
+function eftm_handle_check_property_availability() { 
+    if (!isset($_POST['security']) || !wp_verify_nonce($_POST['security'], 'property_availability_nonce')) { 
+        wp_send_json_error('Invalid security check.', 403); 
+    } 
+    if (!is_user_logged_in()) { 
+        wp_send_json_error('Unauthorized.', 403); 
+    } 
+    $property_id = intval($_POST['property_id'] ?? 0); 
+    $tenant_id   = intval($_POST['tenant_id'] ?? 0); 
+    if (!$property_id) wp_send_json_error('Property ID is required.'); 
+    $property_address = get_field('add_address', $property_id) ?: get_post_meta($property_id, 'add_address', true) ?: get_the_title($property_id); 
+    $total_units = eftm_get_total_units($property_id); 
+    $occupied_count = eftm_get_occupied_count($property_id, $tenant_id); 
+    $available_units = max(0, $total_units - $occupied_count); 
+    wp_send_json_success([ 
+        'property_id' => $property_id, 
+        'property_address' => $property_address, 
+        'all_occupied' => ($available_units === 0), 
+        'next_available_unit' => $occupied_count + 1, 
+    ]); 
+} 
+
+function eftm_handle_ajax_tenant_breakdown() { 
+    $tenant_id = isset($_POST['tenant_id']) ? intval($_POST['tenant_id']) : 0; 
+    if (!$tenant_id) wp_die(); 
+    $tenant_name    = get_the_title($tenant_id); 
+    $monthly_rent   = floatval(get_field('monthly_rent', $tenant_id) ?: get_post_meta($tenant_id, 'monthly_rent', true)); 
+    $due_day        = get_field('rent_due_day', $tenant_id) ?: get_post_meta($tenant_id, 'rent_due_day', true); 
+    $email          = get_field('tenant_email', $tenant_id) ?: get_post_meta($tenant_id, 'tenant_email', true); 
+    $phone          = get_field('tenant_phone', $tenant_id) ?: get_post_meta($tenant_id, 'tenant_phone', true); 
+    $address        = get_field('tenant_address', $tenant_id) ?: get_post_meta($tenant_id, 'tenant_address', true); 
+    $contract_start = get_field('tenant_start', $tenant_id) ?: get_post_meta($tenant_id, 'tenant_start', true); 
+    $contract_end   = get_field('tenant_end', $tenant_id) ?: get_post_meta($tenant_id, 'tenant_end', true); 
+    $unit           = get_field('tenant_unit', $tenant_id) ?: get_post_meta($tenant_id, 'tenant_unit', true); 
+    $prop_field     = get_field('property_id', $tenant_id) ?: get_post_meta($tenant_id, 'property_id', true); 
+    $propId = is_object($prop_field) ? $prop_field->ID : (is_array($prop_field) ? ($prop_field['ID'] ?? $prop_field[0]->ID ?? 0) : intval($prop_field)); 
+    $property_display = $propId ? get_the_title($propId) : 'No Property Assigned'; 
+    $payment_history = []; 
+    $p_query = new WP_Query([ 
+        'post_type'      => 'payment', 'post_status'    => ['publish', 'future'], 'posts_per_page' => -1, 
+        'meta_query'     => [['key' => 'associated_tenant', 'value' => $tenant_id, 'compare' => '=']], 
+        'meta_key'       => 'date_of_payment', 'orderby' => 'meta_value', 'order' => 'DESC' 
+    ]); 
+    if ($p_query->have_posts()) { 
+        while ($p_query->have_posts()) { 
+            $p_query->the_post(); 
+            $pay_id = get_the_ID(); 
+            $raw_date = get_field('date_of_payment', $pay_id) ?: get_post_meta($pay_id, 'date_of_payment', true); 
+            $ts = $raw_date ? strtotime($raw_date) : get_the_date('U', $pay_id); 
+            $payment_history[] = [ 
+                'id' => $pay_id, 'period' => date('Y-m', $ts), 'date' => date('n/j/Y', $ts), 
+                'method' => (get_field('mode_of_payment', $pay_id) ?: get_post_meta($pay_id, 'mode_of_payment', true)) ?: 'Cash', 
+                'amount' => floatval(get_field('amount_paid', $pay_id) ?: get_post_meta($pay_id, 'amount_paid', true)),
+                'cheque' => get_field('transaction_cheque_number', $pay_id) ?: get_post_meta($pay_id, 'transaction_cheque_number', true),
+                'receipt_voucher' => get_field('receipt_voucher', $pay_id) ?: get_post_meta($pay_id, 'receipt_voucher', true)
+            ]; 
+        } 
+        wp_reset_postdata(); 
+    } 
+    $initials = ''; $words = explode(' ', $tenant_name); foreach ($words as $w) $initials .= strtoupper(substr($w, 0, 1)); 
+    $initials = substr($initials, 0, 2); 
+    $due_day_display = !empty($due_day) ? $due_day . (in_array($due_day, [1,21,31]) ? 'st' : (in_array($due_day, [2,22]) ? 'nd' : (in_array($due_day, [3,23]) ? 'rd' : 'th'))) : '-'; 
+    ?> 
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;"> 
+        <div class="ef-header-profile-block"> 
+            <div class="ef-profile-avatar-big"><?php echo esc_html($initials); ?></div> 
+            <div> 
+                <h2 style="margin: 0 0 2px 0; font-size: 22px; color: #0f172a; font-weight: 700;"><?php echo esc_html($tenant_name); ?></h2> 
+                <div style="color: #64748b; font-size: 14px; font-weight: 500;"><?php echo esc_html($property_display); ?></div> 
+            </div> 
+        </div> 
+        <?php if (is_user_logged_in()) : ?> 
+        <div class="ef-action-btn-group"> 
+            <button class="ef-btn-action" 
+                    data-id="<?php echo $tenant_id; ?>" data-name="<?php echo esc_attr($tenant_name); ?>" data-property-id="<?php echo $propId; ?>" 
+                    data-unit="<?php echo esc_attr($unit); ?>" data-rent="<?php echo $monthly_rent; ?>" data-address="<?php echo esc_attr($address); ?>" 
+                    data-email="<?php echo esc_attr($email); ?>" data-phone="<?php echo esc_attr($phone); ?>" data-start="<?php echo $contract_start; ?>" 
+                    data-end="<?php echo $contract_end; ?>" data-due="<?php echo esc_attr($due_day); ?>" onclick="efTriggerFormPopup(this)"> 
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4z"></path></svg> Edit 
+            </button> 
+            <button class="ef-btn-action ef-btn-delete-icon" onclick="efLiveDeleteTenant(<?php echo $tenant_id; ?>, '<?php echo esc_js($tenant_name); ?>')"> 
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg> 
+            </button> 
+        </div> 
+        <?php endif; ?> 
+    </div> 
+    <div class="ef-meta-grid-3col"> 
+        <div class="ef-meta-info-card"><div class="ef-meta-card-label">Monthly rent</div><div class="ef-meta-card-value ef-text-green">AED <?php echo number_format($monthly_rent, 2); ?></div></div> 
+        <div class="ef-meta-info-card"><div class="ef-meta-card-label">Due day</div><div class="ef-meta-card-value"><?php echo esc_html($due_day_display); ?> <span style="font-size: 13px; font-weight:400; color: #64748b;">of month</span></div></div> 
+        <div class="ef-meta-info-card"><div class="ef-meta-card-label">Payments</div><div class="ef-meta-card-value"><?php echo count($payment_history); ?></div></div> 
+    </div> 
+    <div class="ef-section-title-sub">Contact & Contract Details</div> 
+    <div class="ef-contact-row-flex" style="margin-bottom: 12px;"> 
+        <div class="ef-contact-item">✉️ <?php echo esc_html($email ?: 'None'); ?></div> 
+        <div class="ef-contact-item">📞 <?php echo esc_html($phone ?: 'None'); ?></div> 
+    </div> 
+    <div class="ef-contact-row-flex" style="margin-bottom: 16px;"><div class="ef-contact-item">📍 <?php echo esc_html($address ?: 'No Address Provided'); ?></div></div> 
+    <div style="font-size: 14px; display: flex; align-items: center;"><span class="ef-contract-badge-pill">Contract Period</span><span style="color: #0f172a; font-weight: 500;"><?php echo esc_html($contract_start ?: 'N/A'); ?> ➔ <?php echo esc_html($contract_end ?: 'N/A'); ?></span></div> 
+    <div class="ef-section-title-sub" style="margin-top: 32px;">Payment Ledger History</div> 
+    <div class="ef-payment-history-list"> 
+        <?php if (!empty($payment_history)) : foreach ($payment_history as $p) : ?> 
+            <div class="ef-payment-row-card"> 
+                <div class="ef-pay-row-left"><div class="ef-pay-period-title"><?php echo esc_html($p['period']); ?></div><div class="ef-pay-meta-sub"><?php echo esc_html($p['method']); ?> · <?php echo esc_html($p['date']); ?></div></div> 
+                <div class="ef-pay-row-right"> 
+                    <div class="ef-pay-amount-value">AED <?php echo number_format($p['amount'], 2); ?></div> 
+                    <button class="ef-btn-receipt" 
+                            data-ref="<?php echo esc_attr($p['receipt_voucher'] ?: 'REC-' . str_pad($p['id'], 6, '0', STR_PAD_LEFT)); ?>" data-tenant="<?php echo esc_attr($tenant_name); ?>" 
+                            data-prop="<?php echo esc_attr($property_display); ?>" data-date="<?php echo esc_attr($p['date']); ?>" 
+                            data-period="<?php echo esc_attr($p['period']); ?>" data-method="<?php echo esc_attr($p['method']); ?>" 
+                            data-cheque="<?php echo esc_attr($p['cheque']); ?>"
+                            data-amount="<?php echo number_format($p['amount'], 2); ?>"> 
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-top:-2px;">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+        <polyline points="7 10 12 15 17 10"></polyline>
+        <line x1="12" y1="15" x2="12" y2="3"></line>
+    </svg> Receipt 
+                    </button> 
+                </div> 
+            </div> 
+        <?php endforeach; else : ?> 
+            <div style="color: #64748b; font-size: 14px; font-style: italic; padding: 20px 0; text-align: center; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 12px;">No recorded invoice transactions found.</div> 
+        <?php endif; ?> 
+    </div> 
+    <?php 
+    wp_die(); 
+} 
+
+function eftm_execute_ajax_tenant_modification() { 
+    if (!isset($_POST['security']) || !wp_verify_nonce($_POST['security'], 'edit_tenant_nonce')) { 
+        wp_send_json_error('Invalid security check.', 403); 
+    } 
+    if (!is_user_logged_in()) { 
+        wp_send_json_error('Unauthorized.', 403); 
+    } 
+    $tid = intval($_POST['tenant_id'] ?? 0); 
+    if (!$tid) wp_send_json_error('Tenant ID is required.'); 
+    $name = sanitize_text_field($_POST['new_name'] ?? ''); 
+    wp_update_post(['ID' => $tid, 'post_title' => $name]); 
+    $meta = [ 
+        'tenant_email' => sanitize_email($_POST['new_email'] ?? ''), 
+        'tenant_phone' => sanitize_text_field($_POST['new_phone'] ?? ''), 
+        'tenant_address' => sanitize_text_field($_POST['new_address'] ?? ''), 
+        'tenant_unit' => intval($_POST['new_unit'] ?? 1), 
+        'monthly_rent' => floatval($_POST['new_rent'] ?? 0), 
+        'tenant_start' => sanitize_text_field($_POST['new_start'] ?? ''), 
+        'tenant_end' => sanitize_text_field($_POST['new_end'] ?? ''), 
+        'rent_due_day' => intval($_POST['new_due_day'] ?? 0), 
+        'property_id' => intval($_POST['new_property_id'] ?? 0) 
+    ]; 
+    foreach ($meta as $k => $v) { 
+        if ( function_exists('update_field') ) update_field($k, $v, $tid); 
+        else update_post_meta($tid, $k, $v); 
+    } 
+    wp_send_json_success(); 
+} 
+
+function eftm_execute_ajax_tenant_deletion() { 
+    if (!isset($_POST['security']) || !wp_verify_nonce($_POST['security'], 'delete_tenant_nonce')) { 
+        wp_send_json_error('Invalid security check.', 403); 
+    } 
+    if (!is_user_logged_in()) { 
+        wp_send_json_error('Unauthorized.', 403); 
+    } 
+    $tid = intval($_POST['tenant_id'] ?? 0); 
+    if ($tid && wp_delete_post($tid, true)) wp_send_json_success(); 
+    else wp_send_json_error('Delete failed.'); 
+} 
+
+function eftm_global_execute_properties_fetch() { 
+    if (!is_user_logged_in()) { 
+        wp_send_json_error('Unauthorized.', 403); 
+    } 
+    $q = new WP_Query(['post_type' => 'property', 'post_status' => 'publish', 'posts_per_page' => -1, 'orderby' => 'title', 'order' => 'ASC']); 
+    $res = []; 
+    if ($q->have_posts()) { 
+        while ($q->have_posts()) { 
+            $q->the_post(); 
+            $id = get_the_ID(); 
+            $res[] = [ 
+                'id' => $id, 'name' => get_the_title(), 
+                'address' => get_field('add_address', $id) ?: get_post_meta($id, 'add_address', true) ?: '', 
+                'units' => eftm_get_total_units($id), 
+                'rent' => get_field('property_rent', $id) ?: get_post_meta($id, 'property_rent', true), 
+                'date' => get_field('property_start_date', $id) ?: get_post_meta($id, 'property_start_date', true), 
+                'end_date' => get_field('property_end_date', $id) ?: get_post_meta($id, 'property_end_date', true), 
+                'due_day' => get_field('property_due_day', $id) ?: get_post_meta($id, 'property_due_day', true), 
+            ]; 
+        } 
+        wp_reset_postdata(); 
+    } 
+    wp_send_json_success($res); 
+}
+add_action('wp_ajax_nopriv_eftm_render_tenant_profile', 'eftm_handle_ajax_tenant_breakdown'); 
+add_shortcode('ef_master_tenant_directory', function() {
+    $t_query = new WP_Query(array(
+        'post_type'      => 'ef_tenant',
+        'post_status'    => 'publish',
+        'posts_per_page' => -1,
+    ));
+
+    $current_year  = current_time('Y');
+    $current_month = current_time('m');
+
+    ob_start();
+
+    echo '';
+
+    echo '<div class="ef-split-container">';
+
+    echo '<div class="ef-left-panel">';
+
+    echo '<div class="ef-search-row">';
+    echo '<input type="text" id="efTenantSearchInput" onkeyup="efFilterTenantsByName()" placeholder="🔍 Search tenants by name..." style="flex: 1; padding: 12px 16px; border: 1px solid #c2dbb1; border-radius: 8px; font-size: 14px; outline: none; transition: border-color 0.2s; background-color: #fbfdfb; box-sizing: border-box;" onfocus="this.style.borderColor=\'#608D3F\'" onblur="this.style.borderColor=\'#c2dbb1\'">';
+
+    echo '</div>';
+
+   echo '<div style="position: relative; background: #ffffff; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); padding: 16px; max-height: 600px; overflow-y: auto; overflow-x: auto; box-sizing: border-box;">';
+    echo '<table id="efTenantDirectoryTable" style="width:100%; border-collapse:collapse; text-align:left; font-size:14px; min-width: 500px;">';
+   echo '<thead style="background-color: #E8FFEB; color: #2c4a1a; font-weight: 600; border-bottom: 2px solid #608D3F;">';
+    echo '<tr>';
+    echo '<th style="padding:14px 16px; width: 45%;">Tenant Name</th>';
+    echo '<th style="padding:14px 16px; width: 30%;">Monthly Rent</th>';
+    echo '<th style="padding:14px 16px; width: 25%; text-align:right;">Action</th>';
+    echo '</tr>';
+    echo '</thead>';
+    echo '<tbody style="color:#1f2937;">';
+
+    if ($t_query->have_posts()) {
+        while ($t_query->have_posts()) {
+            $t_query->the_post();
+            $t_id = get_the_ID();
+            $tenant_title = esc_attr(get_the_title());
+
+            $rent = get_field('monthly_rent', $t_id);
+            $clean_rent = $rent ? floatval($rent) : 0;
+            $display_rent = $rent ? 'AED ' . number_format($clean_rent) : '---';
+
+            $due_day = get_field('rent_due_day', $t_id);
+            if (!$due_day) { $due_day = get_field('due_day', $t_id); }
+            if (!$due_day) { $due_day = get_field('due_date', $t_id); }
+            $display_due = $due_day ? 'Day ' . esc_html($due_day) : '---';
+
+            $edit_url = admin_url('post.php?post=' . $t_id . '&action=edit');
+
+            $has_paid_this_month = false;
+
+            $p_query = new WP_Query(array(
+                'post_type'      => 'payment',
+                'post_status'    => array('publish', 'future', 'pending', 'draft', 'private'),
+                'posts_per_page' => -1,
+                'date_query'     => array(
+                    array(
+                        'year'  => $current_year,
+                        'month' => $current_month,
+                    ),
+                ),
+            ));
+
+            if ($p_query->have_posts()) {
+                while ($p_query->have_posts()) {
+                    $p_query->the_post();
+                    $pay_id = get_the_ID();
+
+                    $assigned_tenant = get_field('select_tenant', $pay_id);
+
+                    $matched_tenant_id = 0;
+                    if (is_array($assigned_tenant) && !empty($assigned_tenant)) {
+                        $item = $assigned_tenant[0];
+                        if (is_object($item)) {
+                            $matched_tenant_id = $item->ID;
+                        } elseif (is_array($item)) {
+                            $matched_tenant_id = isset($item['ID']) ? $item['ID'] : 0;
+                        } else {
+                            $matched_tenant_id = intval($item);
+                        }
+                    } elseif (is_object($assigned_tenant)) {
+                        $matched_tenant_id = $assigned_tenant->ID;
+                    } elseif (is_array($assigned_tenant)) {
+                        $matched_tenant_id = isset($assigned_tenant['ID']) ? $assigned_tenant['ID'] : 0;
+                    } else {
+                        $matched_tenant_id = intval($assigned_tenant);
+                    }
+
+                    if ($matched_tenant_id === intval($t_id)) {
+                        $has_paid_this_month = true;
+                        break; 
+                    }
+                }
+                wp_reset_postdata();
+            }
+
+            $is_paid = ($has_paid_this_month === true) ? 'paid' : 'unpaid';
+            $profile_url = esc_url(get_permalink($t_id));
+
+            echo '<tr class="tenant-row" style="border-bottom:1px solid #e5e7eb; transition: background 0.2s;" onmouseover="this.style.backgroundColor=\'#f9fafb\'" onmouseout="this.style.backgroundColor=\'transparent\'">';
+            echo '<td class="tenant-name" style="padding:14px 16px; font-weight:500; color:#111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' . esc_html($tenant_title) . '</td>';
+            echo '<td style="padding:14px 16px; font-weight:600; color:#608D3F;">' . $display_rent . '</td>';
+            echo '<td style="padding:14px 16px; text-align:right;">';
+
+echo '<button type="button" onclick="efShowTenantDetails(\'' . addslashes($tenant_title) . '\', \'' . $display_rent . '\', \'' . $display_due . '\', \'' . $profile_url . '\', \'' . $is_paid . '\')" style="cursor:pointer; display:inline-block; background-color:#608D3F; color:#ffffff; padding:6px 14px; border:none; border-radius:6px; font-size:12px; font-weight:500; margin-right:8px; transition:background 0.2s;" onmouseover="this.style.backgroundColor=\'#4b6e31\'" onmouseout="this.style.backgroundColor=\'#608D3F\'">View Profile</button>';
+
+echo '<a href="' . esc_url(home_url('/tenants/') . '?tenant_id=' . get_the_ID()) . '" style="display:inline-block; background-color:#1a2b3c; color:#ffffff; padding:6px 14px; border-radius:6px; font-size:12px; text-decoration:none; font-weight:500; transition:background 0.2s;" onmouseover="this.style.backgroundColor=\'#0e1821\'" onmouseout="this.style.backgroundColor=\'#1a2b3c\'">Edit</a>';
+            echo '</td>';
+            echo '</tr>';
+        }
+        wp_reset_postdata();
+    } else {
+        echo '<tr><td colspan="3" style="padding:32px; text-align:center; color:#6b7280;">No active tenant records found.</td></tr>';
+    }
+
+    echo '</tbody>';
+    echo '</table>';
+    echo '</div>';
+    echo '</div>';
+
+    echo '<div class="ef-right-panel">';
+    echo '<div class="ef-sticky-card" id="efProfileDisplayCard">';
+    echo '<div style="text-align: center; padding-top: 40px; color: #9ca3af;">';
+    echo '<span style="font-size: 48px; display: block; margin-bottom: 12px;">👤</span>';
+    echo '<p style="font-size: 15px; font-weight: 500; margin: 0;">Select a tenant from the directory list to see full account summary metrics.</p>';
+    echo '</div>';
+    echo '</div>';
+    echo '</div>';
+
+    echo '</div>';
+
+    echo '<script>
+    function efFilterTenantsByName() {
+        var input = document.getElementById("efTenantSearchInput");
+        var filter = input.value.toUpperCase();
+        var rows = document.getElementsByClassName("tenant-row");
+        for (var i = 0; i < rows.length; i++) {
+            var nameTd = rows[i].getElementsByClassName("tenant-name")[0];
+            if (nameTd) {
+                var txtValue = nameTd.textContent || nameTd.innerText;
+                rows[i].style.display = txtValue.toUpperCase().indexOf(filter) > -1 ? "" : "none";
+            }
+        }
+    }
+
+    function efShowTenantDetails(name, rent, due, link, status, editUrl) {
+        var card = document.getElementById("efProfileDisplayCard");
+
+        var statusHtml = "";
+        if (status === "paid") {
+            statusHtml = `<span style="background: #E8FFEB; color: #2c4a1a; font-size: 13px; padding: 4px 10px; border-radius: 6px; font-weight: 600;">🟢 Paid</span>`;
+        } else {
+            statusHtml = `<span style="background: #FEE2E2; color: #991B1B; font-size: 13px; padding: 4px 10px; border-radius: 6px; font-weight: 600;">🔴 Not Paid</span>`;
+        }
+
+        card.innerHTML = `
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; border-bottom: 2px solid #E8FFEB; padding-bottom: 16px; gap: 8px;">
+                <div style="display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1;">
+                    <div style="background: #E8FFEB; width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0;">👤</div>
+                    <div style="min-width: 0; flex: 1;">
+                        <h3 style="margin: 0; font-size: 16px; color: #1f2937; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${name}</h3>
+                        <span style="background: #E8FFEB; color: #2c4a1a; font-size: 11px; padding: 2px 8px; border-radius: 12px; font-weight: 600; display: inline-block; margin-top: 2px;">Active Occupant</span>
+                    </div>
+                </div>
+                <a href="/wp-admin/post-new.php?post_type=payment" target="_blank" style="flex-shrink: 0; background: #608D3F; color: #ffffff; text-decoration: none; font-size: 12px; font-weight: 600; padding: 8px 12px; border-radius: 6px; transition: background 0.2s;" onmouseover="this.style.backgroundColor=\'#4b6e31\'" onmouseout="this.style.backgroundColor=\'#608D3F\'">➕ Add Payment</a>
+            </div>
+
+            <div class="ef-detail-row">
+                <span class="ef-detail-label">Monthly Contract Rental</span>
+                <span class="ef-detail-value" style="color: #608D3F;">${rent}</span>
+            </div>
+            <div class="ef-detail-row">
+                <span class="ef-detail-label">Recurring Invoice Cycle</span>
+                <span class="ef-detail-value">${due}</span>
+            </div>
+            <div class="ef-detail-row" style="border-bottom: none; margin-bottom: 16px;">
+                <span class="ef-detail-label">Current Month Status</span>
+                <span class="ef-detail-value">${statusHtml}</span>
+            </div>
+
+            <a href="${editUrl}" target="_blank" style="display: block; text-align: center; background: #1f2937; color: #ffffff; padding: 12px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 600; transition: background 0.2s; margin-top: 24px;" onmouseover="this.style.backgroundColor=\'#374151\'" onmouseout="this.style.backgroundColor=\'#1f2937\'">✏️ Edit Tenant Details</a>
+        `;
+    }
+    </script>';
+
+    return ob_get_clean();
+});
+
+/**
+ * reports estateflow
+ */
+if (!defined('ABSPATH')) exit;
+if (!function_exists('ef_get_tenant_due_day')) {
+    function ef_get_tenant_due_day($t_id) {
+        $d = get_field('rent_due_day', $t_id) ?: get_field('due_day', $t_id) ?: get_post_meta($t_id, 'rent_due_day', true) ?: get_post_meta($t_id, 'due_day', true);
+        if (!$d) return 5;
+        if (is_numeric($d)) {
+            $v = intval($d);
+            if ($v >= 1 && $v <= 31) return $v;
+            if (strlen((string)$v) === 8) return intval(substr((string)$v, 6, 2));
+        }
+        $ts = strtotime((string)$d);
+        return $ts ? intval(date('j', $ts)) : 5;
+    }
+}
+if (!function_exists('ef_is_tenant_billable')) {
+    function ef_is_tenant_billable($t_id, $m, $y) {
+        $s_str = get_field('tenant_start', $t_id) ?: get_post_meta($t_id, 'tenant_start', true);
+        $e_str = get_field('tenant_end', $t_id) ?: get_post_meta($t_id, 'tenant_end', true);
+        if (!$s_str) return true;
+
+        $dd = ef_get_tenant_due_day($t_id);
+        $dim = (int)date('t', strtotime("$y-$m-01"));
+        $due_date_str = "$y-$m-" . str_pad(min($dd, $dim), 2, '0', STR_PAD_LEFT);
+        
+        if ($s_str > $due_date_str) return false;
+        if ($e_str && $e_str < "$y-$m-01") return false;
+
+        $start_ts = strtotime($s_str);
+        $due_ts = strtotime($due_date_str);
+        $diff_days = round(($due_ts - $start_ts) / (60 * 60 * 24));
+        
+        if ($diff_days < 25) return false;
+        if ($e_str && $e_str < $due_date_str) return false;
+
+        return true;
+    }
+}
+add_shortcode('ef_dashboard_actions', function() { 
+    if (!is_user_logged_in()) return '';
+    $current_year = date('Y'); 
+    $selected_year = isset($_GET['report_year']) ? intval($_GET['report_year']) : $current_year;
+    ob_start(); 
+    ?> 
+    <div class="ef-filter-action-toolbar"> 
+        <div class="ef-dropdown-wrapper"> 
+            <select id="efYearFilter" class="ef-control-dropdown"> 
+                <?php 
+                $start_year = 1980;
+                $end_year = intval(date('Y')) + 10;
+                for ($y = $end_year; $y >= $start_year; $y--) {
+                    printf('<option value="%1$d" %2$s>%1$d</option>', $y, selected($selected_year, $y, false));
+                }
+                ?>
+            </select> 
+        </div> 
+ 
+        <div class="ef-btn-group"> 
+            <button id="efBtnCSV" class="ef-btn ef-btn-secondary"> 
+                <svg class="ef-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"> 
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path> 
+                    <polyline points="14 2 14 8 20 8"></polyline> 
+                    <line x1="12" y1="12" x2="12" y2="18"></line> 
+                    <polyline points="9 15 12 18 15 15"></polyline> 
+                </svg> 
+                CSV 
+            </button> 
+ 
+            <button id="efBtnPDF" class="ef-btn ef-btn-primary"> 
+                <svg class="ef-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"> 
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path> 
+                    <polyline points="14 2 14 8 20 8"></polyline> 
+                    <line x1="12" y1="12" x2="12" y2="18"></line> 
+                    <polyline points="9 15 12 18 15 15"></polyline> 
+                </svg> 
+                PDF 
+            </button> 
+        </div> 
+    </div> 
+ 
+     
+ 
+    <script> 
+    document.addEventListener("DOMContentLoaded", function() { 
+        const yearFilter = document.getElementById('efYearFilter'); 
+        const ajaxUrl = "<?php echo admin_url('admin-ajax.php'); ?>"; 
+
+        yearFilter.addEventListener('change', function() {
+            const url = new URL(window.location.href);
+            url.searchParams.set('report_year', this.value);
+            window.location.href = url.toString();
+        });
+ 
+        function triggerDownload(format) { 
+            const selectedYear = yearFilter.value; 
+            const form = document.createElement('form'); 
+            form.method = 'POST'; 
+            form.action = ajaxUrl; 
+            form.style.display = 'none'; 
+ 
+            const actionInput = document.createElement('input'); 
+            actionInput.name = 'action'; 
+            actionInput.value = 'ef_export_report'; 
+            form.appendChild(actionInput); 
+ 
+            const yearInput = document.createElement('input'); 
+            yearInput.name = 'report_year'; 
+            yearInput.value = selectedYear; 
+            form.appendChild(yearInput); 
+ 
+            const formatInput = document.createElement('input'); 
+            formatInput.name = 'report_format'; 
+            formatInput.value = format; 
+            form.appendChild(formatInput); 
+ 
+            document.body.appendChild(form); 
+            form.submit(); 
+            document.body.removeChild(form); 
+        } 
+ 
+        document.getElementById('efBtnCSV').addEventListener('click', () => triggerDownload('csv')); 
+        document.getElementById('efBtnPDF').addEventListener('click', () => triggerDownload('pdf')); 
+    }); 
+    </script> 
+    <?php 
+    return ob_get_clean(); 
+}); 
+ 
+add_shortcode('monthly_breakdown', function() { 
+    if (!is_user_logged_in()) return '';
+    $current_year = date('Y'); 
+    $selected_year = isset($_GET['report_year']) ? intval($_GET['report_year']) : $current_year;
+ 
+    $payment_post_type = 'payment';        
+    $use_acf_date_field = false;           
+    $acf_date_field_name = 'payment_date';  
+ 
+    $t_query = new WP_Query(array( 
+        'post_type'      => 'ef_tenant', 
+        'post_status'    => 'publish', 
+        'posts_per_page' => -1, 
+    )); 
+ 
+    $tenants = [];
+    if ($t_query->have_posts()) { 
+        while ($t_query->have_posts()) { 
+            $t_query->the_post(); 
+            $t_id = get_the_ID(); 
+            $tenants[] = [
+                'id'    => $t_id,
+                'rent'  => floatval(get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true)),
+                'start' => get_field('tenant_start', $t_id) ?: get_post_meta($t_id, 'tenant_start', true),
+                'end'   => get_field('tenant_end', $t_id) ?: get_post_meta($t_id, 'tenant_end', true),
+            ];
+        } 
+        wp_reset_postdata(); 
+    } 
+ 
+    $chart_labels = array('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'); 
+    $monthly_data = array(); 
+ 
+    for ($m = 1; $m <= 12; $m++) { 
+        $padded_month = str_pad($m, 2, '0', STR_PAD_LEFT); 
+        $first_day_of_month = $selected_year . '-' . $padded_month . '-01';
+        $last_day_of_month  = date('Y-m-t', strtotime($first_day_of_month));
+
+        $monthly_rent_expected = 0.00;
+        foreach ($tenants as $tenant) {
+            if (ef_is_tenant_billable($tenant['id'], $padded_month, $selected_year)) {
+                $monthly_rent_expected += $tenant['rent'];
+            }
+        }
+ 
+        $period_match = $selected_year . '-' . $padded_month;
+        $args = array( 
+            'post_type'      => $payment_post_type, 
+            'post_status'    => ['publish', 'future'], 
+            'posts_per_page' => -1, 
+        );
+ 
+        $p_query = new WP_Query($args); 
+        $revenue_collected = 0.00; 
+ 
+        if ($p_query->have_posts()) { 
+            while ($p_query->have_posts()) { 
+                $p_query->the_post(); 
+                $pay_id = get_the_ID();
+                $period = get_field('payment_period', $pay_id) ?: get_post_meta($pay_id, 'payment_period', true) ?: get_the_date('Y-m', $pay_id);
+                if (strpos($period, $period_match) === 0) {
+                    $pay_val = get_field('amount_paid', $pay_id) ?: get_post_meta($pay_id, 'amount_paid', true); 
+                    if ($pay_val) { 
+                        $revenue_collected += floatval($pay_val); 
+                    } 
+                }
+            } 
+            wp_reset_postdata(); 
+        } 
+ 
+        $gap = $monthly_rent_expected - $revenue_collected; 
+        if ($gap < 0) { $gap = 0; } 
+ 
+        $rate = ($monthly_rent_expected > 0) ? ($revenue_collected / $monthly_rent_expected) * 100 : 0; 
+        if ($rate > 100) { $rate = 100; } 
+ 
+        $monthly_data[$m] = array( 
+            'label'    => $chart_labels[$m - 1] . ' ' . $selected_year, 
+            'revenue'  => $revenue_collected, 
+            'expected' => $monthly_rent_expected, 
+            'gap'      => $gap, 
+            'rate'     => round($rate) . '%' 
+        ); 
+    } 
+ 
+    ob_start(); 
+    ?> 
+ 
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> 
+ 
+    
+ 
+    <div class="ef-breakdown-wrapper"> 
+        <div class="ef-breakdown-header"> 
+            <h3 class="ef-breakdown-title">Monthly Revenue Breakdown</h3> 
+            <div class="ef-breakdown-subtitle">Financial performance metrics for <?php echo $selected_year; ?></div> 
+        </div> 
+ 
+        <div class="ef-chart-container"> 
+            <canvas id="efRevenueChart"></canvas> 
+        </div> 
+ 
+        <div style="overflow-x: auto; width: 100%; -webkit-overflow-scrolling: touch;"> 
+            <table class="ef-breakdown-table" style="min-width: 600px;"> 
+                <thead> 
+                    <tr> 
+                        <th>Month</th> 
+                        <th class="ef-col-right">Revenue Collected</th> 
+                        <th class="ef-col-right">Expected Rent</th> 
+                        <th class="ef-col-right">Remaining Gap</th> 
+                        <th class="ef-col-right">Collection Rate</th> 
+                    </tr> 
+                </thead> 
+                <tbody> 
+                    <?php foreach ($monthly_data as $data): ?> 
+                    <tr> 
+                        <td class="ef-txt-bold" style="color: #0f172a;"><?php echo $data['label']; ?></td> 
+                        <td class="ef-col-right ef-txt-bold ef-brand-success">AED <?php echo number_format($data['revenue']); ?></td> 
+                        <td class="ef-col-right ef-brand-muted">AED <?php echo number_format($data['expected']); ?></td> 
+                        <td class="ef-col-right <?php echo ($data['gap'] > 0) ? 'ef-brand-danger ef-txt-bold' : 'ef-brand-muted'; ?>"> 
+                            AED <?php echo number_format($data['gap']); ?> 
+                        </td> 
+                        <td class="ef-col-right ef-txt-bold" style="color: #0f172a;"><?php echo $data['rate']; ?></td> 
+                    </tr> 
+                    <?php endforeach; ?> 
+                </tbody> 
+            </table> 
+        </div> 
+    </div> 
+ 
+    <script> 
+    document.addEventListener("DOMContentLoaded", function() { 
+        const ctx = document.getElementById('efRevenueChart').getContext('2d'); 
+        const revenueData = [<?php echo implode(',', array_column($monthly_data, 'revenue')); ?>]; 
+ 
+        new Chart(ctx, { 
+            type: 'line', 
+            data: { 
+                labels: <?php echo json_encode($chart_labels); ?>, 
+                datasets: [{ 
+                    label: 'Revenue Collected', 
+                    data: revenueData, 
+                    borderColor: '#00a86b',  
+                    backgroundColor: 'rgba(0, 168, 107, 0.05)',  
+                    fill: true, 
+                    tension: 0.35,  
+                    pointRadius: 3, 
+                    borderWidth: 2, 
+                    pointBackgroundColor: '#00a86b' 
+                }] 
+            }, 
+            options: { 
+                responsive: true, 
+                maintainAspectRatio: false, 
+                plugins: { legend: { display: false } }, 
+                scales: { 
+                    y: { 
+                        beginAtZero: true, 
+                        ticks: { 
+                            callback: function(value) { return 'AED ' + value.toLocaleString(); }, 
+                            color: '#64748b' 
+                        }, 
+                        grid: { borderDash: [4, 4], color: '#f1f5f9' } 
+                    }, 
+                    x: {  
+                        ticks: { color: '#64748b' }, 
+                        grid: { display: false }  
+                    } 
+                } 
+            } 
+        }); 
+    }); 
+    </script> 
+ 
+    <?php 
+    return ob_get_clean(); 
+});
+
+add_shortcode('ef_monthly_breakdown', function() {
+    $current_year = date('Y');
+
+    $t_query = new WP_Query(array(
+        'post_type'      => 'ef_tenant',
+        'post_status'    => 'publish',
+        'posts_per_page' => -1,
+    ));
+
+    $tenants = [];
+    if ($t_query->have_posts()) {
+        while ($t_query->have_posts()) {
+            $t_query->the_post();
+            $t_id = get_the_ID();
+            $tenants[] = [
+                'id'   => $t_id,
+                'rent' => floatval(get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true))
+            ];
+        }
+        wp_reset_postdata();
+    }
+
+    $chart_labels = array('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec');
+    $monthly_data = array();
+
+    for ($m = 1; $m <= 12; $m++) {
+        $padded_month = str_pad($m, 2, '0', STR_PAD_LEFT);
+        $period_match = $current_year . '-' . $padded_month;
+
+        $p_query = new WP_Query(array(
+            'post_type'      => 'payment',
+            'post_status'    => ['publish', 'future'],
+            'posts_per_page' => -1,
+        ));
+
+        $revenue_collected = 0.00;
+        if ($p_query->have_posts()) {
+            while ($p_query->have_posts()) {
+                $p_query->the_post();
+                $p_id = get_the_ID();
+                $period = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true) ?: get_the_date('Y-m', $p_id);
+                if (strpos($period, $period_match) === 0) {
+                    $pay_val = get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true);
+                    if ($pay_val) { $revenue_collected += floatval($pay_val); }
+                }
+            }
+            wp_reset_postdata();
+        }
+
+        $monthly_rent_expected = 0.00;
+        foreach ($tenants as $tenant) {
+            if (ef_is_tenant_billable($tenant['id'], $padded_month, $current_year)) {
+                $monthly_rent_expected += $tenant['rent'];
+            }
+        }
+
+        $gap = max(0, $monthly_rent_expected - $revenue_collected);
+        $rate = ($monthly_rent_expected > 0) ? ($revenue_collected / $monthly_rent_expected) * 100 : 0;
+        if ($rate > 100) { $rate = 100; }
+
+        $monthly_data[$m] = array(
+            'label'    => $chart_labels[$m - 1] . ' ' . $current_year,
+            'revenue'  => $revenue_collected,
+            'expected' => $monthly_rent_expected,
+            'gap'      => $gap,
+            'rate'     => round($rate) . '%'
+        );
+    }
+
+    ob_start();
+    ?>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <div class="ef-dashboard-container" style="font-family: sans-serif; background: #f8f9fa; padding: 20px; border-radius: 8px;">
+        <h3 style="margin-top: 0;">Monthly revenue — <?php echo $current_year; ?></h3>
+        <div class="ef-chart-wrapper" style="position: relative; margin-bottom: 30px; height: 300px;">
+            <canvas id="efRevenueChart"></canvas>
+        </div>
+
+        <table style="width: 100%; border-collapse: collapse; background: #fff; border-radius: 6px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+            <thead>
+                <tr style="background: #f1f3f5; border-bottom: 1px solid #dee2e6; text-align: left;">
+                    <th style="padding: 12px;">Month</th>
+                    <th style="padding: 12px; text-align: right;">Revenue</th>
+                    <th style="padding: 12px; text-align: right; color: #6c757d;">Expected</th>
+                    <th style="padding: 12px; text-align: right; color: #b21f1f;">Gap</th>
+                    <th style="padding: 12px; text-align: right;">Rate</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($monthly_data as $data): ?>
+                <tr style="border-bottom: 1px solid #f1f3f5;">
+                    <td style="padding: 12px; font-weight: 500;"><?php echo $data['label']; ?></td>
+                    <td style="padding: 12px; text-align: right; color: #2b8a3e; font-weight: bold;">$<?php echo number_format($data['revenue']); ?></td>
+                    <td style="padding: 12px; text-align: right; color: #6c757d;">$<?php echo number_format($data['expected']); ?></td>
+                    <td style="padding: 12px; text-align: right; color: #c92a2a;">$<?php echo number_format($data['gap']); ?></td>
+                    <td style="padding: 12px; text-align: right;"><?php echo $data['rate']; ?></td>
+                </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+    document.addEventListener("DOMContentLoaded", function() {
+        const ctx = document.getElementById('efRevenueChart').getContext('2d');
+        const revenueData = [<?php echo implode(',', array_column($monthly_data, 'revenue')); ?>];
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: <?php echo json_encode($chart_labels); ?>,
+                datasets: [{
+                    label: 'Revenue Collected',
+                    data: revenueData,
+                    borderColor: '#2ec4b6',
+                    backgroundColor: 'rgba(46, 196, 182, 0.15)',
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 0,
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: { beginAtZero: true, grid: { borderDash: [5, 5] } },
+                    x: { grid: { display: false } }
+                }
+            }
+        });
+    });
+    </script>
+    <?php
+    return ob_get_clean();
+});
+
+add_action('wp_ajax_ef_export_report', 'ef_handle_report_export_download');
+add_action('wp_ajax_nopriv_ef_export_report', 'ef_handle_report_export_download');
+
+function ef_handle_report_export_download() {
+    if (empty($_POST['report_year']) || empty($_POST['report_format'])) {
+        wp_die('Missing parameters.');
+    }
+
+    $year = sanitize_text_field($_POST['report_year']);
+    $format = sanitize_text_field($_POST['report_format']);
+
+    $t_query = new WP_Query(array('post_type' => 'ef_tenant', 'post_status' => 'publish', 'posts_per_page' => -1));
+    $tenants = [];
+    if ($t_query->have_posts()) {
+        while ($t_query->have_posts()) {
+            $t_query->the_post();
+            $t_id = get_the_ID();
+            $tenants[] = [
+                'id'   => $t_id,
+                'rent' => floatval(get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true))
+            ];
+        }
+        wp_reset_postdata();
+    }
+
+    $months = array('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec');
+    $report_rows = array();
+    $total_yearly_revenue = 0; $total_yearly_expected = 0; $total_yearly_gap = 0;
+
+    foreach ($months as $index => $month_name) {
+        $padded_month = str_pad($index + 1, 2, '0', STR_PAD_LEFT);
+        $period_match = $year . '-' . $padded_month;
+
+        $p_query = new WP_Query(array(
+            'post_type'      => 'payment',
+            'post_status'    => ['publish', 'future'],
+            'posts_per_page' => -1,
+        ));
+
+        $collected_monthly = 0.00;
+        if ($p_query->have_posts()) {
+            while ($p_query->have_posts()) {
+                $p_query->the_post();
+                $p_id = get_the_ID();
+                $period = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true) ?: get_the_date('Y-m', $p_id);
+                if (strpos($period, $period_match) === 0) {
+                    $pay_val = get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true);
+                    if ($pay_val) { $collected_monthly += floatval($pay_val); }
+                }
+            }
+            wp_reset_postdata();
+        }
+
+        $expected_monthly = 0.00;
+        foreach ($tenants as $tenant) {
+            if (ef_is_tenant_billable($tenant['id'], $padded_month, $year)) {
+                $expected_monthly += $tenant['rent'];
+            }
+        }
+
+        $gap_monthly = max(0, $expected_monthly - $collected_monthly);
+        $rate_monthly = ($expected_monthly > 0) ? round(($collected_monthly / $expected_monthly) * 100) : 0;
+
+        $total_yearly_revenue += $collected_monthly;
+        $total_yearly_expected += $expected_monthly;
+        $total_yearly_gap += $gap_monthly;
+
+        $report_rows[] = array(
+            'month'    => $month_name . ' ' . $year,
+            'revenue'  => $collected_monthly,
+            'expected' => $expected_monthly,
+            'gap'      => $gap_monthly,
+            'rate'     => $rate_monthly . '%'
+        );
+    }
+    $total_yearly_rate = ($total_yearly_expected > 0) ? round(($total_yearly_revenue / $total_yearly_expected) * 100) : 0;
+
+    if ($format === 'csv') {
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename=estateflow-financial-report-' . $year . '.csv');
+        $output = fopen('php://output', 'w');
+
+        fputcsv($output, array('ESTATEFLOW ANNUAL SUMMARY (' . $year . ')'));
+        fputcsv($output, array('Metric Name', 'Calculated Value'));
+        fputcsv($output, array('Total Yearly Revenue Collected', '$' . number_format($total_yearly_revenue, 2)));
+        fputcsv($output, array('Total Yearly Expected Revenue', '$' . number_format($total_yearly_expected, 2)));
+        fputcsv($output, array('Total Outstanding Yearly Gap', '$' . number_format($total_yearly_gap, 2)));
+        fputcsv($output, array('Yearly Collection Rate Percentage', $total_yearly_rate . '%'));
+        fputcsv($output, array()); 
+
+        fputcsv($output, array('MONTH-BY-MONTH DETAILED REVENUE TABLE'));
+        fputcsv($output, array('Month Period', 'Monthly Revenue ($)', 'Expected Monthly Revenue ($)', 'Outstanding Gap ($)', 'Percentage Collected'));
+        foreach ($report_rows as $row) {
+            fputcsv($output, array($row['month'], $row['revenue'], $row['expected'], $row['gap'], $row['rate']));
+        }
+        fclose($output);
+        exit;
+    } 
+
+    if ($format === 'pdf') {
+        $tcpdf_path = ABSPATH . 'wp-includes/class-tcpdf.php';
+        if (!class_exists('TCPDF') && file_exists($tcpdf_path)) { require_once($tcpdf_path); }
+
+        if (class_exists('TCPDF')) {
+            $pdf = new TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);
+            $pdf->SetCreator('EstateFlow');
+            $pdf->SetTitle('EstateFlow Financial Report - ' . $year);
+            $pdf->setPrintHeader(false); $pdf->setPrintFooter(false);
+            $pdf->SetMargins(15, 15, 15); $pdf->SetAutoPageBreak(TRUE, 15);
+            $pdf->AddPage();
+
+            $html = '
+            <table width="100%" cellpadding="0" cellspacing="0" style="font-family:helvetica;">
+                <tr>
+                    <td>
+                        <span style="font-size:24pt; font-weight:bold; color:#0f172a;">ESTATEFLOW</span><br>
+                        <span style="font-size:10pt; color:#64748b; font-weight:bold; text-transform:uppercase; letter-spacing:1px;">Financial Operations Report</span>
+                    </td>
+                    <td align="right" valign="bottom">
+                        <span style="font-size:10pt; color:#475569;"><b>Fiscal Period:</b> Annual ' . $year . '</span><br>
+                        <span style="font-size:9pt; color:#94a3b8;">Generated: ' . date('F d, Y') . '</span>
+                    </td>
+                </tr>
+            </table>
+            <hr style="color:#cbd5e1; height:1px; margin-top:10px; margin-bottom:20px;">
+            <br>
+
+            <h4 style="color:#1e293b; font-family:helvetica; font-size:11pt; text-transform:uppercase; font-weight:bold; letter-spacing:0.5px; margin-bottom:10px;">Executive Summary Key Performance Indicators</h4>
+            <table cellspacing="0" cellpadding="12" style="width:100%; font-family:helvetica; margin-bottom:25px;">
+                <tr>
+                    <td style="background-color:#f1f5f9; border:1px solid #cbd5e1; text-align:center; width:25%; border-radius:4px;">
+                        <span style="font-size:8pt; font-weight:bold; color:#475569;">TOTAL REVENUE</span><br><br>
+                        <strong style="font-size:14pt; color:#0f766e;">$' . number_format($total_yearly_revenue) . '</strong>
+                    </td>
+                    <td style="background-color:#f1f5f9; border:1px solid #cbd5e1; text-align:center; width:25%; border-radius:4px;">
+                        <span style="font-size:8pt; font-weight:bold; color:#475569;">EXPECTED GROSS</span><br><br>
+                        <strong style="font-size:14pt; color:#1e40af;">$' . number_format($total_yearly_expected) . '</strong>
+                    </td>
+                    <td style="background-color:#f1f5f9; border:1px solid #cbd5e1; text-align:center; width:25%; border-radius:4px;">
+                        <span style="font-size:8pt; font-weight:bold; color:#475569;">OUTSTANDING GAP</span><br><br>
+                        <strong style="font-size:14pt; color:#991b1b;">$' . number_format($total_yearly_gap) . '</strong>
+                    </td>
+                    <td style="background-color:#1e293b; border:1px solid #0f172a; text-align:center; width:25%; border-radius:4px;">
+                        <span style="font-size:8pt; font-weight:bold; color:#94a3b8;">COLLECTION RATE</span><br><br>
+                        <strong style="font-size:14pt; color:#ffffff;">' . $total_yearly_rate . '%</strong>
+                    </td>
+                </tr>
+            </table>
+            <br><br>
+
+            <h4 style="color:#1e293b; font-family:helvetica; font-size:11pt; text-transform:uppercase; font-weight:bold; letter-spacing:0.5px; margin-bottom:10px;">Month-Over-Month Performance Matrix</h4>
+            <table cellpadding="10" cellspacing="0" style="width:100%; font-family:helvetica; font-size:10pt; border:1px solid #cbd5e1;">
+                <thead>
+                    <tr style="background-color:#1e293b; color:#ffffff; font-weight:bold;">
+                        <th width="24%" style="font-weight:bold;">Reporting Month</th>
+                        <th width="19%" align="right" style="font-weight:bold;">Revenue Collected</th>
+                        <th width="19%" align="right" style="font-weight:bold;">Target Expected</th>
+                        <th width="19%" align="right" style="font-weight:bold;">Outstanding Gap</th>
+                        <th width="19%" align="center" style="font-weight:bold;">Collection Rate</th>
+                    </tr>
+                </thead>
+                <tbody>';
+
+            foreach ($report_rows as $row) {
+                $html .= '<tr style="border-bottom:1px solid #e2e8f0;">
+                    <td style="color:#0f172a; font-weight:bold;">' . $row['month'] . '</td>
+                    <td align="right" style="color:#0f766e; font-weight:bold;">$' . number_format($row['revenue']) . '</td>
+                    <td align="right" style="color:#475569;">$' . number_format($row['expected']) . '</td>
+                    <td align="right" style="color:#b91c1c; font-weight:bold;">$' . number_format($row['gap']) . '</td>
+                    <td align="center" style="color:#1e293b; font-weight:bold;">' . $row['rate'] . '</td>
+                </tr>';
+            }
+            $html .= '
+                <tr style="background-color:#f8fafc; font-weight:bold; border-top:2px solid #1e293b;">
+                    <td style="color:#0f172a; font-weight:bold;">Total Summary</td>
+                    <td align="right" style="color:#0f766e; font-weight:bold;">$' . number_format($total_yearly_revenue) . '</td>
+                    <td align="right" style="color:#475569; font-weight:bold;">$' . number_format($total_yearly_expected) . '</td>
+                    <td align="right" style="color:#b91c1c; font-weight:bold;">$' . number_format($total_yearly_gap) . '</td>
+                    <td align="center" style="color:#ffffff; background-color:#1e293b; font-weight:bold;">' . $total_yearly_rate . '%</td>
+                </tr>
+            </tbody></table>
+
+            <br><br><br>
+            <table width="100%" style="font-family:helvetica; font-size:8pt; color:#94a3b8; border-top:1px dashed #cbd5e1; padding-top:10px;">
+                <tr>
+                    <td>Confidential — Internal Board Review Only</td>
+                    <td align="right">EstateFlow Automotive Financial System</td>
+                </tr>
+            </table>';
+
+            $pdf->writeHTML($html, true, false, true, false, '');
+            header('Content-Type: application/pdf');
+            header('Content-Disposition: attachment; filename="estateflow-financial-report-' . $year . '.pdf"');
+            header('Cache-Control: private, max-age=0, must-revalidate');
+            header('Pragma: public');
+            $pdf->Output('estateflow-financial-report-' . $year . '.pdf', 'D');
+            exit;
+        }
+
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: attachment; filename="estateflow-financial-report-' . $year . '.pdf"');
+        header('Pragma: public');
+        header('Cache-Control: must-revalidate, post-check=0, pre-check=0');
+
+        $pdf_content = "%PDF-1.4\n";
+        $pdf_content .= "1 0 obj\n<< /Title (EstateFlow Executive Report " . $year . ") /Creator (EstateFlow Corporate Engine) >>\nendobj\n";
+        $pdf_content .= "2 0 obj\n<< /Type /Catalog /Pages 3 0 R >>\nendobj\n";
+        $pdf_content .= "3 0 obj\n<< /Type /Pages /Kids [4 0 R] /Count 1 >>\nendobj\n";
+        $pdf_content .= "4 0 obj\n<< /Type /Page /Parent 3 0 R /MediaBox [0 0 595.28 841.89] /Contents 5 0 R /Resources << /Font << /FB << /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >> /FR << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> >>\nendobj\n";
+
+        $stream = "BT\n";
+        $stream .= "/FB 22 Tf 50 780 Td (ESTATEFLOW METRIC REPORT) Tj\n";
+        $stream .= "/FR 10 Tf 0 -20 Td (Corporate Financial Operations Review — Fiscal Period: " . $year . ") Tj\n";
+        $stream .= "0 -15 Td (Generated on: " . date('F d, Y') . " | Status: Board Presentation Ready) Tj\n";
+
+        $stream .= "ET\n";
+        $stream .= "0.5 w 50 730 m 545 730 l S\n";
+
+        $stream .= "BT\n";
+        $stream .= "/FB 11 Tf 50 705 Td (EXECUTIVE SUMMARY METRICS) Tj\n";
+        $stream .= "/FR 10 Tf\n";
+        $stream .= "0 -25 Td (Total Yearly Revenue Collected:) Tj /FB 10 Tf 200 0 Td (\$" . number_format($total_yearly_revenue, 2) . ") Tj\n";
+        $stream .= "/FR 10 Tf -200 -18 Td (Total Yearly Target Expected:) Tj /FB 10 Tf 200 0 Td (\$" . number_format($total_yearly_expected, 2) . ") Tj\n";
+        $stream .= "/FR 10 Tf -200 -18 Td (Total Outstanding Fiscal Gap:) Tj /FB 10 Tf 200 0 Td (\$" . number_format($total_yearly_gap, 2) . ") Tj\n";
+        $stream .= "/FR 10 Tf -200 -18 Td (Global Annual Collection Rate:) Tj /FB 10 Tf 200 0 Td (" . $total_yearly_rate . "%) Tj\n";
+        $stream .= "ET\n";
+
+        $stream .= "0.5 w 50 610 m 545 610 l S\n";
+
+        $stream .= "BT\n";
+        $stream .= "/FB 11 Tf 50 590 Td (MONTH-BY-MONTH DETAILED PERFORMANCE MATRIX) Tj\n";
+
+        $stream .= "/FB 9 Tf\n";
+        $stream .= "0 -30 Td (Reporting Month) Tj\n";
+        $stream .= "140 0 Td (Revenue) Tj\n";
+        $stream .= "110 0 Td (Expected) Tj\n";
+        $stream .= "110 0 Td (Outstanding Gap) Tj\n";
+        $stream .= "100 0 Td (Rate) Tj\n";
+        $stream .= "ET\n";
+
+        $stream .= "1 w 50 552 m 545 552 l S\n";
+
+        $stream .= "BT\n/FR 9 Tf\n";
+        $stream .= "50 538 Td\n";
+
+        foreach ($report_rows as $row) {
+            $stream .= "(" . str_pad($row['month'], 25, " ") . ") Tj\n";
+            $stream .= "140 0 Td (\$" . str_pad(number_format($row['revenue']), 15, " ", STR_PAD_LEFT) . ") Tj\n";
+            $stream .= "110 0 Td (\$" . str_pad(number_format($row['expected']), 15, " ", STR_PAD_LEFT) . ") Tj\n";
+            $stream .= "110 0 Td (\$" . str_pad(number_format($row['gap']), 15, " ", STR_PAD_LEFT) . ") Tj\n";
+            $stream .= "100 0 Td (" . str_pad($row['rate'], 8, " ", STR_PAD_LEFT) . ") Tj\n";
+            $stream .= "-460 -18 Td\n"; 
+        }
+
+        $stream .= "ET\n0.5 w 50 314 m 545 314 l S\nBT\n/FB 9 Tf 50 300 Td";
+        $stream .= "(Total Summary) Tj\n";
+        $stream .= "140 0 Td (\$" . str_pad(number_format($total_yearly_revenue), 15, " ", STR_PAD_LEFT) . ") Tj\n";
+        $stream .= "110 0 Td (\$" . str_pad(number_format($total_yearly_expected), 15, " ", STR_PAD_LEFT) . ") Tj\n";
+        $stream .= "110 0 Td (\$" . str_pad(number_format($total_yearly_gap), 15, " ", STR_PAD_LEFT) . ") Tj\n";
+        $stream .= "100 0 Td (" . str_pad($total_yearly_rate . "%", 8, " ", STR_PAD_LEFT) . ") Tj\n";
+
+        $stream .= "ET\n";
+
+        $stream .= "0.5 w 50 50 m 545 50 l S\n";
+        $stream .= "BT\n/FR 7 Tf 50 40 Td (CONFIDENTIAL - ESTATEFLOW BOARD REVIEW ONLY) Tj\n";
+        $stream .= "410 0 Td (Page 1 of 1) Tj\nET\n";
+
+        $pdf_content .= "5 0 obj\n<< /Length " . strlen($stream) . " >>\nstream\n" . $stream . "endstream\nendobj\n";
+        $pdf_content .= "xref\n0 6\n0000000000 65535 f\n0000000016 00000 n\n0000000115 00000 n\n0000000164 00000 n\n0000000226 00000 n\n0000000424 00000 n\ntrailer\n<< /Size 6 /Root 2 0 R /Info 1 0 R >>\nstartxref\n" . (strlen($stream) + 500) . "\n%%EOF";
+
+        echo $pdf_content;
+        exit;
+    }
+    wp_die();
+}
+
+/**
+ * reminders estateflow
+ */
+if (!defined('ABSPATH')) exit;
+if (!function_exists('ef_get_tenant_due_day')) {
+    function ef_get_tenant_due_day($t_id) {
+        $d = get_field('rent_due_day', $t_id) ?: get_field('due_day', $t_id) ?: get_post_meta($t_id, 'rent_due_day', true) ?: get_post_meta($t_id, 'due_day', true);
+        if (!$d) return 5;
+        if (is_numeric($d)) {
+            $v = intval($d);
+            if ($v >= 1 && $v <= 31) return $v;
+            if (strlen((string)$v) === 8) return intval(substr((string)$v, 6, 2));
+        }
+        $ts = strtotime((string)$d);
+        return $ts ? intval(date('j', $ts)) : 5;
+    }
+}
+if (!function_exists('ef_is_tenant_billable')) {
+    function ef_is_tenant_billable($t_id, $m, $y) {
+        $s_str = get_field('tenant_start', $t_id) ?: get_post_meta($t_id, 'tenant_start', true);
+        $e_str = get_field('tenant_end', $t_id) ?: get_post_meta($t_id, 'tenant_end', true);
+        if (!$s_str) return true;
+
+        $dd = ef_get_tenant_due_day($t_id);
+        $dim = (int)date('t', strtotime("$y-$m-01"));
+        $due_date_str = "$y-$m-" . str_pad(min($dd, $dim), 2, '0', STR_PAD_LEFT);
+        
+        if ($s_str > $due_date_str) return false;
+        if ($e_str && $e_str < "$y-$m-01") return false;
+
+        $start_ts = strtotime($s_str);
+        $due_ts = strtotime($due_date_str);
+        $diff_days = round(($due_ts - $start_ts) / (60 * 60 * 24));
+        
+        if ($diff_days < 25) return false;
+        if ($e_str && $e_str < $due_date_str) return false;
+
+        return true;
+    }
+}
+ 
+add_shortcode('expected_monthly_income', function() {    
+    $t_query = new WP_Query(array(    
+        'post_type'      => 'ef_tenant',    
+        'post_status'    => 'publish',    
+        'posts_per_page' => -1,    
+    ));    
+    
+    $total_expected_rent = 0.00;    
+    $m = date('m'); $y = date('Y');
+    
+    if ($t_query->have_posts()) {    
+        while ($t_query->have_posts()) {    
+            $t_query->the_post();    
+            $t_id = get_the_ID();
+            if (ef_is_tenant_billable($t_id, $m, $y)) {
+                $rent_val = get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true);    
+                if ($rent_val) {    
+                    $total_expected_rent += floatval($rent_val);    
+                }    
+            }
+        }    
+        wp_reset_postdata();    
+    }    
+    return number_format($total_expected_rent);    
+});    
+ 
+  
+if (!function_exists('ef_get_tenant_due_day')) {    
+    function ef_get_tenant_due_day($t_id) {    
+        // Try both field names used in the snippets 
+        $due_day_raw = get_field('rent_due_day', $t_id);    
+        if (!$due_day_raw) { 
+            $due_day_raw = get_field('due_day', $t_id); 
+        } 
+         
+        if (!$due_day_raw) return 5;    
+    
+        if (is_numeric($due_day_raw)) {    
+            $val = intval($due_day_raw);    
+            if ($val >= 1 && $val <= 31) return $val;    
+            if (strlen((string)$val) === 8) {    
+                return intval(substr((string)$val, 6, 2));    
+            }    
+        }    
+    
+        $timestamp = strtotime((string)$due_day_raw);    
+        if ($timestamp) return intval(date('j', $timestamp));    
+    
+        return 5;    
+    }    
+}    
+ 
+  
+if (!function_exists('ef_get_tenant_next_due_date')) {  
+    function ef_get_tenant_next_due_date($t_id, $relative_to = null) {  
+        $due_day = ef_get_tenant_due_day($t_id);  
+          
+        $now_str = $relative_to ?: (function_exists('current_time') ? current_time('mysql') : 'now');  
+        $today = new DateTimeImmutable($now_str);  
+         
+        // Find the due date for the current month 
+        $days_in_month = (int)$today->format('t'); 
+        $this_month_due = $today->setDate((int)$today->format('Y'), (int)$today->format('m'), min($due_day, $days_in_month))->setTime(0, 0, 0); 
+         
+        // If already paid for this month, the next due is next month 
+        $status = ef_get_tenant_monthly_status($t_id, $this_month_due->format('m'), $this_month_due->format('Y')); 
+        if ($status['is_fully_paid']) { 
+            $date = $today->modify('first day of next month'); 
+            $days_in_next_month = (int)$date->format('t'); 
+            return $date->setDate((int)$date->format('Y'), (int)$date->format('m'), min($due_day, $days_in_next_month))->setTime(0, 0, 0); 
+        } 
+ 
+        return $this_month_due; 
+    }  
+}  
+  
+  
+if (!function_exists('ef_get_tenant_monthly_status')) {    
+    function ef_get_tenant_monthly_status($t_id, $month, $year) {    
+        $monthly_rent = floatval(get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true));    
+    
+        $period_match = $year . '-' . str_pad($month, 2, '0', STR_PAD_LEFT);
+        $payments = get_posts(array(    
+            'post_type'      => 'payment',    
+            'post_status'    => ['publish', 'future'],
+            'posts_per_page' => -1,    
+            'meta_query'     => array(
+                array('key' => 'associated_tenant', 'value' => $t_id, 'compare' => '=' )
+            )
+        ));    
+    
+        $tenant_paid_this_month = 0.00;    
+        foreach ($payments as $p) {    
+            $p_id = $p->ID;
+            $period = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true) ?: get_the_date('Y-m', $p_id);
+            if (strpos($period, $period_match) === 0) {
+                $amount = get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true);    
+                if ($amount) {    
+                    $tenant_paid_this_month += floatval($amount);    
+                }    
+            }
+        }    
+    
+        return array(    
+            'paid' => $tenant_paid_this_month,    
+            'rent' => $monthly_rent,    
+            'balance' => max(0, $monthly_rent - $tenant_paid_this_month),    
+            'is_fully_paid' => ($tenant_paid_this_month >= $monthly_rent && $monthly_rent > 0)    
+        );    
+    }    
+}    
+ 
+ 
+if (!function_exists('ef_get_property_display_name')) { 
+    function ef_get_property_display_name($t_id) { 
+        $prop_field = get_field('property_id', $t_id) ?: get_post_meta($t_id, 'property_id', true); 
+        $propId = is_object($prop_field) ? $prop_field->ID : (is_array($prop_field) ? ($prop_field['ID'] ?? $prop_field[0]->ID ?? 0) : intval($prop_field)); 
+         
+        if ($propId) { 
+            return get_the_title($propId); 
+        } 
+         
+        return get_field('property_unit_name', $t_id) ?: (get_field('property_location', $t_id) ?: 'N/A'); 
+    } 
+} 
+    
+  
+add_shortcode('count_tenant_overdue', function() {    
+    $t_query = new WP_Query(array('post_type' => 'ef_tenant', 'post_status' => 'publish', 'posts_per_page' => -1));    
+    $overdue_count = 0;    
+    $now_str = function_exists('current_time') ? current_time('mysql') : 'now';  
+    $today = new DateTimeImmutable($now_str);  
+  
+    if ($t_query->have_posts()) {    
+        while ($t_query->have_posts()) {    
+            $t_query->the_post();    
+            $t_id = get_the_ID();    
+              
+            $due_day = ef_get_tenant_due_day($t_id);  
+            $current_day = (int)$today->format('j');  
+              
+            if ($current_day > $due_day) {  
+                $check_month = $today->format('m');  
+                $check_year = $today->format('Y');  
+            } else {  
+                $last_month = $today->modify('first day of last month');  
+                $check_month = $last_month->format('m');  
+                $check_year = $last_month->format('Y');  
+            }  
+            
+            if (!ef_is_tenant_billable($t_id, $check_month, $check_year)) continue;
+  
+            $status = ef_get_tenant_monthly_status($t_id, $check_month, $check_year);    
+            if (!$status['is_fully_paid']) $overdue_count++;    
+        }    
+        wp_reset_postdata();    
+    }    
+    return $overdue_count;    
+});    
+    
+  
+add_shortcode('count_tenant_due_soon', function() {    
+    $t_query = new WP_Query(array('post_type' => 'ef_tenant', 'post_status' => 'publish', 'posts_per_page' => -1));    
+    $due_soon_count = 0;    
+    $now_str = function_exists('current_time') ? current_time('mysql') : 'now';  
+    $today = new DateTimeImmutable($now_str);  
+    $today_zero = $today->setTime(0, 0, 0);  
+  
+    if ($t_query->have_posts()) {    
+        while ($t_query->have_posts()) {    
+            $t_query->the_post();    
+            $t_id = get_the_ID();    
+            $next_due = ef_get_tenant_next_due_date($t_id, $today->format('Y-m-d H:i:s'));  
+              
+            $diff = $today_zero->diff($next_due);  
+            $days_remained = (int)$diff->format('%r%a');  
+  
+            if ($days_remained >= 0 && $days_remained <= 5) {    
+                if (!ef_is_tenant_billable($t_id, $next_due->format('m'), $next_due->format('Y'))) continue;
+                $status = ef_get_tenant_monthly_status($t_id, $next_due->format('m'), $next_due->format('Y'));    
+                if (!$status['is_fully_paid']) $due_soon_count++;    
+            }    
+        }    
+        wp_reset_postdata();    
+    }    
+    return $due_soon_count;    
+});    
+    
+  
+if (!function_exists('ef_get_reminder_svg_icon')) {    
+    function ef_get_reminder_svg_icon($type) {    
+        switch($type) {    
+            case 'overdue':    
+                return '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1a4332" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>';    
+            case 'duesoon':    
+                return '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1a4332" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>';    
+            case 'upcoming':    
+                return '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1a4332" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>';    
+            case 'paid':    
+                return '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1a4332" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="8 12 11 15 16 10"></polyline></svg>';    
+            case 'outstanding':
+                return '<svg width="18" height="18" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="#1a4332" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>';
+            default:    
+                return "";    
+        }    
+    }    
+}    
+    
+  
+if (!function_exists('ef_render_reminder_card')) {    
+    function ef_render_reminder_card($id_prefix, $title, $items_html, $count) {    
+        $icon = ef_get_reminder_svg_icon($id_prefix);    
+    
+        if ($count === 0) {    
+            $empty_msg = "Nothing here";    
+            if ($id_prefix === 'overdue') $empty_msg = "🎉 All tenants are paid for this month!";    
+            return "    
+            <div class='ef-reminder-card'>    
+                <div class='ef-reminder-header'>    
+                    <div class='ef-reminder-title-group'><span class='ef-reminder-icon'>$icon</span>$title</div>    
+                    <span class='ef-reminder-count'>0</span>    
+                </div>    
+                <div class='ef-reminder-empty'>$empty_msg</div>    
+            </div>";    
+        }    
+    
+        $output = "    
+        <div class='ef-reminder-card' id='ef-{$id_prefix}-container'>    
+            <div class='ef-reminder-header'>    
+                <div class='ef-reminder-title-group'>    
+                    <span class='ef-reminder-icon'>$icon</span>    
+                    $title    
+                </div>    
+                <span class='ef-reminder-count'>{$count}</span>    
+            </div>    
+    
+            <div class='ef-{$id_prefix}-list-wrapper'>    
+                {$items_html}    
+            </div>    
+    
+            <div class='ef-reminder-pagination' style='" . ($count <= 5 ? 'display:none;' : '') . "'>    
+                <button id='ef-{$id_prefix}-prev' class='ef-reminder-pag-btn'>Previous</button>    
+                <span id='ef-{$id_prefix}-page-info' class='ef-reminder-pag-info'>Page 1 of 1</span>    
+                <button id='ef-{$id_prefix}-next' class='ef-reminder-pag-btn'>Next</button>    
+            </div>    
+        </div>    
+    
+        <script>    
+        (function() {    
+            const itemsPerPage = 5;    
+            let currentPage = 1;    
+            const container = document.getElementById('ef-{$id_prefix}-container');    
+            if(!container) return;    
+    
+            const items = container.querySelectorAll('.ef-reminder-item');    
+            const totalPages = Math.ceil(items.length / itemsPerPage);    
+            if (totalPages <= 1) return;    
+    
+            const prevBtn = document.getElementById('ef-{$id_prefix}-prev');    
+            const nextBtn = document.getElementById('ef-{$id_prefix}-next');    
+            const pageInfo = document.getElementById('ef-{$id_prefix}-page-info');    
+    
+            function showPage(page) {    
+                let start = (page - 1) * itemsPerPage;    
+                let end = start + itemsPerPage;    
+    
+                items.forEach((item, index) => {    
+                    item.style.display = (index >= start && index < end) ? 'flex' : 'none';    
+                });    
+    
+                pageInfo.textContent = 'Page ' + page + ' of ' + totalPages;    
+                prevBtn.disabled = (page === 1);    
+                nextBtn.disabled = (page === totalPages);    
+                prevBtn.style.opacity = (page === 1) ? '0.5' : '1';    
+                nextBtn.style.opacity = (page === totalPages) ? '0.5' : '1';    
+            }    
+    
+            prevBtn.addEventListener('click', function() {    
+                if(currentPage > 1) { currentPage--; showPage(currentPage); }    
+            });    
+    
+            nextBtn.addEventListener('click', function() {    
+                if(currentPage < totalPages) { currentPage++; showPage(currentPage); }    
+            });    
+    
+            showPage(currentPage);    
+        })();    
+        </script>";    
+        return $output;    
+    }    
+}    
+    
+  
+add_shortcode('overdue_list_card', function() {    
+    $t_query = new WP_Query(array('post_type' => 'ef_tenant', 'post_status' => 'publish', 'posts_per_page' => -1));    
+    $items_html = ''; $count = 0;    
+    $now_str = function_exists('current_time') ? current_time('mysql') : 'now';  
+    $today = new DateTimeImmutable($now_str);  
+    $today_zero = $today->setTime(0, 0, 0);  
+    
+    if ($t_query->have_posts()) {    
+        while ($t_query->have_posts()) {    
+            $t_query->the_post();    
+            $t_id = get_the_ID();    
+            $due_day = ef_get_tenant_due_day($t_id);    
+            $current_day = (int)$today->format('j');  
+  
+            if ($current_day > $due_day) {  
+                $check_date = $today;  
+            } else {  
+                $check_date = $today->modify('first day of last month');  
+            }  
+              
+            $days_in_month = (int)$check_date->format('t');  
+            $due_date = $check_date->setDate((int)$check_date->format('Y'), (int)$check_date->format('m'), min($due_day, $days_in_month))->setTime(0, 0, 0);  
+    
+            if (!ef_is_tenant_billable($t_id, $due_date->format('m'), $due_date->format('Y'))) continue;
+            $status = ef_get_tenant_monthly_status($t_id, $due_date->format('m'), $due_date->format('Y'));    
+            if (!$status['is_fully_paid']) {    
+                $count++;    
+                $diff = $due_date->diff($today_zero);  
+                $days_late = (int)$diff->format('%a');  
+                $late_label = ($days_late == 1) ? 'day' : 'days';    
+                $property = ef_get_property_display_name($t_id);    
+                $tenant_name = get_the_title($t_id);    
+                $items_html .= "    
+                <div class='ef-reminder-item'>    
+                    <div>    
+                        <div class='ef-reminder-item-name'>" . esc_html($tenant_name) . "</div>    
+                        <div class='ef-reminder-item-sub'>" . esc_html($property) . "</div>    
+                    </div>    
+                    <div style='text-align: right;'>    
+                        <div class='ef-reminder-item-amount overdue'>AED " . number_format($status['balance']) . "</div>    
+                        <div class='ef-reminder-item-badge ef-badge-overdue'>" . esc_html("{$days_late} {$late_label} late") . "</div>    
+                    </div>    
+                </div>";    
+            }    
+        }    
+        wp_reset_postdata();    
+    }    
+    return ef_render_reminder_card('overdue', 'Overdue', $items_html, $count);    
+});    
+    
+  
+add_shortcode('duesoon_list_card', function() {    
+    $t_query = new WP_Query(array('post_type' => 'ef_tenant', 'post_status' => 'publish', 'posts_per_page' => -1));    
+    $items_html = ''; $count = 0;    
+    $now_str = function_exists('current_time') ? current_time('mysql') : 'now';  
+    $today = new DateTimeImmutable($now_str);  
+    $today_zero = $today->setTime(0, 0, 0);  
+    
+    if ($t_query->have_posts()) {    
+        while ($t_query->have_posts()) {    
+            $t_query->the_post();    
+            $t_id = get_the_ID();    
+            $next_due = ef_get_tenant_next_due_date($t_id, $today->format('Y-m-d H:i:s'));  
+              
+            $diff = $today_zero->diff($next_due);  
+            $days_remained = (int)$diff->format('%r%a');  
+    
+            if ($days_remained >= 0 && $days_remained <= 5) {    
+                if (!ef_is_tenant_billable($t_id, $next_due->format('m'), $next_due->format('Y'))) continue;
+                $status = ef_get_tenant_monthly_status($t_id, $next_due->format('m'), $next_due->format('Y'));    
+                if (!$status['is_fully_paid']) {    
+                    $count++;    
+                    if ($days_remained === 0) {    
+                        $badge_text = "Due Today";    
+                    } else {    
+                        $day_label = ($days_remained === 1) ? 'day' : 'days';    
+                        $badge_text = "in {$days_remained} {$day_label}";    
+                    }    
+                    $property = ef_get_property_display_name($t_id);    
+                    $tenant_name = get_the_title($t_id);    
+                    $items_html .= "    
+                    <div class='ef-reminder-item'>    
+                        <div>    
+                            <div class='ef-reminder-item-name'>" . esc_html($tenant_name) . "</div>    
+                            <div class='ef-reminder-item-sub'>" . esc_html($property) . "</div>    
+                        </div>    
+                        <div style='text-align: right;'>    
+                            <div class='ef-reminder-item-amount overdue'>AED " . number_format($status['balance']) . "</div>    
+                            <div class='ef-reminder-item-badge ef-badge-overdue'>" . esc_html($badge_text) . "</div>    
+                        </div>    
+                    </div>";    
+                }    
+            }    
+        }    
+        wp_reset_postdata();    
+    }    
+    return ef_render_reminder_card('duesoon', 'Due soon (≤5 days)', $items_html, $count);    
+});    
+    
+  
+add_shortcode('upcoming_list_card', function() {    
+    $t_query = new WP_Query(array('post_type' => 'ef_tenant', 'post_status' => 'publish', 'posts_per_page' => -1));    
+    $items_html = ''; $count = 0;    
+    $now_str = function_exists('current_time') ? current_time('mysql') : 'now';  
+    $today = new DateTimeImmutable($now_str);  
+    $today_zero = $today->setTime(0, 0, 0);  
+    
+    if ($t_query->have_posts()) {    
+        while ($t_query->have_posts()) {    
+            $t_query->the_post();    
+            $t_id = get_the_ID();    
+            $next_due = ef_get_tenant_next_due_date($t_id, $today->format('Y-m-d H:i:s'));  
+              
+            $diff = $today_zero->diff($next_due);  
+            $days_remained = (int)$diff->format('%r%a');  
+    
+            if ($days_remained > 5) {    
+                if (!ef_is_tenant_billable($t_id, $next_due->format('m'), $next_due->format('Y'))) continue;
+                $status = ef_get_tenant_monthly_status($t_id, $next_due->format('m'), $next_due->format('Y'));    
+                if (!$status['is_fully_paid']) {    
+                    $count++;    
+                    $day_label = ($days_remained === 1) ? 'day' : 'days';    
+                    $property = ef_get_property_display_name($t_id);    
+                    $tenant_name = get_the_title($t_id);    
+                    $items_html .= "    
+                    <div class='ef-reminder-item'>    
+                        <div>    
+                            <div class='ef-reminder-item-name'>" . esc_html($tenant_name) . "</div>    
+                            <div class='ef-reminder-item-sub'>" . esc_html($property) . "</div>    
+                        </div>    
+                        <div style='text-align: right;'>    
+                            <div class='ef-reminder-item-amount'>AED " . number_format($status['balance']) . "</div>    
+                            <div class='ef-reminder-item-badge'>" . esc_html("in {$days_remained} {$day_label}") . "</div>    
+                        </div>    
+                    </div>";    
+                }    
+            }    
+        }    
+        wp_reset_postdata();    
+    }    
+    return ef_render_reminder_card('upcoming', 'Upcoming', $items_html, $count);    
+});    
+    
+  
+add_shortcode('paid_list_card', function() {    
+    $now_str = function_exists('current_time') ? current_time('mysql') : 'now';  
+    $today = new DateTimeImmutable($now_str);  
+    $current_year  = $today->format('Y');    
+    $current_month = $today->format('m');    
+    
+    $t_query = new WP_Query(array('post_type' => 'ef_tenant', 'post_status' => 'publish', 'posts_per_page' => -1));    
+    $items_html = ''; $count = 0;    
+    
+    if ($t_query->have_posts()) {    
+        while ($t_query->have_posts()) {    
+            $t_query->the_post();    
+            $t_id = get_the_ID();    
+            if (!ef_is_tenant_billable($t_id, $current_month, $current_year)) continue;
+            $status = ef_get_tenant_monthly_status($t_id, $current_month, $current_year);    
+    
+            if ($status['is_fully_paid']) {    
+                $count++;    
+                $property = ef_get_property_display_name($t_id);    
+                $tenant_name = get_the_title($t_id);    
+                $items_html .= "    
+                <div class='ef-reminder-item'>    
+                    <div>    
+                        <div class='ef-reminder-item-name'>" . esc_html($tenant_name) . "</div>    
+                        <div class='ef-reminder-item-sub'>" . esc_html($property) . "</div>    
+                    </div>    
+                    <div style='text-align: right;'>    
+                        <div class='ef-reminder-item-amount paid'>Paid</div>    
+                        <div class='ef-reminder-item-badge'>✓ Settled</div>    
+                    </div>    
+                </div>";    
+            }    
+        }    
+        wp_reset_postdata();    
+    }    
+    return ef_render_reminder_card('paid', 'Paid', $items_html, $count);    
+});    
+    
+add_shortcode('outstanding_tenants', function() {   
+    if ( ! function_exists( 'get_field' ) ) { 
+        return ''; 
+    } 
+ 
+    $current_month_year = date('Y-m');   
+       
+    $tenants = get_posts([   
+        'post_type'      => 'ef_tenant',   
+        'post_status'    => 'publish',   
+        'posts_per_page' => -1,   
+    ]);   
+   
+    $payments_by_tenant = [];   
+    $outstanding_items = []; 
+ 
+    if (!empty($tenants)) { 
+        $current_period = date('Y-m');
+        $p_query = new WP_Query([   
+            'post_type'      => 'payment',   
+            'post_status'    => ['publish', 'future'],
+            'posts_per_page' => -1,   
+        ]);   
+   
+        if ($p_query->have_posts()) {   
+            while ($p_query->have_posts()) {   
+                $p_query->the_post();   
+                $pay_id = get_the_ID();   
+                $period = get_field('payment_period', $pay_id) ?: get_post_meta($pay_id, 'payment_period', true) ?: get_the_date('Y-m', $pay_id);
+                if (strpos($period, $current_period) === 0) {
+                    $tid = get_field('associated_tenant', $pay_id) ?: get_post_meta($pay_id, 'associated_tenant', true);   
+                    $amount = floatval(get_field('amount_paid', $pay_id) ?: get_post_meta($pay_id, 'amount_paid', true));   
+                       
+                    if ($tid) {   
+                        if (!isset($payments_by_tenant[$tid])) {   
+                            $payments_by_tenant[$tid] = 0;   
+                        }   
+                        $payments_by_tenant[$tid] += $amount;   
+                    }
+                }   
+            }   
+            wp_reset_postdata();   
+        }   
+   
+        $m = date('m'); $y = date('Y');
+        foreach ($tenants as $tenant) {   
+            $tid = $tenant->ID;   
+            if (ef_is_tenant_billable($tid, $m, $y)) {
+                $rent = floatval(get_field('monthly_rent', $tid) ?: get_post_meta($tid, 'monthly_rent', true));   
+                   
+                if ($rent <= 0) continue;   
+    
+                $paid = isset($payments_by_tenant[$tid]) ? $payments_by_tenant[$tid] : 0; 
+   
+                if ($paid < $rent) {   
+                    $due_day = get_field('rent_due_day', $tid) ?: get_post_meta($tid, 'rent_due_day', true);   
+                    $outstanding_items[] = [   
+                        'name'    => get_the_title($tid),   
+                        'due_day' => $due_day ?: '01',   
+                        'amount'  => $rent - $paid   
+                    ];   
+                }
+            }   
+        }   
+   
+        usort($outstanding_items, function($a, $b) {   
+            return intval($a['due_day']) <=> intval($b['due_day']);   
+        });   
+    } 
+
+    $items_html = '';
+    $count = count($outstanding_items);
+
+    foreach ($outstanding_items as $item) {
+        $items_html .= "
+        <div class='ef-reminder-item'>
+            <div>
+                <div class='ef-reminder-item-name'>" . esc_html($item['name']) . "</div>
+                <div class='ef-reminder-item-sub'>Due day " . esc_html($item['due_day']) . "</div>
+            </div>
+            <div style='text-align: right;'>
+                <div class='ef-reminder-item-amount overdue'>AED " . number_format($item['amount']) . "</div>
+                <div class='ef-reminder-item-badge ef-badge-overdue'>Outstanding</div>
+            </div>
+        </div>";
+    }
+
+    return ef_render_reminder_card('outstanding', 'Outstanding', $items_html, $count);
+}); 
+add_shortcode('ef_upcoming_due_this_week', function() {
+    $start_of_week = strtotime('monday this week 00:00:00');
+    $end_of_week   = strtotime('sunday this week 23:59:59');
+
+    $t_query = new WP_Query(array(
+        'post_type'      => 'ef_tenant',
+        'post_status'    => 'publish',
+        'posts_per_page' => -1,
+    ));
+
+    $upcoming_dues = array();
+    $current_year  = date('Y');
+    $current_month = date('m');
+
+    if ($t_query->have_posts()) {
+        while ($t_query->have_posts()) {
+            $t_query->the_post();
+            $t_id = $t_query->post->ID;
+
+            $due_day = get_field('rent_due_day', $t_id);
+
+            if ($due_day) {
+                $due_timestamp = strtotime("$current_year-$current_month-" . str_pad($due_day, 2, '0', STR_PAD_LEFT));
+
+                if ($due_timestamp >= $start_of_week && $due_timestamp <= $end_of_week) {
+                    $upcoming_dues[] = array(
+                        'name' => get_the_title(),
+                        'date' => date('F d', $due_timestamp),
+                        'rent' => get_field('monthly_rent', $t_id),
+                        'timestamp' => $due_timestamp
+                    );
+                }
+            }
+        }
+        wp_reset_postdata();
+    }
+
+    if (!empty($upcoming_dues)) {
+        usort($upcoming_dues, function($a, $b) {
+            return $a['timestamp'] <=> $b['timestamp'];
+        });
+    }
+
+    ob_start();
+    echo '<div class="ef-due-container" style="font-family: inherit; width: 100%;">';
+
+    if (empty($upcoming_dues)) {
+        echo '<div class="ef-status-clear" style="border-left: 4px solid #4b6e31; background-color: #608D3F; padding: 16px; border-radius: 4px; color: #ffffff;">';
+        echo '<strong style="display:block; margin-bottom: 4px;">📅 Schedule Clear</strong>';
+        echo '<span style="font-size: 14px; color: #f1f5f1;">No standard tenant lease renewals or recurring balances are scheduled for this weekly cycle.</span>';
+        echo '</div>';
+    } else {
+        echo '<p style="font-size: 14px; color: #6b7280; margin-bottom: 12px;">Accounts with upcoming invoice generation rules this week:</p>';
+        echo '<ul style="list-style: none; padding: 0; margin: 0;">';
+        foreach ($upcoming_dues as $due) {
+            echo '<li style="display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid #e5e7eb; font-size: 15px;">';
+            echo '<div>';
+            echo '<span style="font-weight: 500; color: #1f2937; display: block;">' . esc_html($due['name']) . '</span>';
+            echo '<span style="font-size: 12px; color: #6b7280;">Due on: ' . esc_html($due['date']) . '</span>';
+            echo '</div>';
+            echo '<span style="color: #4b5563; font-weight: 600;">AED ' . number_format(floatval($due['rent'])) . '</span>';
+            echo '</li>';
+        }
+        echo '</ul>';
+    }
+
+    echo '</div>';
+    return ob_get_clean();
+});
+
+/**
+ * Property estateflow
+ */
+if (!defined('ABSPATH')) exit;
+if (!function_exists('ef_get_tenant_due_day')) {
+    function ef_get_tenant_due_day($t_id) {
+        $d = get_field('rent_due_day', $t_id) ?: get_field('due_day', $t_id) ?: get_post_meta($t_id, 'rent_due_day', true) ?: get_post_meta($t_id, 'due_day', true);
+        if (!$d) return 5;
+        if (is_numeric($d)) {
+            $v = intval($d);
+            if ($v >= 1 && $v <= 31) return $v;
+            if (strlen((string)$v) === 8) return intval(substr((string)$v, 6, 2));
+        }
+        $ts = strtotime((string)$d);
+        return $ts ? intval(date('j', $ts)) : 5;
+    }
+}
+if (!function_exists('ef_is_tenant_billable')) {
+    function ef_is_tenant_billable($t_id, $m, $y) {
+        $s_str = get_field('tenant_start', $t_id) ?: get_post_meta($t_id, 'tenant_start', true);
+        $e_str = get_field('tenant_end', $t_id) ?: get_post_meta($t_id, 'tenant_end', true);
+        if (!$s_str) return true;
+
+        $dd = ef_get_tenant_due_day($t_id);
+        $dim = (int)date('t', strtotime("$y-$m-01"));
+        $due_date_str = "$y-$m-" . str_pad(min($dd, $dim), 2, '0', STR_PAD_LEFT);
+        
+        if ($s_str > $due_date_str) return false;
+        if ($e_str && $e_str < "$y-$m-01") return false;
+
+        $start_ts = strtotime($s_str);
+        $due_ts = strtotime($due_date_str);
+        $diff_days = round(($due_ts - $start_ts) / (60 * 60 * 24));
+        
+        if ($diff_days < 25) return false;
+        if ($e_str && $e_str < $due_date_str) return false;
+
+        return true;
+    }
+}
+add_action('wp_ajax_save_property', 'ef_handle_save_property');
+
+if (!function_exists('ef_handle_save_property')) {
+function ef_handle_save_property() {
+    check_ajax_referer('ef_property_nonce', 'nonce');
+    if (!is_user_logged_in()) {
+        wp_send_json_error('Unauthorized.');
+    }
+
+    $property_id = !empty($_POST['property_id']) ? intval($_POST['property_id']) : 0;
+
+    if (empty($_POST['name']) || empty($_POST['type']) || !isset($_POST['units']) || $_POST['units'] === '' || empty($_POST['address'])) {
+        wp_send_json_error('All fields are required.');
+    }
+
+    $address = sanitize_text_field($_POST['address']);
+
+    $duplicate_check = get_posts([
+        'post_type'  => 'property',
+        'meta_query' => [
+            [
+                'key'   => 'add_address',
+                'value' => $address,
+            ]
+        ],
+        'exclude'    => [$property_id],
+        'fields'     => 'ids',
+        'numberposts'=> 1
+    ]);
+
+    if (!empty($duplicate_check)) {
+        wp_send_json_error('A property with this address already exists.');
+    }
+
+    $post_data = [
+        'post_title'  => sanitize_text_field($_POST['name']),
+        'post_type'   => 'property',
+        'post_status' => 'publish'
+    ];
+
+    if ($property_id > 0) {
+        if (get_post_type($property_id) !== 'property') {
+            wp_send_json_error('Invalid property ID provided.');
+        }
+        $post_data['ID'] = $property_id;
+        $post_id = wp_update_post($post_data);
+    } else {
+        $post_id = wp_insert_post($post_data);
+    }
+
+    if (is_wp_error($post_id) || $post_id === 0) {
+        $err_msg = is_wp_error($post_id) ? $post_id->get_error_message() : 'Failed to save post.';
+        wp_send_json_error('Database Error: ' . $err_msg);
+    }
+
+    $name    = sanitize_text_field($_POST['name']);
+    $type    = sanitize_text_field($_POST['type']);
+    $units   = intval($_POST['units']);
+
+    if (function_exists('update_field')) {
+        update_field('add_property', $name, $post_id);
+        update_field('property_type', $type, $post_id);
+        update_field('number_unit', $units, $post_id);
+        update_field('add_address', $address, $post_id);
+    } else {
+        update_post_meta($post_id, 'add_property', $name);
+        update_post_meta($post_id, 'property_type', $type);
+        update_post_meta($post_id, 'number_unit', $units);
+        update_post_meta($post_id, 'add_address', $address);
+    }
+
+
+    update_post_meta($post_id, 'property_units', $units);
+
+    wp_send_json_success(['id' => $post_id]);
+}
+}
+
+add_action('wp_ajax_delete_property', 'ef_handle_delete_property');
+
+if (!function_exists('ef_handle_delete_property')) {
+function ef_handle_delete_property() {
+    check_ajax_referer('ef_property_nonce', 'nonce');
+    if (!is_user_logged_in()) {
+        wp_send_json_error('Unauthorized.');
+    }
+
+    $property_id = !empty($_POST['property_id']) ? intval($_POST['property_id']) : 0;
+
+    if (!$property_id || get_post_type($property_id) !== 'property') {
+        wp_send_json_error('Invalid Property ID.');
+    }
+
+    if (wp_delete_post($property_id, true)) {
+        wp_send_json_success();
+    } else {
+        wp_send_json_error('Failed to delete property.');
+    }
+}
+}
+
+add_action('wp_ajax_get_properties_dashboard', 'ef_handle_get_properties_dashboard');
+if (!function_exists('ef_handle_get_properties_dashboard')) {
+function ef_handle_get_properties_dashboard() {
+    check_ajax_referer('ef_property_nonce', 'nonce');
+    if (!is_user_logged_in()) {
+        wp_send_json_error('Unauthorized.');
+    }
+
+    $properties = get_posts([
+        'post_type'   => 'property',
+        'numberposts' => -1,
+        'post_status' => 'publish',
+        'orderby'     => 'date',
+        'order'       => 'DESC'
+    ]);
+
+    if (empty($properties)) {
+        wp_send_json_success([]);
+    }
+
+    $property_ids = wp_list_pluck($properties, 'ID');
+
+
+    $all_tenants = get_posts([
+        'post_type'   => 'ef_tenant',
+        'post_status' => 'publish',
+        'numberposts' => -1,
+        'meta_query'  => [
+            [
+                'key'     => 'property_id',
+                'value'   => $property_ids,
+                'compare' => 'IN',
+            ],
+        ],
+    ]);
+
+    $tenants_by_property = [];
+    $all_tenant_ids = [];
+    foreach ($all_tenants as $t) {
+        $p_id = get_post_meta($t->ID, 'property_id', true);
+        $tenants_by_property[$p_id][] = $t;
+        $all_tenant_ids[] = $t->ID;
+    }
+
+
+    $current_month = date('m');
+    $current_year  = date('Y');
+
+    $all_payments = [];
+    if (!empty($all_tenant_ids)) {
+        $all_payments = get_posts([
+            'post_type'      => 'payment',
+            'posts_per_page' => -1,
+            'post_status'    => ['publish', 'future'],
+            'date_query'     => [['year' => $current_year, 'month' => $current_month]],
+            'meta_query'     => [['key' => 'associated_tenant', 'value' => $all_tenant_ids, 'compare' => 'IN']]
+        ]);
+    }
+
+    $payments_by_tenant = [];
+    foreach ($all_payments as $pay) {
+        $t_id = get_post_meta($pay->ID, 'associated_tenant', true);
+        $payments_by_tenant[$t_id][] = $pay;
+    }
+
+    $data = [];
+    foreach ($properties as $p) {
+        $p_tenants = isset($tenants_by_property[$p->ID]) ? $tenants_by_property[$p->ID] : [];
+        $occupied = count($p_tenants);
+
+        $units = 0;
+        if (function_exists('get_field')) {
+            $units = intval(get_field('number_unit', $p->ID));
+        }
+        if (!$units) {
+            $units = intval(get_post_meta($p->ID, 'number_unit', true)) ?: intval(get_post_meta($p->ID, 'property_units', true)) ?: 0;
+        }
+
+        $expected = 0;
+        $collected = 0;
+        foreach ($p_tenants as $t) { if (function_exists("ef_is_tenant_billable") && !ef_is_tenant_billable($t->ID, date("m"), date("Y"))) continue;
+            $monthly_rent = 0;
+            if (function_exists('get_field')) {
+                $monthly_rent = floatval(get_field('monthly_rent', $t->ID));
+            }
+            if (!$monthly_rent) {
+                $monthly_rent = floatval(get_post_meta($t->ID, 'monthly_rent', true));
+            }
+            $expected += $monthly_rent;
+
+            $t_payments = isset($payments_by_tenant[$t->ID]) ? $payments_by_tenant[$t->ID] : [];
+            foreach ($t_payments as $pay) {
+                $amount_paid = 0;
+                if (function_exists('get_field')) {
+                    $amount_paid = floatval(get_field('amount_paid', $pay->ID));
+                }
+                if (!$amount_paid) {
+                    $amount_paid = floatval(get_post_meta($pay->ID, 'amount_paid', true));
+                }
+                $collected += $amount_paid;
+            }
+        }
+
+        $data[] = [
+            'id'        => $p->ID,
+            'name'      => function_exists('get_field') ? (get_field('add_property', $p->ID) ?: $p->post_title) : $p->post_title,
+            'type'      => function_exists('get_field') ? (get_field('property_type', $p->ID) ?: 'Property') : (get_post_meta($p->ID, 'property_type', true) ?: 'Property'),
+            'units'     => $units,
+            'occupied'  => $occupied,
+            'address'   => function_exists('get_field') ? get_field('add_address', $p->ID) : get_post_meta($p->ID, 'add_address', true),
+            'expected'  => $expected,
+            'collected' => $collected
+        ];
+    }
+    wp_send_json_success($data);
+}
+}
+
+add_action('wp_ajax_get_property_tenants_simple', 'ef_handle_get_property_tenants_simple');
+if (!function_exists('ef_handle_get_property_tenants_simple')) {
+function ef_handle_get_property_tenants_simple() {
+    check_ajax_referer('ef_property_nonce', 'nonce');
+    if (!is_user_logged_in()) {
+        wp_send_json_error('Unauthorized.');
+    }
+
+    $property_id = intval($_POST['property_id'] ?? 0);
+    if (!$property_id) {
+        wp_send_json_error('Property ID missing');
+    }
+
+    $tenants = get_posts([
+        'post_type'      => 'ef_tenant',
+        'posts_per_page' => -1,
+        'post_status'    => 'publish',
+        'meta_query'     => [
+            [
+                'key'   => 'property_id',
+                'value' => $property_id,
+            ]
+        ]
+    ]);
+
+    $data = [];
+    foreach ($tenants as $t) {
+        $tid = $t->ID;
+        $rent = function_exists('get_field') ? get_field('monthly_rent', $tid) : get_post_meta($tid, 'monthly_rent', true);
+        $unit = function_exists('get_field') ? get_field('tenant_unit', $tid) : get_post_meta($tid, 'tenant_unit', true);
+
+        $address = function_exists('get_field') ? get_field('tenant_address', $tid) : get_post_meta($tid, 'tenant_address', true);
+
+        $data[] = [
+            'id'          => $tid,
+            'name'        => $t->post_title,
+            'unit'        => $unit ?: 'N/A',
+            'address'     => $address ?: 'N/A',
+            'rent'        => floatval($rent)
+        ];
+    }
+    wp_send_json_success($data);
+}
+}
+
+add_shortcode('properties_page_add_btn', function() {
+    ob_start(); ?>
+    
+    <button id="properties-page-add-trigger" class="properties-page-btn-primary">+ Add property</button>
+
+    <div id="properties-page-modal" class="properties-page-modal properties-page-hidden">
+        <div class="properties-page-modal-content">
+            <div class="properties-page-modal-header">
+                <h3 id="modal-title">Add property</h3>
+                <button id="properties-page-close-btn" class="properties-page-close-btn">&times;</button>
+            </div>
+            <form id="properties-page-form">
+                <input type="hidden" id="in-id" value="">
+                <input type="hidden" id="ef_property_nonce" value="<?php echo wp_create_nonce('ef_property_nonce'); ?>">
+                <label>Name</label><input type="text" id="in-name" required placeholder="e.g. Sunset Apartments">
+
+                <div class="properties-page-row">
+                    <div class="properties-page-col">
+                        <label>Type</label><input type="text" id="in-type" required placeholder="e.g. Residential">
+                    </div>
+                    <div class="properties-page-col">
+                        <label>Units</label><input type="number" id="in-units" required min="0">
+                    </div>
+                </div>
+
+                <label>Address</label><input type="text" id="in-address" required placeholder="Full address">
+
+                <div class="properties-page-footer">
+                    <button type="button" id="properties-page-cancel-btn" class="properties-page-btn-cancel">Cancel</button>
+                    <button type="submit" class="properties-page-btn-primary" id="submit-btn">Add</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <?php return ob_get_clean();
+});
+
+add_shortcode('properties_page_grid', function() {
+    ob_start(); ?>
+    
+    <div id="properties-dashboard-wrapper">
+        <input type="hidden" id="ef_property_nonce" value="<?php echo wp_create_nonce('ef_property_nonce'); ?>">
+        <div id="properties-dashboard-grid" class="properties-dashboard-grid">
+            <div class="properties-page-empty-state"><p>Loading properties...</p></div>
+        </div>
+        <div class="properties-dashboard-nav">
+            <button id="prev-page" class="prop-nav-btn" disabled>Previous</button>
+            <span id="page-info">Page 1 of 1</span>
+            <button id="next-page" class="prop-nav-btn" disabled>Next</button>
+        </div>
+    </div>
+    <?php return ob_get_clean();
+});
+
+add_shortcode('properties_page_details', function() {
+    ob_start(); ?>
+    
+    <aside class="properties-page-sidebar" id="properties-sidebar">
+        <button id="close-details-mobile" class="properties-page-close-btn mobile-only-close">&times;</button>
+        <div id="properties-page-details" class="properties-page-details-card">
+            <div class="properties-page-empty-state">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M19 21V5a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v5m-4 0h4"/>
+                </svg>
+                <p>Select a property to view details</p>
+            </div>
+        </div>
+    </aside>
+    <?php return ob_get_clean();
+});
+
+add_action('wp_footer', function() { ?>
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const grid = document.getElementById('properties-dashboard-grid');
+        if (!grid && !document.getElementById('properties-page-modal')) return;
+
+        const ajaxUrl = '<?php echo admin_url("admin-ajax.php"); ?>';
+
+        const modal = document.getElementById('properties-page-modal');
+        const trigger = document.getElementById('properties-page-add-trigger');
+        const closeBtn = document.getElementById('properties-page-close-btn');
+        const cancelBtn = document.getElementById('properties-page-cancel-btn');
+        const form = document.getElementById('properties-page-form');
+        const modalTitle = document.getElementById('modal-title');
+        const submitBtn = document.getElementById('submit-btn');
+
+        const toggleModal = () => {
+            if (!modal) return;
+            modal.classList.toggle('properties-page-hidden');
+            if (modal.classList.contains('properties-page-hidden')) {
+                document.body.style.overflow = '';
+                form.reset();
+                document.getElementById('in-id').value = '';
+                if(modalTitle) modalTitle.textContent = 'Add property';
+                if(submitBtn) submitBtn.textContent = 'Add';
+            } else {
+                document.body.style.overflow = 'hidden';
+            }
+        };
+
+        if(trigger) trigger.onclick = toggleModal;
+        if(closeBtn) closeBtn.onclick = toggleModal;
+        if(cancelBtn) cancelBtn.onclick = toggleModal;
+        if(modal) modal.addEventListener('click', (e) => { if (e.target === modal) toggleModal(); });
+
+        if (form) {
+            form.onsubmit = (e) => {
+                e.preventDefault();
+                const propertyId = document.getElementById('in-id').value;
+                const submitOriginalText = submitBtn.textContent;
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Saving...';
+
+                const data = new FormData();
+                data.append('action', 'save_property');
+                const nonceEl = document.getElementById('ef_property_nonce');
+                if (nonceEl) {
+                    data.append('nonce', nonceEl.value);
+                }
+                data.append('property_id', propertyId);
+                data.append('name', document.getElementById('in-name').value);
+                data.append('type', document.getElementById('in-type').value);
+                data.append('units', document.getElementById('in-units').value);
+                data.append('address', document.getElementById('in-address').value);
+
+                fetch(ajaxUrl, { method: 'POST', body: data })
+                .then(r => r.json()).then(res => {
+                    if(res.success) {
+                        location.reload();
+                    } else {
+                        alert(res.data || 'Failed to save property.');
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = submitOriginalText;
+                    }
+                }).catch(err => {
+                    alert('Network error or session expired.');
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = submitOriginalText;
+                });
+            };
+        }
+
+        let curPage = 1, allData = [];
+        const pageInfo = document.getElementById('page-info');
+        const prevBtn = document.getElementById('prev-page');
+        const nextBtn = document.getElementById('next-page');
+
+        const setActiveById = (id) => {
+            if (!grid) return;
+            Array.from(grid.querySelectorAll('.properties-dashboard-card')).forEach(c => c.classList.remove('active'));
+            const card = grid.querySelector(`.properties-dashboard-card[data-prop-id="${id}"]`);
+            if (card) card.classList.add('active');
+        };
+
+        const render = () => {
+            if (!grid) return;
+            const perPage = 4;
+            const totalPages = Math.ceil(allData.length / perPage) || 1;
+            const start = (curPage - 1) * perPage;
+            const slice = allData.slice(start, start + perPage);
+
+            if (slice.length === 0) {
+                grid.innerHTML = `<div class="properties-page-empty-state"><p>No properties found.</p></div>`;
+            } else {
+                grid.innerHTML = slice.map((p) => {
+                const occPct = p.units > 0 ? (p.occupied / p.units) * 100 : 0;
+                const colPct = p.expected > 0 ? Math.round((p.collected / p.expected) * 100) : 0;
+                const activeClass = (window._propertiesActiveId && window._propertiesActiveId == p.id) ? 'active' : '';
+
+                return `
+                <div class="properties-dashboard-card ${activeClass}" role="button" tabindex="0" data-prop-id="${p.id}">
+                    <div class="properties-dashboard-header"><span class="properties-dashboard-badge">${p.type}</span></div>
+                    <h3>${p.name}</h3>
+                    <p class="properties-dashboard-address">${p.address}</p>
+                    <div class="properties-dashboard-occ"><span>Occupancy</span><span>${p.occupied} / ${p.units}</span></div>
+                    <div class="properties-dashboard-bar-bg"><div class="properties-dashboard-bar-fill" style="width: ${occPct}%"></div></div>
+                    <div class="properties-dashboard-stats">
+                        <div class="properties-dashboard-stat-item"><small>Expected</small><span>AED ${p.expected.toLocaleString()}</span></div>
+                        <div class="properties-dashboard-stat-item"><small>Collected</small><span class="properties-dashboard-collected">AED ${p.collected.toLocaleString()} (${colPct}%)</span></div>
+                    </div>
+                    <div class="properties-dashboard-actions">
+                        <button class="dashboard-btn edit-btn" data-id="${p.id}">✏️ Edit</button>
+                        <button class="dashboard-btn delete-btn" data-id="${p.id}">🗑 Delete</button>
+                    </div>
+                </div>`;
+                }).join('');
+            }
+
+            Array.from(grid.querySelectorAll('.properties-dashboard-card')).forEach(card => {
+                card.onclick = (e) => {
+                    if (e.target.closest('.dashboard-btn')) return;
+                    const id = card.getAttribute('data-prop-id');
+                    const propData = allData.find(p => p.id == id);
+                    window._propertiesActiveId = id;
+                    setActiveById(id);
+                    window.dispatchEvent(new CustomEvent('showPropertyDetails', { detail: propData }));
+                };
+            });
+
+            Array.from(grid.querySelectorAll('.edit-btn')).forEach(btn => {
+                btn.onclick = (e) => {
+                    e.stopPropagation();
+                    const id = btn.getAttribute('data-id');
+                    const p = allData.find(item => item.id == id);
+                    if (p && modal) {
+                        document.getElementById('in-id').value = p.id;
+                        document.getElementById('in-name').value = p.name;
+                        document.getElementById('in-type').value = p.type;
+                        document.getElementById('in-units').value = p.units;
+                        document.getElementById('in-address').value = p.address;
+                        if(modalTitle) modalTitle.textContent = 'Edit property';
+                        if(submitBtn) submitBtn.textContent = 'Save Changes';
+                        modal.classList.remove('properties-page-hidden');
+                        document.body.style.overflow = 'hidden';
+                    }
+                };
+            });
+
+            Array.from(grid.querySelectorAll('.delete-btn')).forEach(btn => {
+                btn.onclick = (e) => {
+                    e.stopPropagation();
+                    if (confirm('Delete this property?')) {
+                        const id = btn.getAttribute('data-id');
+                        const data = new FormData();
+                        data.append('action', 'delete_property');
+                        const nonceEl = document.getElementById('ef_property_nonce');
+                        if (nonceEl) {
+                            data.append('nonce', nonceEl.value);
+                        }
+                        data.append('property_id', id);
+                        fetch(ajaxUrl, { method: 'POST', body: data })
+                        .then(r => r.json()).then(res => {
+                            if (res.success) location.reload();
+                            else alert(res.data || 'Failed to delete.');
+                        });
+                    }
+                };
+            });
+
+            if(pageInfo) pageInfo.textContent = `Page ${curPage} of ${totalPages}`;
+            if(prevBtn) prevBtn.disabled = curPage === 1;
+            if(nextBtn) nextBtn.disabled = curPage >= totalPages;
+        };
+
+                const dashboardData = new FormData();
+                dashboardData.append('action', 'get_properties_dashboard');
+                const nonceEl = document.getElementById('ef_property_nonce');
+                if (nonceEl) {
+                    dashboardData.append('nonce', nonceEl.value);
+                } else {
+                    console.error('Property nonce missing.');
+                    return;
+                }
+
+                fetch(ajaxUrl, { method: 'POST', body: dashboardData })
+                .then(r => r.json())
+                .then(res => {
+                    if(res.success) {
+                        allData = res.data;
+                        render();
+                    } else {
+                        if (grid) {
+                            grid.innerHTML = `<div class="properties-page-empty-state"><p>Error loading properties: ${res.data || 'Unknown error'}</p></div>`;
+                        }
+                    }
+                })
+                .catch(err => {
+                    console.error('Fetch error:', err);
+                    if (grid) {
+                        grid.innerHTML = `<div class="properties-page-empty-state"><p>Network error loading properties.</p></div>`;
+                    }
+                });
+
+        if(prevBtn) prevBtn.onclick = () => { if (curPage>1) { curPage--; render(); } };
+        if(nextBtn) nextBtn.onclick = () => { curPage++; render(); };
+
+        const detailsContainer = document.getElementById('properties-page-details');
+        const sidebar = document.getElementById('properties-sidebar');
+        const closeDetailsMobile = document.getElementById('close-details-mobile');
+        const fmtMoney = amount => 'AED ' + (parseFloat(amount) || 0).toLocaleString('en-AE', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+
+        if (closeDetailsMobile && sidebar) {
+            closeDetailsMobile.onclick = () => {
+                sidebar.classList.remove('active');
+                if (window.innerWidth <= 768) {
+                    document.body.style.overflow = '';
+                }
+            };
+        }
+
+        window.addEventListener('showPropertyDetails', async (e) => {
+            const prop = e.detail;
+            if (!prop || !detailsContainer) return;
+
+            if (sidebar) {
+                sidebar.classList.add('active');
+                if (window.innerWidth <= 768) {
+                    document.body.style.overflow = 'hidden';
+                }
+            }
+            detailsContainer.innerHTML = `<div class="properties-page-empty-state"><p>Loading...</p></div>`;
+
+            const tenantData = new FormData();
+            tenantData.append('action', 'get_property_tenants_simple');
+            const nonceEl = document.getElementById('ef_property_nonce');
+            if (nonceEl) {
+                tenantData.append('nonce', nonceEl.value);
+            }
+            tenantData.append('property_id', prop.id);
+
+            const tenants = await fetch(ajaxUrl, { method: 'POST', body: tenantData })
+                            .then(r => r.json()).then(res => res.success ? res.data : [])
+                            .catch(() => []);
+
+            const available = Math.max(0, prop.units - prop.occupied);
+            const isAvailable = prop.occupied < prop.units;
+            const colPct = prop.expected > 0 ? Math.round((prop.collected / prop.expected) * 100) : 0;
+
+            const tenantsHtml = tenants.length
+                ? tenants.map(t => `
+                    <div style="padding:12px;background:#f9fafb;border-radius:8px;margin-bottom:10px;border:1px solid #e5e7eb;">
+                        <div style="display:flex; justify-content:space-between;">
+                            <div><strong>${t.name}</strong><br><span style="font-size:12px;color:#6b7280;">${t.address}</span></div>
+                            <div style="text-align:right;"><span style="color:#0a8a4f;font-weight:600;">${fmtMoney(t.rent)}</span></div>
+                        </div>
+                    </div>
+                `).join('')
+                : `<div style="padding:20px;text-align:center;color:#9ca3af;font-size:14px;">No tenants</div>`;
+
+            detailsContainer.innerHTML = `
+                <h2 style="margin:0 0 5px 0;font-size:22px;">${prop.name}</h2>
+                <p style="margin:0 0 20px 0;font-size:14px;color:#6b7280;">${prop.address || 'No address'}</p>
+
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;">
+                    <div style="background:#f9fafb;padding:12px;border-radius:8px;border:1px solid #e5e7eb;">
+                        <small style="color:#6b7280;text-transform:uppercase;font-size:10px;">Status</small>
+                        <div style="font-weight:600;">${isAvailable ? '<span class="property-available">Available</span>' : '<span class="property-not-available">Full</span>'}</div>
+                    </div>
+                    <div style="background:#f9fafb;padding:12px;border-radius:8px;border:1px solid #e5e7eb;">
+                        <small style="color:#6b7280;text-transform:uppercase;font-size:10px;">Total Units</small>
+                        <div style="font-weight:600;">${prop.units}</div>
+                    </div>
+                    <div style="background:#f9fafb;padding:12px;border-radius:8px;border:1px solid #e5e7eb;">
+                        <small style="color:#6b7280;text-transform:uppercase;font-size:10px;">Occupied</small>
+                        <div style="font-weight:600;color:#dc2626;">${prop.occupied}</div>
+                    </div>
+                    <div style="background:#f9fafb;padding:12px;border-radius:8px;border:1px solid #e5e7eb;">
+                        <small style="color:#6b7280;text-transform:uppercase;font-size:10px;">Available</small>
+                        <div style="font-weight:600;color:#059669;">${available}</div>
+                    </div>
+                </div>
+
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;">
+                    <div style="background:#f9fafb;padding:12px;border-radius:8px;border:1px solid #e5e7eb;">
+                        <small style="color:#6b7280;text-transform:uppercase;font-size:10px;">Expected</small>
+                        <div style="font-size:16px;font-weight:700;">${fmtMoney(prop.expected)}</div>
+                    </div>
+                    <div style="background:#f9fafb;padding:12px;border-radius:8px;border:1px solid #e5e7eb;">
+                        <small style="color:#6b7280;text-transform:uppercase;font-size:10px;">Collected</small>
+                        <div style="font-size:16px;font-weight:700;color:#0a8a4f;">${fmtMoney(prop.collected)} (${colPct}%)</div>
+                    </div>
+                </div>
+
+                <h3 style="font-size:16px;margin-bottom:10px;">Tenants (${prop.occupied})</h3>
+                <div style="max-height:300px;overflow-y:auto;">${tenantsHtml}</div>
+            `;
+        });
+    });
+    </script>
+<?php });
+
+/**
+ * overview estateflow
+ */
+if (!defined('ABSPATH')) exit;
+if (!function_exists('ef_get_tenant_due_day')) {
+    function ef_get_tenant_due_day($t_id) {
+        $d = get_field('rent_due_day', $t_id) ?: get_field('due_day', $t_id) ?: get_post_meta($t_id, 'rent_due_day', true) ?: get_post_meta($t_id, 'due_day', true);
+        if (!$d) return 5;
+        if (is_numeric($d)) {
+            $v = intval($d);
+            if ($v >= 1 && $v <= 31) return $v;
+            if (strlen((string)$v) === 8) return intval(substr((string)$v, 6, 2));
+        }
+        $ts = strtotime((string)$d);
+        return $ts ? intval(date('j', $ts)) : 5;
+    }
+}
+if (!function_exists('ef_is_tenant_billable')) {
+    function ef_is_tenant_billable($t_id, $m, $y) {
+        $s_str = get_field('tenant_start', $t_id) ?: get_post_meta($t_id, 'tenant_start', true);
+        $e_str = get_field('tenant_end', $t_id) ?: get_post_meta($t_id, 'tenant_end', true);
+        if (!$s_str) return true;
+
+        $dd = ef_get_tenant_due_day($t_id);
+        $dim = (int)date('t', strtotime("$y-$m-01"));
+        $due_date_str = "$y-$m-" . str_pad(min($dd, $dim), 2, '0', STR_PAD_LEFT);
+        
+        if ($s_str > $due_date_str) return false;
+        if ($e_str && $e_str < "$y-$m-01") return false;
+
+        $start_ts = strtotime($s_str);
+        $due_ts = strtotime($due_date_str);
+        $diff_days = round(($due_ts - $start_ts) / (60 * 60 * 24));
+        
+        if ($diff_days < 25) return false;
+        if ($e_str && $e_str < $due_date_str) return false;
+
+        return true;
+    }
+}
+
+if (!defined('ABSPATH')) exit; 
+ 
+add_shortcode('ef_total_tenants', function() {  
+    $count_posts = wp_count_posts('ef_tenant');  
+    return isset($count_posts->publish) ? number_format($count_posts->publish) : '0';  
+});  
+  
+add_shortcode('ef_total_payments', function() {  
+    $current_period = date('Y-m');
+    $args = array(  
+        'post_type'      => 'payment',   
+        'post_status'    => ['publish', 'future'],
+        'posts_per_page' => -1,  
+    );  
+    $p_query = new WP_Query($args);  
+    $monthly_revenue = 0.00;  
+    if ($p_query->have_posts()) {  
+        while ($p_query->have_posts()) {  
+            $p_query->the_post();  
+            $p_id = get_the_ID();
+            $period = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true) ?: get_the_date('Y-m', $p_id);
+            if (strpos($period, $current_period) === 0) {
+                $amount = get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true);   
+                if ($amount) { $monthly_revenue += floatval($amount); }  
+            }
+        }  
+        wp_reset_postdata();  
+    }  
+    return number_format($monthly_revenue);  
+});  
+  
+add_shortcode('ef_total_outstanding', function() {  
+    $t_query = new WP_Query(array('post_type' => 'ef_tenant', 'post_status' => 'publish', 'posts_per_page' => -1));  
+    $rent_expected = 0.00;  
+    $m = date('m'); $y = date('Y');
+    if ($t_query->have_posts()) {  
+        while ($t_query->have_posts()) {  
+            $t_query->the_post();  
+            $t_id = get_the_ID();
+            if (ef_is_tenant_billable($t_id, $m, $y)) {
+                $rent_val = get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true);  
+                if ($rent_val) { $rent_expected += floatval($rent_val); }  
+            }
+        }  
+        wp_reset_postdata();  
+    }  
+    $collected_str = str_replace(',', '', do_shortcode('[ef_total_payments]')); 
+    $rent_collected = floatval($collected_str);  
+    $final_outstanding = $rent_expected - $rent_collected;  
+    return number_format(max(0, $final_outstanding));  
+});  
+  
+add_shortcode('ef_yearly_revenue', function() {  
+    $current_year = date('Y');  
+    $p_query = new WP_Query(array(
+        'post_type'      => 'payment', 
+        'post_status'    => ['publish', 'future'], 
+        'posts_per_page' => -1,
+    ));
+    $total_yearly_revenue = 0.00;  
+    if ($p_query->have_posts()) {  
+        while ($p_query->have_posts()) {  
+            $p_query->the_post();  
+            $pay_id = get_the_ID();   
+            $period = get_field('payment_period', $pay_id) ?: get_post_meta($pay_id, 'payment_period', true) ?: get_the_date('Y-m', $pay_id);
+            if (strpos($period, $current_year) === 0) {
+                $amt_paid = get_field('amount_paid', $pay_id) ?: get_post_meta($pay_id, 'amount_paid', true);  
+                if ($amt_paid) { $total_yearly_revenue += floatval($amt_paid); }  
+            }
+        }  
+        wp_reset_postdata();  
+    }  
+    return number_format($total_yearly_revenue);  
+});  
+
+add_shortcode('ef_yearly_expected_revenue', function() {
+    $current_year = date('Y');
+    $t_query = new WP_Query(array(
+        'post_type'      => 'ef_tenant',
+        'post_status'    => 'publish',
+        'posts_per_page' => -1,
+    ));
+
+    $tenants = [];
+    if ($t_query->have_posts()) {
+        while ($t_query->have_posts()) {
+            $t_query->the_post();
+            $t_id = get_the_ID();
+            $tenants[] = [
+                'id'   => $t_id,
+                'rent' => floatval(get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true))
+            ];
+        }
+        wp_reset_postdata();
+    }
+
+    $yearly_expected = 0.00;
+    for ($m = 1; $m <= 12; $m++) {
+        $padded_month = str_pad($m, 2, '0', STR_PAD_LEFT);
+        foreach ($tenants as $tenant) {
+            if (ef_is_tenant_billable($tenant['id'], $padded_month, $current_year)) {
+                $yearly_expected += $tenant['rent'];
+            }
+        }
+    }
+    return number_format($yearly_expected);
+});
+  
+add_shortcode('ef_collected_rate', function() {  
+    $t_query = new WP_Query(array('post_type' => 'ef_tenant', 'post_status' => 'publish', 'posts_per_page' => -1));  
+    $rent_expected = 0.00;  
+    $m = date('m'); $y = date('Y');
+    if ($t_query->have_posts()) {  
+        while ($t_query->have_posts()) {  
+            $t_query->the_post();  
+            $t_id = get_the_ID();
+            if (ef_is_tenant_billable($t_id, $m, $y)) {
+                $rent_val = get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true);  
+                if ($rent_val) { $rent_expected += floatval($rent_val); }  
+            }
+        }  
+        wp_reset_postdata();  
+    }  
+    if ($rent_expected <= 0) return '0%';  
+    $collected_str = str_replace(',', '', do_shortcode('[ef_total_payments]')); 
+    $rent_collected = floatval($collected_str);  
+    $collection_rate = ($rent_collected / $rent_expected) * 100;  
+    return round($collection_rate) . '%';  
+}); 
+ 
+	 
+ 
+function ef_render_dashboard_card($icon_type, $value, $label, $badge_text = '', $prefix = '') { 
+    static $css_printed = false; 
+    $icons = [ 
+        'wallet' => '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M7 15h0M2 9.5h20"/></svg>', 
+        'users'  => '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>', 
+        'money'  => '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>', 
+        'chart'  => '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>' 
+    ]; 
+    $icon_svg = $icons[$icon_type] ?? ''; 
+    ob_start(); 
+    if (!$css_printed): ?> 
+     
+    <?php $css_printed = true; endif; ?> 
+    <div class="over-dashboard-card"> 
+        <div class="over-card-header"> 
+            <div class="over-card-icon"><?php echo $icon_svg; ?></div> 
+            <?php if ($badge_text): ?><div class="over-card-badge"><?php echo $badge_text; ?></div><?php endif; ?> 
+        </div> 
+        <div class="over-card-body"> 
+            <div class="over-card-value"><?php echo $prefix . $value; ?></div> 
+            <div class="over-card-label"><?php echo $label; ?></div> 
+        </div> 
+    </div> 
+    <?php return ob_get_clean(); 
+} 
+ 
+ 
+add_shortcode('ef_card_collected_this_month', function() { 
+    return ef_render_dashboard_card('wallet', do_shortcode('[ef_total_payments]'), 'Collected this month', do_shortcode('[ef_collected_rate]'), 'AED '); 
+}); 
+ 
+add_shortcode('ef_card_active_tenants', function() { 
+    $count_props = wp_count_posts('property'); 
+    $badge = ($count_props->publish ?? 0) . ' properties'; 
+    return ef_render_dashboard_card('users', do_shortcode('[ef_total_tenants]'), 'Active Tenants', $badge); 
+}); 
+ 
+add_shortcode('ef_card_outstanding_total', function() { 
+    $m = date('m'); $y = date('Y');
+    $current_period = date('Y-m');
+    $tenants = new WP_Query(['post_type' => 'ef_tenant', 'post_status' => 'publish', 'posts_per_page' => -1]); 
+    $due_count = 0; 
+    if ($tenants->have_posts()) { 
+        while ($tenants->have_posts()) { 
+            $tenants->the_post(); 
+            $t_id = get_the_ID(); 
+            if (ef_is_tenant_billable($t_id, $m, $y)) {
+                $rent = floatval(get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true)); 
+                $payments = new WP_Query([
+                    'post_type' => 'payment', 
+                    'post_status' => ['publish', 'future'], 
+                    'meta_query' => [
+                        ['key' => 'associated_tenant', 'value' => $t_id, 'compare' => '=']
+                    ]
+                ]);
+                $paid = 0; 
+                if ($payments->have_posts()) { 
+                    while ($payments->have_posts()) { 
+                        $payments->the_post(); 
+                        $p_id = get_the_ID();
+                        $period = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true) ?: get_the_date('Y-m', $p_id);
+                        if (strpos($period, $current_period) === 0) {
+                            $paid += floatval(get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true)); 
+                        }
+                    } 
+                } 
+                if ($rent > $paid) { $due_count++; } 
+            }
+        } 
+        wp_reset_postdata(); 
+    } 
+    return ef_render_dashboard_card('money', do_shortcode('[ef_total_outstanding]'), 'Outstanding Total', $due_count . ' due', 'AED '); 
+}); 
+ 
+add_shortcode('ef_card_yearly_revenue', function() { 
+    return ef_render_dashboard_card('chart', do_shortcode('[ef_yearly_revenue]'), 'Yearly Revenue', '↗ YTD', 'AED '); 
+}); 
+ 
+add_shortcode('ef_dashboard_overview', function() { 
+    return '<div class="ef-dashboard-grid">' .  
+           do_shortcode('[ef_card_collected_this_month]') .  
+           do_shortcode('[ef_card_active_tenants]') .  
+           do_shortcode('[ef_card_outstanding_total]') .  
+           do_shortcode('[ef_card_yearly_revenue]') .  
+           '</div>'; 
+}); 
+
+if ( ! defined( 'ABSPATH' ) ) exit;
+
+ add_shortcode('monthly_chart', function() { 
+    $months_to_show = 12; 
+    $monthly_data = array(); 
+    $chart_labels = array(); 
+    $revenue_dataset = array(); 
+    $months_list = array(); 
+ 
+    $current_time = time();  
+    $selected_year = isset($_GET['ef_year']) ? intval($_GET['ef_year']) : intval(date('Y', $current_time)); 
+    $subtitle = "Year $selected_year"; 
+ 
+    $month_names = array('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'); 
+    for ($m = 1; $m <= 12; $m++) { 
+        $chart_labels[] = $month_names[$m-1]; 
+        $months_list[] = array('year' => $selected_year, 'month' => $m, 'label' => $month_names[$m-1] . ' ' . $selected_year); 
+    } 
+ 
+    $t_query = new WP_Query(array( 
+        'post_type'      => 'ef_tenant', 
+        'post_status'    => 'publish', 
+        'posts_per_page' => -1, 
+    )); 
+     
+    $tenants = [];
+    if ($t_query->have_posts()) { 
+        while ($t_query->have_posts()) { 
+            $t_query->the_post(); 
+            $t_id = get_the_ID();
+            $tenants[] = [
+                'id'   => $t_id,
+                'rent' => floatval(get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true))
+            ];
+        } 
+        wp_reset_postdata(); 
+    } 
+ 
+    foreach ($months_list as $item) { 
+        $padded_month = str_pad($item['month'], 2, '0', STR_PAD_LEFT); 
+        $period_match = $item['year'] . '-' . $padded_month;
+
+        $p_query = new WP_Query(array( 
+            'post_type'      => 'payment', 
+            'post_status'    => ['publish', 'future'],
+            'posts_per_page' => -1, 
+        )); 
+         
+        $revenue_collected = 0.00; 
+        if ($p_query->have_posts()) { 
+            while ($p_query->have_posts()) { 
+                $p_query->the_post(); 
+                $p_id = get_the_ID();
+                $period = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true) ?: get_the_date('Y-m', $p_id);
+                if (strpos($period, $period_match) === 0) {
+                    $pay_val = get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true); 
+                    if ($pay_val) { $revenue_collected += floatval($pay_val); } 
+                }
+            } 
+            wp_reset_postdata(); 
+        } 
+
+        // Calculate expected for this specific month
+        $monthly_rent_expected = 0.00;
+        foreach ($tenants as $tenant) {
+            if (ef_is_tenant_billable($tenant['id'], $padded_month, $item['year'])) {
+                $monthly_rent_expected += $tenant['rent'];
+            }
+        }
+         
+        $gap = max(0, $monthly_rent_expected - $revenue_collected); 
+        $rate = ($monthly_rent_expected > 0) ? ($revenue_collected / $monthly_rent_expected) * 100 : 0; 
+        if ($rate > 100) { $rate = 100; } 
+ 
+        $monthly_data[] = array( 
+            'label'    => $item['label'], 
+            'revenue'  => $revenue_collected, 
+            'expected' => $monthly_rent_expected, 
+            'gap'      => $gap, 
+            'rate'     => round($rate) . '%' 
+        ); 
+        $revenue_dataset[] = $revenue_collected; 
+    } 
+ 
+    ob_start(); 
+    ?> 
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> 
+     
+ 
+    <div class="ef-dashboard-card"> 
+        <div class="ef-card-header"> 
+            <div class="ef-card-title"> 
+                <h3>Monthly revenue</h3> 
+                <div class="ef-card-subtitle"><?php echo $subtitle; ?></div> 
+            </div> 
+            <div class="ef-live-badge">Live</div> 
+        </div> 
+ 
+        <div class="ef-chart-container"> 
+            <canvas id="efRevenueChart"></canvas> 
+        </div> 
+    </div> 
+ 
+    <script> 
+    document.addEventListener("DOMContentLoaded", function() { 
+        const ctx = document.getElementById('efRevenueChart').getContext('2d'); 
+         
+        new Chart(ctx, { 
+            type: 'line', 
+            data: { 
+                labels: <?php echo json_encode($chart_labels); ?>, 
+                datasets: [{ 
+                    label: 'Revenue', 
+                    data: <?php echo json_encode($revenue_dataset); ?>, 
+                    borderColor: '#2ebfa5', 
+                    backgroundColor: '#2ebfa5', 
+                    borderWidth: 2, 
+                    tension: 0.4, 
+                    pointRadius: 4, 
+                    pointBackgroundColor: '#2ebfa5', 
+                    pointBorderColor: '#2ebfa5', 
+                    pointBorderWidth: 1, 
+                    fill: false 
+                }] 
+            }, 
+            options: { 
+                responsive: true, 
+                maintainAspectRatio: false, 
+                plugins: { 
+                    legend: { display: false } 
+                }, 
+                scales: { 
+                    y: { 
+                        beginAtZero: true, 
+                        suggestedMax: 6000, 
+                        grid: { 
+                            color: '#718096', 
+                            borderDash: [4, 4], 
+                            drawTicks: false, 
+                            drawBorder: false 
+                        }, 
+                        ticks: { 
+                            stepSize: 1500, 
+                            callback: function(value) { 
+                                return 'AED ' + (value / 1000) + 'k'; 
+                            }, 
+                            color: '#718096', 
+                            font: { size: 10 } 
+                        } 
+                    }, 
+                    x: { 
+                        grid: { 
+                            color: '#718096', 
+                            borderDash: [4, 4], 
+                            drawTicks: false, 
+                            drawBorder: false 
+                        }, 
+                        ticks: { 
+                            color: '#718096', 
+                            font: { size: 10 } 
+                        } 
+                    } 
+                } 
+            } 
+        }); 
+    }); 
+    </script> 
+    <?php 
+    return ob_get_clean(); 
+}); 
+ 
+ 
+add_shortcode('monthly_bar_chart', function() { 
+    $current_time = time();  
+    $selected_year = isset($_GET['ef_year']) ? intval($_GET['ef_year']) : intval(date('Y', $current_time)); 
+     
+    $revenue_dataset = array(); 
+    $month_labels = array('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'); 
+     
+    for ($m = 1; $m <= 12; $m++) { 
+        $padded_month = str_pad($m, 2, '0', STR_PAD_LEFT); 
+        $period_match = $selected_year . '-' . $padded_month;
+        $p_query = new WP_Query(array( 
+            'post_type'      => 'payment', 
+            'post_status'    => ['publish', 'future'],
+            'posts_per_page' => -1, 
+        )); 
+         
+        $revenue_collected = 0.00; 
+        if ($p_query->have_posts()) { 
+            while ($p_query->have_posts()) { 
+                $p_query->the_post(); 
+                $p_id = get_the_ID();
+                $period = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true) ?: get_the_date('Y-m', $p_id);
+                if (strpos($period, $period_match) === 0) {
+                    $pay_val = get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true); 
+                    if ($pay_val) { $revenue_collected += floatval($pay_val); } 
+                }
+            } 
+            wp_reset_postdata(); 
+        } 
+        $revenue_dataset[] = $revenue_collected; 
+    } 
+ 
+    $current_month_index = intval(date('n', $current_time)) - 1; // 0-11 
+ 
+    ob_start(); 
+    ?> 
+    <div class="ef-chart-card" style="background: #E8FFEB; padding: 24px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.03); max-width: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 20px 0;"> 
+        <h4 style="margin: 0 0 4px 0; color: #2c4a1a; font-size: 16px; font-weight: 600;">Monthly Revenue Stream</h4> 
+        <p style="margin: 0 0 20px 0; color: #557045; font-size: 13px;">Current collection performance metrics overview — <?php echo $selected_year; ?></p> 
+         
+        <div style="position: relative; height: 250px; width: 100%;"> 
+            <canvas id="efDashboardRevenueChart"></canvas> 
+        </div> 
+    </div> 
+ 
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> 
+    <script> 
+    (function() { 
+        function generateDashboardGraph() { 
+            const canvasElement = document.getElementById('efDashboardRevenueChart'); 
+            if (!canvasElement || typeof Chart === 'undefined') return; 
+ 
+            const revenueData = <?php echo json_encode($revenue_dataset); ?>; 
+            const labelsArray = <?php echo json_encode($month_labels); ?>; 
+            const currentMonthIdx = <?php echo ($selected_year == date('Y')) ? $current_month_index : -1; ?>; 
+ 
+            new Chart(canvasElement.getContext('2d'), { 
+                type: 'bar', 
+                data: { 
+                    labels: labelsArray, 
+                    datasets: [{ 
+                        label: 'Collection Revenue', 
+                        data: revenueData, 
+                        backgroundColor: function(context) { 
+                            return context.dataIndex === currentMonthIdx ? '#608D3F' : '#c2dbb1'; 
+                        }, 
+                        borderRadius: 6, 
+                        borderWidth: 0 
+                    }] 
+                }, 
+                options: { 
+                    responsive: true, 
+                    maintainAspectRatio: false, 
+                    plugins: { 
+                        legend: { display: false }, 
+                        tooltip: { 
+                            callbacks: { 
+                                label: function(context) { 
+                                    return 'Revenue: AED ' + context.parsed.y.toLocaleString(); 
+                                } 
+                            } 
+                        } 
+                    }, 
+                    scales: { 
+                        y: { 
+                            beginAtZero: true, 
+                            grid: { color: 'rgba(96, 141, 63, 0.1)' }, 
+                            ticks: {  
+                                color: '#557045',  
+                                font: { size: 11 }, 
+                                callback: function(value) { 
+                                    if (value >= 1000) { 
+                                        return 'AED ' + (value / 1000) + 'k'; 
+                                    } 
+                                    return 'AED ' + value; 
+                                } 
+                            } 
+                        }, 
+                        x: { 
+                            grid: { display: false }, 
+                            ticks: { color: '#2c4a1a', font: { size: 12, weight: '500' } } 
+                        } 
+                    } 
+                } 
+            }); 
+        } 
+ 
+        if (document.readyState === 'complete') { 
+            generateDashboardGraph(); 
+        } else { 
+            window.addEventListener('load', generateDashboardGraph); 
+        } 
+    })(); 
+    </script> 
+    <?php 
+    return ob_get_clean(); 
+}); 
+ 
+add_shortcode('ef_outstanding_tenants_widget', function() { 
+    $current_month_year = date('Y-m'); 
+     
+    $tenants = get_posts([ 
+        'post_type'      => 'ef_tenant', 
+        'post_status'    => 'publish', 
+        'posts_per_page' => -1, 
+    ]); 
+ 
+    if (empty($tenants)) { 
+        return '<div class="ef-dash-widget-box"><div class="ef-dash-empty">No tenants found.</div></div>'; 
+    } 
+ 
+    $current_period = date('Y-m');
+    $p_query = new WP_Query([ 
+        'post_type'      => 'payment', 
+        'post_status'    => ['publish', 'future'],
+        'posts_per_page' => -1, 
+    ]); 
+ 
+    $payments_by_tenant = []; 
+    if ($p_query->have_posts()) { 
+        while ($p_query->have_posts()) { 
+            $p_query->the_post(); 
+            $pay_id = get_the_ID(); 
+            $period = get_field('payment_period', $pay_id) ?: get_post_meta($pay_id, 'payment_period', true) ?: get_the_date('Y-m', $pay_id);
+            if (strpos($period, $current_period) === 0) {
+                $tid = get_field('associated_tenant', $pay_id) ?: get_post_meta($pay_id, 'associated_tenant', true); 
+                $amount = floatval(get_field('amount_paid', $pay_id) ?: get_post_meta($pay_id, 'amount_paid', true)); 
+                 
+                if ($tid) { 
+                    if (!isset($payments_by_tenant[$tid])) { 
+                        $payments_by_tenant[$tid] = 0; 
+                    } 
+                    $payments_by_tenant[$tid] += $amount; 
+                } 
+            }
+        } 
+        wp_reset_postdata(); 
+    } 
+ 
+    $outstanding_items = []; 
+    $m = date('m'); $y = date('Y');
+    foreach ($tenants as $tenant) { 
+        $tid = $tenant->ID; 
+        if (ef_is_tenant_billable($tid, $m, $y)) {
+            $rent = floatval(get_field('monthly_rent', $tid) ?: get_post_meta($tid, 'monthly_rent', true)); 
+             
+            if ($rent <= 0) continue; 
+    
+            $paid = isset($payments_by_tenant[$tid]) ? $payments_by_tenant[$tid] : 0; 
+    
+            if ($paid < $rent) { 
+                $due_day = get_field('rent_due_day', $tid) ?: get_post_meta($tid, 'rent_due_day', true); 
+                $outstanding_items[] = [ 
+                    'name'    => get_the_title($tid), 
+                    'due_day' => $due_day ?: '01', 
+                    'amount'  => $rent - $paid 
+                ]; 
+            } 
+        }
+    } 
+ 
+    usort($outstanding_items, function($a, $b) { 
+        return intval($a['due_day']) <=> intval($b['due_day']); 
+    }); 
+ 
+    $outstanding_items = array_slice($outstanding_items, 0, 5); 
+ 
+    ob_start(); 
+    ?> 
+    <div class="ef-dash-widget-box"> 
+        <div class="ef-dash-widget-header"> 
+            <div> 
+                <h3 class="ef-dash-widget-title">Outstanding</h3> 
+                <p class="ef-dash-widget-subtitle">Tenants due this month</p> 
+            </div> 
+        </div> 
+ 
+        <div class="ef-outstanding-stack"> 
+            <?php if (!empty($outstanding_items)) : foreach ($outstanding_items as $item) : ?> 
+                <div class="ef-outstanding-row"> 
+                    <div> 
+                        <span class="ef-out-tenant-name"><?php echo esc_html($item['name']); ?></span> 
+                        <span class="ef-out-tenant-meta">Due day <?php echo esc_html($item['due_day']); ?></span> 
+                    </div> 
+                    <div class="ef-out-amount-text"> 
+                        AED <?php echo number_format($item['amount']); ?> 
+                    </div> 
+                </div> 
+            <?php endforeach; else : ?> 
+                <div class="ef-dash-empty">No outstanding balances found.</div> 
+            <?php endif; ?> 
+        </div> 
+    </div> 
+    <?php 
+    return ob_get_clean(); 
+}); 
+ 
+ 
+add_shortcode('ef_recent_payments_widget', function() { 
+    $p_query = new WP_Query([ 
+        'post_type'      => 'payment', 
+        'post_status'    => ['publish', 'future'],
+        'posts_per_page' => 6, 
+        'orderby'        => 'date', 
+        'order'          => 'DESC' 
+    ]); 
+ 
+    ob_start(); 
+    ?> 
+    <div class="ef-dash-widget-box"> 
+        <div class="ef-dash-widget-header"> 
+            <div> 
+                <h3 class="ef-dash-widget-title">Recent payments</h3> 
+                <p class="ef-dash-widget-subtitle">Latest activity</p> 
+            </div> 
+            <a href="https://estateflow.digital/payments/" class="ef-dash-widget-link">View all &rarr;</a> 
+        </div> 
+ 
+        <div class="ef-recent-stack"> 
+            <?php if ($p_query->have_posts()) : while ($p_query->have_posts()) : $p_query->the_post();  
+                $pay_id = get_the_ID(); 
+                $tid = get_field('associated_tenant', $pay_id); 
+                $name = $tid ? get_the_title($tid) : 'Unknown Tenant'; 
+                $amount = get_field('amount_paid', $pay_id); 
+                $method = get_field('mode_of_payment', $pay_id) ?: 'Bank Transfer'; 
+                 
+                $raw_date = get_field('date_of_payment', $pay_id); 
+                $display_date = $raw_date ? date('j/n/Y', strtotime($raw_date)) : get_the_date('j/n/Y'); 
+                $period = $raw_date ? date('Y-m', strtotime($raw_date)) : get_the_date('Y-m'); 
+            ?> 
+                <div class="ef-recent-row"> 
+                    <div class="ef-recent-avatar-box"> 
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7l5 5-5 5M13 7l5 5-5 5"/></svg> 
+                    </div> 
+                    <div class="ef-recent-content"> 
+                        <span class="ef-recent-title"><?php echo esc_html($name); ?></span> 
+                        <span class="ef-recent-subtitle"><?php echo esc_html($method); ?> · <?php echo esc_html($period); ?></span> 
+                    </div> 
+                    <div class="ef-recent-trailing"> 
+                        <span class="ef-recent-amount-text">AED <?php echo number_format(floatval($amount)); ?></span> 
+                        <span class="ef-recent-date-text"><?php echo esc_html($display_date); ?></span> 
+                    </div> 
+                </div> 
+            <?php endwhile; wp_reset_postdata(); else : ?> 
+                <div class="ef-dash-empty">No recent payments logged.</div> 
+            <?php endif; ?> 
+        </div> 
+    </div> 
+    <?php 
+    return ob_get_clean(); 
+});
