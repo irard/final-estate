@@ -72,7 +72,8 @@ if (!function_exists('ef_get_payment_period')) {
 
 if (!function_exists('ef_get_tenant_monthly_status')) {
     function ef_get_tenant_monthly_status($t_id, $m, $y) {
-        $rent = floatval(get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true));
+        $rent_val = get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true);
+        $rent = floatval(str_replace(',', '', $rent_val));
         $period_match = "$y-$m";
 
         $payments = get_posts([
@@ -128,7 +129,7 @@ add_shortcode('ef_total_payments', function() {
             $period = ef_get_payment_period($p_id);
             if (strpos($period, $current_period) === 0) {
                 $amount = get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true);   
-                if ($amount) { $monthly_revenue += floatval($amount); }  
+                if ($amount) { $monthly_revenue += floatval(str_replace(',', '', $amount)); }
             }
         }  
         wp_reset_postdata();  
@@ -147,7 +148,7 @@ add_shortcode('ef_total_outstanding', function() {
             $t_id = get_the_ID();
             if (ef_is_tenant_billable($t_id, $m, $y)) {
                 $rent_val = get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true);  
-                if ($rent_val) { $rent_expected += floatval($rent_val); }  
+                if ($rent_val) { $rent_expected += floatval(str_replace(',', '', $rent_val)); }
             }
         }  
         wp_reset_postdata();  
@@ -174,7 +175,7 @@ add_shortcode('ef_yearly_revenue', function() {
             $period = ef_get_payment_period($pay_id);
             if (strpos($period, (string)$current_year) === 0) {
                 $amt_paid = get_field('amount_paid', $pay_id) ?: get_post_meta($pay_id, 'amount_paid', true);  
-                if ($amt_paid) { $total_yearly_revenue += floatval($amt_paid); }  
+                if ($amt_paid) { $total_yearly_revenue += floatval(str_replace(',', '', $amt_paid)); }
             }
         }  
         wp_reset_postdata();  
@@ -196,9 +197,10 @@ add_shortcode('ef_yearly_expected_revenue', function() {
         while ($t_query->have_posts()) {
             $t_query->the_post();
             $t_id = get_the_ID();
+            $rent_val = get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true);
             $tenants[] = [
                 'id'   => $t_id,
-                'rent' => floatval(get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true))
+                'rent' => floatval(str_replace(',', '', $rent_val))
             ];
         }
         wp_reset_postdata();
@@ -219,57 +221,30 @@ add_shortcode('ef_yearly_expected_revenue', function() {
 add_shortcode('ef_collected_rate', function() {  
     $period_data = ef_get_dashboard_period();
     $m = $period_data['m']; $y = $period_data['y'];
-    $current_period = $period_data['period'];
 
-    // 1. Fetch all billable tenants
     $t_query = new WP_Query(array('post_type' => 'ef_tenant', 'post_status' => 'publish', 'posts_per_page' => -1));  
-    $billable_tenants = [];
+    $total_expected = 0.00;
     if ($t_query->have_posts()) {  
         while ($t_query->have_posts()) {  
             $t_query->the_post();  
             $t_id = get_the_ID();
             if (ef_is_tenant_billable($t_id, $m, $y)) {
-                $billable_tenants[$t_id] = floatval(get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true));
+                $rent_val = get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true);
+                if ($rent_val) {
+                    $total_expected += floatval(str_replace(',', '', $rent_val));
+                }
             }
         }  
         wp_reset_postdata();  
     }
 
-    if (empty($billable_tenants)) return '0%';
+    if ($total_expected <= 0) return '0%';
 
-    // 2. Fetch all payments for this period
-    $p_query = new WP_Query(array(
-        'post_type' => 'payment',
-        'post_status' => ['publish', 'future', 'pending', 'draft', 'private'],
-        'posts_per_page' => -1
-    ));
+    $collected_str = str_replace(',', '', do_shortcode('[ef_total_payments]'));
+    $total_collected = floatval($collected_str);
 
-    $payments_by_tenant = [];
-    if ($p_query->have_posts()) {
-        while ($p_query->have_posts()) {
-            $p_query->the_post();
-            $p_id = get_the_ID();
-            if (strpos(ef_get_payment_period($p_id), $current_period) === 0) {
-                $tid = ef_get_payment_tenant_id($p_id);
-                if ($tid && isset($billable_tenants[$tid])) {
-                    if (!isset($payments_by_tenant[$tid])) $payments_by_tenant[$tid] = 0;
-                    $payments_by_tenant[$tid] += floatval(get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true));
-                }
-            }
-        }
-        wp_reset_postdata();
-    }
-
-    // 3. Count fully paid tenants
-    $paid_count = 0;
-    foreach ($billable_tenants as $t_id => $rent) {
-        $paid = $payments_by_tenant[$t_id] ?? 0;
-        if (($rent > 0 && $paid >= $rent) || ($rent == 0 && $paid > 0)) {
-            $paid_count++;
-        }
-    }
-
-    $collection_rate = ($paid_count / count($billable_tenants)) * 100;
+    $collection_rate = ($total_collected / $total_expected) * 100;
+    if ($collection_rate > 100) $collection_rate = 100;
     return round($collection_rate) . '%';  
 }); 
  
@@ -748,7 +723,8 @@ add_shortcode('ef_outstanding_tenants_widget', function() {
     foreach ($tenants as $tenant) { 
         $tid = $tenant->ID; 
         if (ef_is_tenant_billable($tid, $m, $y)) {
-            $rent = floatval(get_field('monthly_rent', $tid) ?: get_post_meta($tid, 'monthly_rent', true)); 
+            $rent_val = get_field('monthly_rent', $tid) ?: get_post_meta($tid, 'monthly_rent', true);
+            $rent = floatval(str_replace(',', '', $rent_val));
              
             if ($rent <= 0) continue; 
     
