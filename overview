@@ -66,7 +66,7 @@ if (!function_exists('ef_get_tenant_monthly_status')) {
             'paid' => $tenant_paid_this_month,
             'rent' => $monthly_rent,
             'balance' => max(0, $monthly_rent - $tenant_paid_this_month),
-            'is_fully_paid' => ($tenant_paid_this_month >= $monthly_rent && $monthly_rent > 0)
+            'is_fully_paid' => ($monthly_rent > 0) ? ($tenant_paid_this_month >= $monthly_rent) : ($tenant_paid_this_month > 0)
         );
     }
 }

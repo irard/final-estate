@@ -298,6 +298,17 @@ add_shortcode('monthly_breakdown', function() {
         }); 
     }); 
     </script> 
+
+    <div class="ef-breakdown-wrapper" style="margin-top: 24px;">
+        <div class="ef-breakdown-header" style="flex-direction: row; justify-content: space-between; align-items: center;">
+            <h3 class="ef-breakdown-title">Annual Collection Rate</h3>
+            <div class="ef-live-badge" style="background: #e6fffa; color: #234e52; border: 1px solid #b2f5ea; padding: 4px 12px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600;">Yearly</div>
+        </div>
+        <div style="font-size: 32px; font-weight: 800; color: #00a86b; margin-top: 12px;">
+            <?php echo do_shortcode('[collected_rate_final]'); ?>
+        </div>
+        <div style="font-size: 14px; color: #64748b; margin-top: 4px;">Overall collection performance based on fully paid tenant-months across all properties.</div>
+    </div>
  
     <?php 
     return ob_get_clean(); 
@@ -746,7 +757,7 @@ if (!function_exists('ef_get_tenant_monthly_status')) {
             'paid' => $tenant_paid_this_month,
             'rent' => $monthly_rent,
             'balance' => max(0, $monthly_rent - $tenant_paid_this_month),
-            'is_fully_paid' => ($tenant_paid_this_month >= $monthly_rent && $monthly_rent > 0)
+            'is_fully_paid' => ($monthly_rent > 0) ? ($tenant_paid_this_month >= $monthly_rent) : ($tenant_paid_this_month > 0)
         );
     }
 }
