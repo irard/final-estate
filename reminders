@@ -475,41 +475,46 @@ add_shortcode('upcoming_list_card', function() {
     
   
 add_shortcode('paid_list_card', function() {    
-    $now_str = function_exists('current_time') ? current_time('mysql') : 'now';  
-    $today = new DateTimeImmutable($now_str);  
-    $current_year  = $today->format('Y');    
-    $current_month = $today->format('m');    
-    
-    $t_query = new WP_Query(array('post_type' => 'ef_tenant', 'post_status' => 'publish', 'posts_per_page' => -1));    
-    $items_html = ''; $count = 0;    
-    
-    if ($t_query->have_posts()) {    
-        while ($t_query->have_posts()) {    
-            $t_query->the_post();    
-            $t_id = get_the_ID();    
-            if (!ef_is_tenant_billable($t_id, $current_month, $current_year)) continue;
-            $status = ef_get_tenant_monthly_status($t_id, $current_month, $current_year);    
-    
-            if ($status['is_fully_paid']) {    
-                $count++;    
-                $property = ef_get_property_display_name($t_id);    
-                $tenant_name = get_the_title($t_id);    
-                $items_html .= "    
-                <div class='ef-reminder-item'>    
-                    <div>    
-                        <div class='ef-reminder-item-name'>" . esc_html($tenant_name) . "</div>    
-                        <div class='ef-reminder-item-sub'>" . esc_html($property) . "</div>    
-                    </div>    
-                    <div style='text-align: right;'>    
-                        <div class='ef-reminder-item-amount paid'>Paid</div>    
-                        <div class='ef-reminder-item-badge'>✓ Settled</div>    
-                    </div>    
-                </div>";    
-            }    
+    $p_query = new WP_Query([
+        'post_type'      => 'payment',
+        'post_status'    => ['publish', 'future'],
+        'posts_per_page' => 6,
+        'orderby'        => 'date',
+        'order'          => 'DESC'
+    ]);
+
+    $items_html = '';
+    $count = 0;
+
+    if ($p_query->have_posts()) {
+        while ($p_query->have_posts()) {
+            $p_query->the_post();
+            $pay_id = get_the_ID();
+            $tid = get_field('associated_tenant', $pay_id);
+            $name = $tid ? get_the_title($tid) : 'Unknown Tenant';
+            $amount = get_field('amount_paid', $pay_id);
+            $method = get_field('mode_of_payment', $pay_id) ?: 'Bank Transfer';
+
+            $raw_date = get_field('date_of_payment', $pay_id);
+            $display_date = $raw_date ? date('j/n/Y', strtotime($raw_date)) : get_the_date('j/n/Y');
+            $period = $raw_date ? date('Y-m', strtotime($raw_date)) : get_the_date('Y-m');
+
+            $count++;
+            $items_html .= "
+            <div class='ef-reminder-item'>
+                <div>
+                    <div class='ef-reminder-item-name'>" . esc_html($name) . "</div>
+                    <div class='ef-reminder-item-sub'>" . esc_html($method) . " · " . esc_html($period) . "</div>
+                </div>
+                <div style='text-align: right;'>
+                    <div class='ef-reminder-item-amount paid'>AED " . number_format(floatval($amount)) . "</div>
+                    <div class='ef-reminder-item-badge'>✓ " . esc_html($display_date) . "</div>
+                </div>
+            </div>";
         }    
         wp_reset_postdata();    
     }    
-    return ef_render_reminder_card('paid', 'Paid', $items_html, $count);    
+    return ef_render_reminder_card('paid', 'Recent Payments', $items_html, $count);
 });    
     
 add_shortcode('outstanding_tenants', function() {   
