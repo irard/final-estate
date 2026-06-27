@@ -44,6 +44,32 @@ if (!function_exists('ef_get_dashboard_period')) {
     }
 }
 
+if (!function_exists('ef_get_payment_tenant_id')) {
+    function ef_get_payment_tenant_id($p_id) {
+        $t = get_field('associated_tenant', $p_id) ?: get_post_meta($p_id, 'associated_tenant', true);
+        if (!$t) {
+            $t = get_field('select_tenant', $p_id) ?: get_post_meta($p_id, 'select_tenant', true);
+        }
+        if (!$t) return 0;
+        if (is_array($t)) {
+            $item = $t[0];
+            return is_object($item) ? $item->ID : (is_array($item) ? ($item['ID'] ?? 0) : intval($item));
+        }
+        if (is_object($t)) return $t->ID;
+        return intval($t);
+    }
+}
+
+if (!function_exists('ef_get_payment_period')) {
+    function ef_get_payment_period($p_id) {
+        $p = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true);
+        if ($p) return substr($p, 0, 7);
+        $d = get_field('date_of_payment', $p_id) ?: get_post_meta($p_id, 'date_of_payment', true);
+        if ($d) return date('Y-m', strtotime($d));
+        return get_the_date('Y-m', $p_id);
+    }
+}
+
 if (!function_exists('ef_get_tenant_monthly_status')) {
     function ef_get_tenant_monthly_status($t_id, $m, $y) {
         $rent = floatval(get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true));
@@ -51,15 +77,20 @@ if (!function_exists('ef_get_tenant_monthly_status')) {
 
         $payments = get_posts([
             'post_type' => 'payment',
-            'post_status' => ['publish', 'future'],
+            'post_status' => ['publish', 'future', 'pending', 'draft', 'private'],
             'posts_per_page' => -1,
-            'meta_query' => [['key' => 'associated_tenant', 'value' => $t_id, 'compare' => '=']]
+            'meta_query' => [
+                'relation' => 'OR',
+                ['key' => 'associated_tenant', 'value' => $t_id, 'compare' => '='],
+                ['key' => 'select_tenant', 'value' => $t_id, 'compare' => '='],
+                ['key' => 'select_tenant', 'value' => '"' . $t_id . '"', 'compare' => 'LIKE'],
+            ]
         ]);
 
         $paid = 0;
         foreach ($payments as $p) {
             $p_id = $p->ID;
-            $p_period = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true) ?: get_the_date('Y-m', $p_id);
+            $p_period = ef_get_payment_period($p_id);
             if (strpos($p_period, $period_match) === 0) {
                 $paid += floatval(get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true));
             }
@@ -85,7 +116,7 @@ add_shortcode('ef_total_payments', function() {
     $current_period = $period_data['period'];
     $args = array(  
         'post_type'      => 'payment',   
-        'post_status'    => ['publish', 'future'],
+        'post_status'    => ['publish', 'future', 'pending', 'draft', 'private'],
         'posts_per_page' => -1,  
     );  
     $p_query = new WP_Query($args);  
@@ -94,7 +125,7 @@ add_shortcode('ef_total_payments', function() {
         while ($p_query->have_posts()) {  
             $p_query->the_post();  
             $p_id = get_the_ID();
-            $period = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true) ?: get_the_date('Y-m', $p_id);
+            $period = ef_get_payment_period($p_id);
             if (strpos($period, $current_period) === 0) {
                 $amount = get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true);   
                 if ($amount) { $monthly_revenue += floatval($amount); }  
@@ -132,7 +163,7 @@ add_shortcode('ef_yearly_revenue', function() {
     $current_year = $period_data['y'];
     $p_query = new WP_Query(array(
         'post_type'      => 'payment', 
-        'post_status'    => ['publish', 'future'], 
+        'post_status'    => ['publish', 'future', 'pending', 'draft', 'private'],
         'posts_per_page' => -1,
     ));
     $total_yearly_revenue = 0.00;  
@@ -140,7 +171,7 @@ add_shortcode('ef_yearly_revenue', function() {
         while ($p_query->have_posts()) {  
             $p_query->the_post();  
             $pay_id = get_the_ID();   
-            $period = get_field('payment_period', $pay_id) ?: get_post_meta($pay_id, 'payment_period', true) ?: get_the_date('Y-m', $pay_id);
+            $period = ef_get_payment_period($pay_id);
             if (strpos($period, (string)$current_year) === 0) {
                 $amt_paid = get_field('amount_paid', $pay_id) ?: get_post_meta($pay_id, 'amount_paid', true);  
                 if ($amt_paid) { $total_yearly_revenue += floatval($amt_paid); }  
@@ -188,28 +219,57 @@ add_shortcode('ef_yearly_expected_revenue', function() {
 add_shortcode('ef_collected_rate', function() {  
     $period_data = ef_get_dashboard_period();
     $m = $period_data['m']; $y = $period_data['y'];
+    $current_period = $period_data['period'];
 
+    // 1. Fetch all billable tenants
     $t_query = new WP_Query(array('post_type' => 'ef_tenant', 'post_status' => 'publish', 'posts_per_page' => -1));  
-    $total_billable = 0;
-    $paid_count = 0;
-
+    $billable_tenants = [];
     if ($t_query->have_posts()) {  
         while ($t_query->have_posts()) {  
             $t_query->the_post();  
             $t_id = get_the_ID();
             if (ef_is_tenant_billable($t_id, $m, $y)) {
-                $total_billable++;
-                $status = ef_get_tenant_monthly_status($t_id, $m, $y);
-                if ($status['is_fully_paid']) {
-                    $paid_count++;
-                }
+                $billable_tenants[$t_id] = floatval(get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true));
             }
         }  
         wp_reset_postdata();  
-    }  
+    }
 
-    if ($total_billable <= 0) return '0%';
-    $collection_rate = ($paid_count / $total_billable) * 100;
+    if (empty($billable_tenants)) return '0%';
+
+    // 2. Fetch all payments for this period
+    $p_query = new WP_Query(array(
+        'post_type' => 'payment',
+        'post_status' => ['publish', 'future', 'pending', 'draft', 'private'],
+        'posts_per_page' => -1
+    ));
+
+    $payments_by_tenant = [];
+    if ($p_query->have_posts()) {
+        while ($p_query->have_posts()) {
+            $p_query->the_post();
+            $p_id = get_the_ID();
+            if (strpos(ef_get_payment_period($p_id), $current_period) === 0) {
+                $tid = ef_get_payment_tenant_id($p_id);
+                if ($tid && isset($billable_tenants[$tid])) {
+                    if (!isset($payments_by_tenant[$tid])) $payments_by_tenant[$tid] = 0;
+                    $payments_by_tenant[$tid] += floatval(get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true));
+                }
+            }
+        }
+        wp_reset_postdata();
+    }
+
+    // 3. Count fully paid tenants
+    $paid_count = 0;
+    foreach ($billable_tenants as $t_id => $rent) {
+        $paid = $payments_by_tenant[$t_id] ?? 0;
+        if (($rent > 0 && $paid >= $rent) || ($rent == 0 && $paid > 0)) {
+            $paid_count++;
+        }
+    }
+
+    $collection_rate = ($paid_count / count($billable_tenants)) * 100;
     return round($collection_rate) . '%';  
 }); 
  
@@ -257,7 +317,6 @@ add_shortcode('ef_card_active_tenants', function() {
 add_shortcode('ef_card_outstanding_total', function() { 
     $period_data = ef_get_dashboard_period();
     $m = $period_data['m']; $y = $period_data['y'];
-    $current_period = $period_data['period'];
     $tenants = new WP_Query(['post_type' => 'ef_tenant', 'post_status' => 'publish', 'posts_per_page' => -1]); 
     $due_count = 0; 
     if ($tenants->have_posts()) { 
@@ -265,26 +324,8 @@ add_shortcode('ef_card_outstanding_total', function() {
             $tenants->the_post(); 
             $t_id = get_the_ID(); 
             if (ef_is_tenant_billable($t_id, $m, $y)) {
-                $rent = floatval(get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true)); 
-                $payments = new WP_Query([
-                    'post_type' => 'payment', 
-                    'post_status' => ['publish', 'future'], 
-                    'meta_query' => [
-                        ['key' => 'associated_tenant', 'value' => $t_id, 'compare' => '=']
-                    ]
-                ]);
-                $paid = 0; 
-                if ($payments->have_posts()) { 
-                    while ($payments->have_posts()) { 
-                        $payments->the_post(); 
-                        $p_id = get_the_ID();
-                        $period = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true) ?: get_the_date('Y-m', $p_id);
-                        if (strpos($period, $current_period) === 0) {
-                            $paid += floatval(get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true)); 
-                        }
-                    } 
-                } 
-                if ($rent > $paid) { $due_count++; } 
+                $status = ef_get_tenant_monthly_status($t_id, $m, $y);
+                if (!$status['is_fully_paid']) { $due_count++; }
             }
         } 
         wp_reset_postdata(); 
@@ -416,7 +457,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 
         $p_query = new WP_Query(array( 
             'post_type'      => 'payment', 
-            'post_status'    => ['publish', 'future'],
+            'post_status'    => ['publish', 'future', 'pending', 'draft', 'private'],
             'posts_per_page' => -1, 
         )); 
          
@@ -425,7 +466,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
             while ($p_query->have_posts()) { 
                 $p_query->the_post(); 
                 $p_id = get_the_ID();
-                $period = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true) ?: get_the_date('Y-m', $p_id);
+                $period = ef_get_payment_period($p_id);
                 if (strpos($period, $period_match) === 0) {
                     $pay_val = get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true); 
                     if ($pay_val) { $revenue_collected += floatval($pay_val); } 
@@ -556,7 +597,7 @@ add_shortcode('monthly_bar_chart', function() {
         $period_match = $selected_year . '-' . $padded_month;
         $p_query = new WP_Query(array( 
             'post_type'      => 'payment', 
-            'post_status'    => ['publish', 'future'],
+            'post_status'    => ['publish', 'future', 'pending', 'draft', 'private'],
             'posts_per_page' => -1, 
         )); 
          
@@ -565,7 +606,7 @@ add_shortcode('monthly_bar_chart', function() {
             while ($p_query->have_posts()) { 
                 $p_query->the_post(); 
                 $p_id = get_the_ID();
-                $period = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true) ?: get_the_date('Y-m', $p_id);
+                $period = ef_get_payment_period($p_id);
                 if (strpos($period, $period_match) === 0) {
                     $pay_val = get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true); 
                     if ($pay_val) { $revenue_collected += floatval($pay_val); } 
@@ -678,7 +719,7 @@ add_shortcode('ef_outstanding_tenants_widget', function() {
     } 
     $p_query = new WP_Query([ 
         'post_type'      => 'payment', 
-        'post_status'    => ['publish', 'future'],
+        'post_status'    => ['publish', 'future', 'pending', 'draft', 'private'],
         'posts_per_page' => -1, 
     ]); 
  
@@ -687,9 +728,9 @@ add_shortcode('ef_outstanding_tenants_widget', function() {
         while ($p_query->have_posts()) { 
             $p_query->the_post(); 
             $pay_id = get_the_ID(); 
-            $period = get_field('payment_period', $pay_id) ?: get_post_meta($pay_id, 'payment_period', true) ?: get_the_date('Y-m', $pay_id);
+            $period = ef_get_payment_period($pay_id);
             if (strpos($period, $current_period) === 0) {
-                $tid = get_field('associated_tenant', $pay_id) ?: get_post_meta($pay_id, 'associated_tenant', true); 
+                $tid = ef_get_payment_tenant_id($pay_id);
                 $amount = floatval(get_field('amount_paid', $pay_id) ?: get_post_meta($pay_id, 'amount_paid', true)); 
                  
                 if ($tid) { 
