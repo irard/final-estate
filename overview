@@ -44,7 +44,9 @@ add_shortcode('ef_total_tenants', function() {
 });  
   
 add_shortcode('ef_total_payments', function() {  
-    $current_period = date('Y-m');
+    $m = isset($_GET['ef_month']) ? str_pad(intval($_GET['ef_month']), 2, '0', STR_PAD_LEFT) : date('m');
+    $y = isset($_GET['ef_year']) ? intval($_GET['ef_year']) : date('Y');
+    $current_period = "$y-$m";
     $args = array(  
         'post_type'      => 'payment',   
         'post_status'    => ['publish', 'future'],
@@ -70,7 +72,8 @@ add_shortcode('ef_total_payments', function() {
 add_shortcode('ef_total_outstanding', function() {  
     $t_query = new WP_Query(array('post_type' => 'ef_tenant', 'post_status' => 'publish', 'posts_per_page' => -1));  
     $rent_expected = 0.00;  
-    $m = date('m'); $y = date('Y');
+    $m = isset($_GET['ef_month']) ? str_pad(intval($_GET['ef_month']), 2, '0', STR_PAD_LEFT) : date('m');
+    $y = isset($_GET['ef_year']) ? intval($_GET['ef_year']) : date('Y');
     if ($t_query->have_posts()) {  
         while ($t_query->have_posts()) {  
             $t_query->the_post();  
@@ -89,7 +92,7 @@ add_shortcode('ef_total_outstanding', function() {
 });  
   
 add_shortcode('ef_yearly_revenue', function() {  
-    $current_year = date('Y');  
+    $current_year = isset($_GET['ef_year']) ? intval($_GET['ef_year']) : date('Y');
     $p_query = new WP_Query(array(
         'post_type'      => 'payment', 
         'post_status'    => ['publish', 'future'], 
@@ -112,7 +115,7 @@ add_shortcode('ef_yearly_revenue', function() {
 });  
 
 add_shortcode('ef_yearly_expected_revenue', function() {
-    $current_year = date('Y');
+    $current_year = isset($_GET['ef_year']) ? intval($_GET['ef_year']) : date('Y');
     $t_query = new WP_Query(array(
         'post_type'      => 'ef_tenant',
         'post_status'    => 'publish',
@@ -144,25 +147,124 @@ add_shortcode('ef_yearly_expected_revenue', function() {
     return number_format($yearly_expected);
 });
   
-add_shortcode('ef_collected_rate', function() {  
+add_shortcode('ef_monthly_collected_rate', function() {
+    $m = isset($_GET['ef_month']) ? str_pad(intval($_GET['ef_month']), 2, '0', STR_PAD_LEFT) : date('m');
+    $y = isset($_GET['ef_year']) ? intval($_GET['ef_year']) : date('Y');
+    $period_match = "$y-$m";
+
     $t_query = new WP_Query(array('post_type' => 'ef_tenant', 'post_status' => 'publish', 'posts_per_page' => -1));  
-    $rent_expected = 0.00;  
-    $m = date('m'); $y = date('Y');
+    $billable_tenants = [];
     if ($t_query->have_posts()) {  
         while ($t_query->have_posts()) {  
             $t_query->the_post();  
             $t_id = get_the_ID();
             if (ef_is_tenant_billable($t_id, $m, $y)) {
-                $rent_val = get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true);  
-                if ($rent_val) { $rent_expected += floatval($rent_val); }  
+                $rent_val = floatval(get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true));
+                if ($rent_val > 0) {
+                    $billable_tenants[$t_id] = $rent_val;
+                }
             }
         }  
         wp_reset_postdata();  
     }  
-    if ($rent_expected <= 0) return '0%';  
-    $collected_str = str_replace(',', '', do_shortcode('[ef_total_payments]')); 
-    $rent_collected = floatval($collected_str);  
-    $collection_rate = ($rent_collected / $rent_expected) * 100;  
+
+    if (empty($billable_tenants)) return '0%';
+
+    $p_query = new WP_Query(array(
+        'post_type'      => 'payment',
+        'post_status'    => ['publish', 'future'],
+        'posts_per_page' => -1,
+    ));
+
+    $payments_by_tenant = [];
+    if ($p_query->have_posts()) {
+        while ($p_query->have_posts()) {
+            $p_query->the_post();
+            $p_id = get_the_ID();
+            $period = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true) ?: get_the_date('Y-m', $p_id);
+            if (strpos($period, $period_match) === 0) {
+                $tid = get_field('associated_tenant', $p_id) ?: get_post_meta($p_id, 'associated_tenant', true);
+                if ($tid && isset($billable_tenants[$tid])) {
+                    $amount = floatval(get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true));
+                    if (!isset($payments_by_tenant[$tid])) $payments_by_tenant[$tid] = 0;
+                    $payments_by_tenant[$tid] += $amount;
+                }
+            }
+        }
+        wp_reset_postdata();
+    }
+
+    $paid_tenants_count = 0;
+    foreach ($billable_tenants as $tid => $rent) {
+        $paid_amount = isset($payments_by_tenant[$tid]) ? $payments_by_tenant[$tid] : 0;
+        if ($paid_amount >= $rent) {
+            $paid_tenants_count++;
+        }
+    }
+
+    $collection_rate = ($paid_tenants_count / count($billable_tenants)) * 100;
+    return round($collection_rate) . '%';
+});
+
+add_shortcode('ef_collected_rate', function() {
+    $y = isset($_GET['ef_year']) ? intval($_GET['ef_year']) : date('Y');
+
+    $t_query = new WP_Query(array('post_type' => 'ef_tenant', 'post_status' => 'publish', 'posts_per_page' => -1));
+    $tenants = [];
+    if ($t_query->have_posts()) {
+        while ($t_query->have_posts()) {
+            $t_query->the_post();
+            $t_id = get_the_ID();
+            $tenants[$t_id] = floatval(get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true));
+        }
+        wp_reset_postdata();
+    }
+
+    if (empty($tenants)) return '0%';
+
+    $p_query = new WP_Query(array(
+        'post_type'      => 'payment',
+        'post_status'    => ['publish', 'future'],
+        'posts_per_page' => -1,
+    ));
+
+    $payments_by_period_tenant = [];
+    if ($p_query->have_posts()) {
+        while ($p_query->have_posts()) {
+            $p_query->the_post();
+            $p_id = get_the_ID();
+            $period = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true) ?: get_the_date('Y-m', $p_id);
+            if (strpos($period, (string)$y) === 0) {
+                $tid = get_field('associated_tenant', $p_id) ?: get_post_meta($p_id, 'associated_tenant', true);
+                if ($tid && isset($tenants[$tid])) {
+                    $amount = floatval(get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true));
+                    if (!isset($payments_by_period_tenant[$period][$tid])) $payments_by_period_tenant[$period][$tid] = 0;
+                    $payments_by_period_tenant[$period][$tid] += $amount;
+                }
+            }
+        }
+        wp_reset_postdata();
+    }
+
+    $total_billable_tenant_months = 0;
+    $total_paid_tenant_months = 0;
+
+    for ($m = 1; $m <= 12; $m++) {
+        $padded_month = str_pad($m, 2, '0', STR_PAD_LEFT);
+        $period_match = "$y-$padded_month";
+        foreach ($tenants as $tid => $rent) {
+            if ($rent > 0 && ef_is_tenant_billable($tid, $padded_month, $y)) {
+                $total_billable_tenant_months++;
+                $paid_amount = isset($payments_by_period_tenant[$period_match][$tid]) ? $payments_by_period_tenant[$period_match][$tid] : 0;
+                if ($paid_amount >= $rent) {
+                    $total_paid_tenant_months++;
+                }
+            }
+        }
+    }
+
+    if ($total_billable_tenant_months <= 0) return '0%';
+    $collection_rate = ($total_paid_tenant_months / $total_billable_tenant_months) * 100;
     return round($collection_rate) . '%';  
 }); 
  
@@ -196,7 +298,7 @@ function ef_render_dashboard_card($icon_type, $value, $label, $badge_text = '', 
  
  
 add_shortcode('ef_card_collected_this_month', function() { 
-    return ef_render_dashboard_card('wallet', do_shortcode('[ef_total_payments]'), 'Collected this month', do_shortcode('[ef_collected_rate]'), 'AED '); 
+    return ef_render_dashboard_card('wallet', do_shortcode('[ef_total_payments]'), 'Collected this month', do_shortcode('[ef_monthly_collected_rate]'), 'AED ');
 }); 
  
 add_shortcode('ef_card_active_tenants', function() { 
@@ -206,8 +308,9 @@ add_shortcode('ef_card_active_tenants', function() {
 }); 
  
 add_shortcode('ef_card_outstanding_total', function() { 
-    $m = date('m'); $y = date('Y');
-    $current_period = date('Y-m');
+    $m = isset($_GET['ef_month']) ? str_pad(intval($_GET['ef_month']), 2, '0', STR_PAD_LEFT) : date('m');
+    $y = isset($_GET['ef_year']) ? intval($_GET['ef_year']) : date('Y');
+    $current_period = "$y-$m";
     $tenants = new WP_Query(['post_type' => 'ef_tenant', 'post_status' => 'publish', 'posts_per_page' => -1]); 
     $due_count = 0; 
     if ($tenants->have_posts()) { 
