@@ -286,7 +286,7 @@ if (!function_exists('ef_render_reminder_card')) {
     
         <script>    
         (function() {    
-            const itemsPerPage = 5;    
+            const itemsPerPage = 4;    
             let currentPage = 1;    
             const container = document.getElementById('ef-{$id_prefix}-container');    
             if(!container) return;    
