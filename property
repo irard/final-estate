@@ -186,8 +186,9 @@ function ef_handle_get_properties_dashboard() {
     } 
  
  
-    $current_month = date('m'); 
-    $current_year  = date('Y'); 
+    $m = isset($_POST['ef_month']) ? str_pad(intval($_POST['ef_month']), 2, '0', STR_PAD_LEFT) : date('m');
+    $y = isset($_POST['ef_year']) ? intval($_POST['ef_year']) : date('Y');
+    $period_match = "$y-$m";
  
     $all_payments = []; 
     if (!empty($all_tenant_ids)) { 
@@ -195,15 +196,19 @@ function ef_handle_get_properties_dashboard() {
             'post_type'      => 'payment', 
             'posts_per_page' => -1, 
             'post_status'    => ['publish', 'future'], 
-            'date_query'     => [['year' => $current_year, 'month' => $current_month]], 
             'meta_query'     => [['key' => 'associated_tenant', 'value' => $all_tenant_ids, 'compare' => 'IN']] 
         ]); 
     } 
  
     $payments_by_tenant = []; 
     foreach ($all_payments as $pay) { 
-        $t_id = get_post_meta($pay->ID, 'associated_tenant', true); 
-        $payments_by_tenant[$t_id][] = $pay; 
+        $period = get_field('payment_period', $pay->ID) ?: get_post_meta($pay->ID, 'payment_period', true) ?: get_the_date('Y-m', $pay->ID);
+        if (strpos($period, $period_match) === 0) {
+            $t_id = get_post_meta($pay->ID, 'associated_tenant', true);
+            if (!isset($payments_by_tenant[$t_id])) $payments_by_tenant[$t_id] = 0;
+            $amount_paid = get_field('amount_paid', $pay->ID) ?: get_post_meta($pay->ID, 'amount_paid', true);
+            $payments_by_tenant[$t_id] += floatval($amount_paid);
+        }
     } 
  
     $data = []; 
@@ -220,28 +225,25 @@ function ef_handle_get_properties_dashboard() {
         } 
  
         $expected = 0; 
-        $collected = 0; 
-        foreach ($p_tenants as $t) { if (function_exists("ef_is_tenant_billable") && !ef_is_tenant_billable($t->ID, date("m"), date("Y"))) continue; 
-            $monthly_rent = 0; 
-            if (function_exists('get_field')) { 
-                $monthly_rent = floatval(get_field('monthly_rent', $t->ID)); 
-            } 
-            if (!$monthly_rent) { 
-                $monthly_rent = floatval(get_post_meta($t->ID, 'monthly_rent', true)); 
-            } 
-            $expected += $monthly_rent; 
- 
-            $t_payments = isset($payments_by_tenant[$t->ID]) ? $payments_by_tenant[$t->ID] : []; 
-            foreach ($t_payments as $pay) { 
-                $amount_paid = 0; 
-                if (function_exists('get_field')) { 
-                    $amount_paid = floatval(get_field('amount_paid', $pay->ID)); 
-                } 
-                if (!$amount_paid) { 
-                    $amount_paid = floatval(get_post_meta($pay->ID, 'amount_paid', true)); 
-                } 
-                $collected += $amount_paid; 
-            } 
+        $collected = 0;
+        $billable_count = 0;
+        $paid_in_full_count = 0;
+
+        foreach ($p_tenants as $t) {
+            if (function_exists("ef_is_tenant_billable") && !ef_is_tenant_billable($t->ID, $m, $y)) continue;
+
+            $monthly_rent = floatval(get_field('monthly_rent', $t->ID) ?: get_post_meta($t->ID, 'monthly_rent', true));
+            if ($monthly_rent > 0) {
+                $billable_count++;
+                $expected += $monthly_rent;
+
+                $paid_amount = isset($payments_by_tenant[$t->ID]) ? $payments_by_tenant[$t->ID] : 0;
+                $collected += $paid_amount;
+
+                if ($paid_amount >= $monthly_rent) {
+                    $paid_in_full_count++;
+                }
+            }
         } 
  
         $data[] = [ 
@@ -252,7 +254,9 @@ function ef_handle_get_properties_dashboard() {
             'occupied'  => $occupied, 
             'address'   => function_exists('get_field') ? get_field('add_address', $p->ID) : get_post_meta($p->ID, 'add_address', true), 
             'expected'  => $expected, 
-            'collected' => $collected 
+            'collected' => $collected,
+            'billable_count' => $billable_count,
+            'paid_in_full_count' => $paid_in_full_count
         ]; 
     } 
     wp_send_json_success($data); 
@@ -471,7 +475,7 @@ add_action('wp_footer', function() { ?>
             } else { 
                 grid.innerHTML = slice.map((p) => { 
                 const occPct = p.units > 0 ? (p.occupied / p.units) * 100 : 0; 
-                const colPct = p.expected > 0 ? Math.round((p.collected / p.expected) * 100) : 0; 
+                const colPct = p.billable_count > 0 ? Math.round((p.paid_in_full_count / p.billable_count) * 100) : 0;
                 const activeClass = (window._propertiesActiveId && window._propertiesActiveId == p.id) ? 'active' : ''; 
  
                 return ` 
@@ -558,6 +562,10 @@ add_action('wp_footer', function() { ?>
                     console.error('Property nonce missing.'); 
                     return; 
                 } 
+
+                const urlParams = new URLSearchParams(window.location.search);
+                if (urlParams.has('ef_month')) dashboardData.append('ef_month', urlParams.get('ef_month'));
+                if (urlParams.has('ef_year')) dashboardData.append('ef_year', urlParams.get('ef_year'));
  
                 fetch(ajaxUrl, { method: 'POST', body: dashboardData }) 
                 .then(r => r.json()) 
@@ -621,7 +629,7 @@ add_action('wp_footer', function() { ?>
  
             const available = Math.max(0, prop.units - prop.occupied); 
             const isAvailable = prop.occupied < prop.units; 
-            const colPct = prop.expected > 0 ? Math.round((prop.collected / prop.expected) * 100) : 0; 
+            const colPct = prop.billable_count > 0 ? Math.round((prop.paid_in_full_count / prop.billable_count) * 100) : 0;
  
             const tenantsHtml = tenants.length 
                 ? tenants.map(t => ` 
