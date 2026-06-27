@@ -179,7 +179,8 @@ add_shortcode('monthly_breakdown', function() {
  
         $p_query = new WP_Query($args); 
         $revenue_collected = 0.00; 
- 
+        $payments_by_tenant = [];
+
         if ($p_query->have_posts()) { 
             while ($p_query->have_posts()) { 
                 $p_query->the_post(); 
@@ -190,6 +191,11 @@ add_shortcode('monthly_breakdown', function() {
                     if ($pay_val) { 
                         $revenue_collected += floatval($pay_val); 
                     } 
+                    $tid = get_field('associated_tenant', $pay_id) ?: get_post_meta($pay_id, 'associated_tenant', true);
+                    if ($tid) {
+                        if (!isset($payments_by_tenant[$tid])) $payments_by_tenant[$tid] = 0;
+                        $payments_by_tenant[$tid] += floatval($pay_val);
+                    }
                 }
             } 
             wp_reset_postdata(); 
@@ -198,8 +204,18 @@ add_shortcode('monthly_breakdown', function() {
         $gap = $monthly_rent_expected - $revenue_collected; 
         if ($gap < 0) { $gap = 0; } 
  
-        $rate = ($monthly_rent_expected > 0) ? ($revenue_collected / $monthly_rent_expected) * 100 : 0; 
-        if ($rate > 100) { $rate = 100; } 
+        $billable_tenants_count = 0;
+        $paid_tenants_count = 0;
+        foreach ($tenants as $tenant) {
+            if ($tenant['rent'] > 0 && ef_is_tenant_billable($tenant['id'], $padded_month, $selected_year)) {
+                $billable_tenants_count++;
+                $paid_amount = isset($payments_by_tenant[$tenant['id']]) ? $payments_by_tenant[$tenant['id']] : 0;
+                if ($paid_amount >= $tenant['rent']) {
+                    $paid_tenants_count++;
+                }
+            }
+        }
+        $rate = ($billable_tenants_count > 0) ? ($paid_tenants_count / $billable_tenants_count) * 100 : 0;
  
         $monthly_data[$m] = array( 
             'label'    => $chart_labels[$m - 1] . ' ' . $selected_year, 
@@ -339,6 +355,7 @@ add_shortcode('ef_monthly_breakdown', function() {
         ));
 
         $revenue_collected = 0.00;
+        $payments_by_tenant = [];
         if ($p_query->have_posts()) {
             while ($p_query->have_posts()) {
                 $p_query->the_post();
@@ -347,21 +364,34 @@ add_shortcode('ef_monthly_breakdown', function() {
                 if (strpos($period, $period_match) === 0) {
                     $pay_val = get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true);
                     if ($pay_val) { $revenue_collected += floatval($pay_val); }
+                    $tid = get_field('associated_tenant', $p_id) ?: get_post_meta($p_id, 'associated_tenant', true);
+                    if ($tid) {
+                        if (!isset($payments_by_tenant[$tid])) $payments_by_tenant[$tid] = 0;
+                        $payments_by_tenant[$tid] += floatval($pay_val);
+                    }
                 }
             }
             wp_reset_postdata();
         }
 
         $monthly_rent_expected = 0.00;
+        $billable_tenants_count = 0;
+        $paid_tenants_count = 0;
         foreach ($tenants as $tenant) {
             if (ef_is_tenant_billable($tenant['id'], $padded_month, $current_year)) {
                 $monthly_rent_expected += $tenant['rent'];
+                if ($tenant['rent'] > 0) {
+                    $billable_tenants_count++;
+                    $paid_amount = isset($payments_by_tenant[$tenant['id']]) ? $payments_by_tenant[$tenant['id']] : 0;
+                    if ($paid_amount >= $tenant['rent']) {
+                        $paid_tenants_count++;
+                    }
+                }
             }
         }
 
         $gap = max(0, $monthly_rent_expected - $revenue_collected);
-        $rate = ($monthly_rent_expected > 0) ? ($revenue_collected / $monthly_rent_expected) * 100 : 0;
-        if ($rate > 100) { $rate = 100; }
+        $rate = ($billable_tenants_count > 0) ? ($paid_tenants_count / $billable_tenants_count) * 100 : 0;
 
         $monthly_data[$m] = array(
             'label'    => $chart_labels[$m - 1] . ' ' . $current_year,
@@ -468,6 +498,7 @@ function ef_handle_report_export_download() {
     $months = array('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec');
     $report_rows = array();
     $total_yearly_revenue = 0; $total_yearly_expected = 0; $total_yearly_gap = 0;
+    $total_yearly_billable_count = 0; $total_yearly_paid_count = 0;
 
     foreach ($months as $index => $month_name) {
         $padded_month = str_pad($index + 1, 2, '0', STR_PAD_LEFT);
@@ -480,6 +511,7 @@ function ef_handle_report_export_download() {
         ));
 
         $collected_monthly = 0.00;
+        $payments_by_tenant = [];
         if ($p_query->have_posts()) {
             while ($p_query->have_posts()) {
                 $p_query->the_post();
@@ -488,24 +520,40 @@ function ef_handle_report_export_download() {
                 if (strpos($period, $period_match) === 0) {
                     $pay_val = get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true);
                     if ($pay_val) { $collected_monthly += floatval($pay_val); }
+                    $tid = get_field('associated_tenant', $p_id) ?: get_post_meta($p_id, 'associated_tenant', true);
+                    if ($tid) {
+                        if (!isset($payments_by_tenant[$tid])) $payments_by_tenant[$tid] = 0;
+                        $payments_by_tenant[$tid] += floatval($pay_val);
+                    }
                 }
             }
             wp_reset_postdata();
         }
 
         $expected_monthly = 0.00;
+        $billable_tenants_count = 0;
+        $paid_tenants_count = 0;
         foreach ($tenants as $tenant) {
             if (ef_is_tenant_billable($tenant['id'], $padded_month, $year)) {
                 $expected_monthly += $tenant['rent'];
+                if ($tenant['rent'] > 0) {
+                    $billable_tenants_count++;
+                    $paid_amount = isset($payments_by_tenant[$tenant['id']]) ? $payments_by_tenant[$tenant['id']] : 0;
+                    if ($paid_amount >= $tenant['rent']) {
+                        $paid_tenants_count++;
+                    }
+                }
             }
         }
 
         $gap_monthly = max(0, $expected_monthly - $collected_monthly);
-        $rate_monthly = ($expected_monthly > 0) ? round(($collected_monthly / $expected_monthly) * 100) : 0;
+        $rate_monthly = ($billable_tenants_count > 0) ? round(($paid_tenants_count / $billable_tenants_count) * 100) : 0;
 
         $total_yearly_revenue += $collected_monthly;
         $total_yearly_expected += $expected_monthly;
         $total_yearly_gap += $gap_monthly;
+        $total_yearly_billable_count += $billable_tenants_count;
+        $total_yearly_paid_count += $paid_tenants_count;
 
         $report_rows[] = array(
             'month'    => $month_name . ' ' . $year,
@@ -515,7 +563,7 @@ function ef_handle_report_export_download() {
             'rate'     => $rate_monthly . '%'
         );
     }
-    $total_yearly_rate = ($total_yearly_expected > 0) ? round(($total_yearly_revenue / $total_yearly_expected) * 100) : 0;
+    $total_yearly_rate = ($total_yearly_billable_count > 0) ? round(($total_yearly_paid_count / $total_yearly_billable_count) * 100) : 0;
 
     if ($format === 'csv') {
         header('Content-Type: text/csv; charset=utf-8');
