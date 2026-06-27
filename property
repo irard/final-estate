@@ -35,6 +35,53 @@ if (!function_exists('ef_is_tenant_billable')) {
         return true; 
     } 
 } 
+
+if (!function_exists('ef_get_dashboard_period')) {
+    function ef_get_dashboard_period() {
+        $m = isset($_REQUEST['ef_month']) ? str_pad(intval($_REQUEST['ef_month']), 2, '0', STR_PAD_LEFT) : date('m');
+        $y = isset($_REQUEST['ef_year']) ? intval($_REQUEST['ef_year']) : date('Y');
+        return ['m' => $m, 'y' => $y, 'period' => "$y-$m"];
+    }
+}
+
+if (!function_exists('ef_get_payment_tenant_id')) {
+    function ef_get_payment_tenant_id($p_id) {
+        $t = get_field('associated_tenant', $p_id) ?: get_post_meta($p_id, 'associated_tenant', true);
+        if (!$t) {
+            $t = get_field('select_tenant', $p_id) ?: get_post_meta($p_id, 'select_tenant', true);
+        }
+        if (!$t) return 0;
+        if (is_array($t)) {
+            $item = $t[0];
+            return is_object($item) ? $item->ID : (is_array($item) ? ($item['ID'] ?? 0) : intval($item));
+        }
+        if (is_object($t)) return $t->ID;
+        return intval($t);
+    }
+}
+
+if (!function_exists('ef_get_payment_period')) {
+    function ef_get_payment_period($p_id) {
+        $p = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true);
+        if ($p) return substr($p, 0, 7);
+        $d = get_field('date_of_payment', $p_id) ?: get_post_meta($p_id, 'date_of_payment', true);
+        if ($d) return date('Y-m', strtotime($d));
+        return get_the_date('Y-m', $p_id);
+    }
+}
+
+if (!function_exists('ef_get_tenant_property_id')) {
+    function ef_get_tenant_property_id($t_id) {
+        $p = get_field('property_id', $t_id) ?: get_post_meta($t_id, 'property_id', true);
+        if (!$p) return 0;
+        if (is_array($p)) {
+            $item = $p[0];
+            return is_object($item) ? $item->ID : (is_array($item) ? ($item['ID'] ?? 0) : intval($item));
+        }
+        if (is_object($p)) return $p->ID;
+        return intval($p);
+    }
+}
 add_action('wp_ajax_save_property', 'ef_handle_save_property'); 
  
 if (!function_exists('ef_handle_save_property')) { 
@@ -167,43 +214,39 @@ function ef_handle_get_properties_dashboard() {
     $all_tenants = get_posts([ 
         'post_type'   => 'ef_tenant', 
         'post_status' => 'publish', 
-        'numberposts' => -1, 
-        'meta_query'  => [ 
-            [ 
-                'key'     => 'property_id', 
-                'value'   => $property_ids, 
-                'compare' => 'IN', 
-            ], 
-        ], 
+        'numberposts' => -1
     ]); 
  
     $tenants_by_property = []; 
     $all_tenant_ids = []; 
     foreach ($all_tenants as $t) { 
-        $p_id = get_post_meta($t->ID, 'property_id', true); 
-        $tenants_by_property[$p_id][] = $t; 
+        $p_id = ef_get_tenant_property_id($t->ID);
+        if ($p_id && in_array($p_id, $property_ids)) {
+            $tenants_by_property[$p_id][] = $t;
+        }
         $all_tenant_ids[] = $t->ID; 
     } 
  
  
-    $current_month = date('m'); 
-    $current_year  = date('Y'); 
+    $period_data = ef_get_dashboard_period();
+    $current_month = $period_data['m'];
+    $current_year  = $period_data['y'];
+    $current_period = $period_data['period'];
  
-    $all_payments = []; 
-    if (!empty($all_tenant_ids)) { 
-        $all_payments = get_posts([ 
-            'post_type'      => 'payment', 
-            'posts_per_page' => -1, 
-            'post_status'    => ['publish', 'future'], 
-            'date_query'     => [['year' => $current_year, 'month' => $current_month]], 
-            'meta_query'     => [['key' => 'associated_tenant', 'value' => $all_tenant_ids, 'compare' => 'IN']] 
-        ]); 
-    } 
+    $all_payments = get_posts([
+        'post_type'      => 'payment',
+        'numberposts'    => -1,
+        'post_status'    => ['publish', 'future', 'pending', 'draft', 'private']
+    ]);
  
     $payments_by_tenant = []; 
     foreach ($all_payments as $pay) { 
-        $t_id = get_post_meta($pay->ID, 'associated_tenant', true); 
-        $payments_by_tenant[$t_id][] = $pay; 
+        if (strpos(ef_get_payment_period($pay->ID), $current_period) === 0) {
+            $t_id = ef_get_payment_tenant_id($pay->ID);
+            if ($t_id) {
+                $payments_by_tenant[$t_id][] = $pay;
+            }
+        }
     } 
  
     $data = []; 
@@ -221,29 +264,33 @@ function ef_handle_get_properties_dashboard() {
  
         $expected = 0; 
         $collected = 0; 
-        foreach ($p_tenants as $t) { if (function_exists("ef_is_tenant_billable") && !ef_is_tenant_billable($t->ID, date("m"), date("Y"))) continue; 
-            $monthly_rent = 0; 
-            if (function_exists('get_field')) { 
-                $monthly_rent = floatval(get_field('monthly_rent', $t->ID)); 
-            } 
-            if (!$monthly_rent) { 
-                $monthly_rent = floatval(get_post_meta($t->ID, 'monthly_rent', true)); 
-            } 
+        $billable_count = 0;
+        $progress_sum = 0;
+        foreach ($p_tenants as $t) {
+            if (function_exists("ef_is_tenant_billable") && !ef_is_tenant_billable($t->ID, $current_month, $current_year)) continue;
+
+            $billable_count++;
+            $rent_val = get_field('monthly_rent', $t->ID) ?: get_post_meta($t->ID, 'monthly_rent', true);
+            $monthly_rent = floatval(str_replace(',', '', $rent_val));
             $expected += $monthly_rent; 
  
+            $t_paid_total = 0;
             $t_payments = isset($payments_by_tenant[$t->ID]) ? $payments_by_tenant[$t->ID] : []; 
             foreach ($t_payments as $pay) { 
-                $amount_paid = 0; 
-                if (function_exists('get_field')) { 
-                    $amount_paid = floatval(get_field('amount_paid', $pay->ID)); 
-                } 
-                if (!$amount_paid) { 
-                    $amount_paid = floatval(get_post_meta($pay->ID, 'amount_paid', true)); 
-                } 
-                $collected += $amount_paid; 
+                $amount_val = get_field('amount_paid', $pay->ID) ?: get_post_meta($pay->ID, 'amount_paid', true);
+                $t_paid_total += floatval(str_replace(',', '', $amount_val));
             } 
+            $collected += $t_paid_total;
+
+            if ($monthly_rent > 0) {
+                $progress_sum += min(1, $t_paid_total / $monthly_rent);
+            } elseif ($t_paid_total > 0) {
+                $progress_sum += 1;
+            }
         } 
  
+        $col_pct = ($billable_count > 0) ? round(($progress_sum / $billable_count) * 100) : 0;
+
         $data[] = [ 
             'id'        => $p->ID, 
             'name'      => function_exists('get_field') ? (get_field('add_property', $p->ID) ?: $p->post_title) : $p->post_title, 
@@ -252,7 +299,8 @@ function ef_handle_get_properties_dashboard() {
             'occupied'  => $occupied, 
             'address'   => function_exists('get_field') ? get_field('add_address', $p->ID) : get_post_meta($p->ID, 'add_address', true), 
             'expected'  => $expected, 
-            'collected' => $collected 
+            'collected' => $collected,
+            'col_pct'   => $col_pct
         ]; 
     } 
     wp_send_json_success($data); 
@@ -471,7 +519,7 @@ add_action('wp_footer', function() { ?>
             } else { 
                 grid.innerHTML = slice.map((p) => { 
                 const occPct = p.units > 0 ? (p.occupied / p.units) * 100 : 0; 
-                const colPct = p.expected > 0 ? Math.round((p.collected / p.expected) * 100) : 0; 
+                const colPct = p.col_pct ?? (p.expected > 0 ? Math.round((p.collected / p.expected) * 100) : 0);
                 const activeClass = (window._propertiesActiveId && window._propertiesActiveId == p.id) ? 'active' : ''; 
  
                 return ` 
@@ -551,6 +599,11 @@ add_action('wp_footer', function() { ?>
  
                 const dashboardData = new FormData(); 
                 dashboardData.append('action', 'get_properties_dashboard'); 
+
+                const urlParams = new URLSearchParams(window.location.search);
+                if (urlParams.has('ef_month')) dashboardData.append('ef_month', urlParams.get('ef_month'));
+                if (urlParams.has('ef_year')) dashboardData.append('ef_year', urlParams.get('ef_year'));
+
                 const nonceEl = document.getElementById('ef_property_nonce'); 
                 if (nonceEl) { 
                     dashboardData.append('nonce', nonceEl.value); 
@@ -621,7 +674,7 @@ add_action('wp_footer', function() { ?>
  
             const available = Math.max(0, prop.units - prop.occupied); 
             const isAvailable = prop.occupied < prop.units; 
-            const colPct = prop.expected > 0 ? Math.round((prop.collected / prop.expected) * 100) : 0; 
+            const colPct = prop.col_pct ?? (prop.expected > 0 ? Math.round((prop.collected / prop.expected) * 100) : 0);
  
             const tenantsHtml = tenants.length 
                 ? tenants.map(t => ` 
