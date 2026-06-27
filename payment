@@ -790,3 +790,20 @@ document.addEventListener("DOMContentLoaded", function() {
 <?php     
 return ob_get_clean();      
 }); 
+
+add_action('wp_footer', function() {
+?>
+<style>
+.properties-dashboard-grid { display: grid !important; grid-template-columns: repeat(4, 1fr) !important; gap: 20px !important; }
+.ef-stats-cards-row { display: grid !important; grid-template-columns: repeat(4, 1fr) !important; gap: 16px !important; }
+.ef-meta-grid-3col { display: grid !important; grid-template-columns: repeat(4, 1fr) !important; gap: 16px !important; }
+.over-dashboard-grid { display: grid !important; grid-template-columns: repeat(4, 1fr) !important; gap: 20px !important; }
+@media (max-width: 1024px) {
+  .properties-dashboard-grid, .ef-stats-cards-row, .ef-meta-grid-3col, .over-dashboard-grid { grid-template-columns: repeat(2, 1fr) !important; }
+}
+@media (max-width: 768px) {
+  .properties-dashboard-grid, .ef-stats-cards-row, .ef-meta-grid-3col, .over-dashboard-grid { grid-template-columns: 1fr !important; }
+}
+</style>
+<?php
+});

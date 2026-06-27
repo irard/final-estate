@@ -277,7 +277,7 @@ if (!function_exists('ef_render_reminder_card')) {
                 {$items_html}    
             </div>    
     
-            <div class='ef-reminder-pagination' style='" . ($count <= 5 ? 'display:none;' : '') . "'>    
+            <div class='ef-reminder-pagination' style='" . ($count <= 4 ? 'display:none;' : '') . "'>
                 <button id='ef-{$id_prefix}-prev' class='ef-reminder-pag-btn'>Previous</button>    
                 <span id='ef-{$id_prefix}-page-info' class='ef-reminder-pag-info'>Page 1 of 1</span>    
                 <button id='ef-{$id_prefix}-next' class='ef-reminder-pag-btn'>Next</button>    
@@ -286,7 +286,7 @@ if (!function_exists('ef_render_reminder_card')) {
     
         <script>    
         (function() {    
-            const itemsPerPage = 5;    
+            const itemsPerPage = 4;
             let currentPage = 1;    
             const container = document.getElementById('ef-{$id_prefix}-container');    
             if(!container) return;    
@@ -669,4 +669,21 @@ add_shortcode('ef_upcoming_due_this_week', function() {
 
     echo '</div>';
     return ob_get_clean();
+});
+
+add_action('wp_footer', function() {
+?>
+<style>
+.properties-dashboard-grid { display: grid !important; grid-template-columns: repeat(4, 1fr) !important; gap: 20px !important; }
+.ef-stats-cards-row { display: grid !important; grid-template-columns: repeat(4, 1fr) !important; gap: 16px !important; }
+.ef-meta-grid-3col { display: grid !important; grid-template-columns: repeat(4, 1fr) !important; gap: 16px !important; }
+.over-dashboard-grid { display: grid !important; grid-template-columns: repeat(4, 1fr) !important; gap: 20px !important; }
+@media (max-width: 1024px) {
+  .properties-dashboard-grid, .ef-stats-cards-row, .ef-meta-grid-3col, .over-dashboard-grid { grid-template-columns: repeat(2, 1fr) !important; }
+}
+@media (max-width: 768px) {
+  .properties-dashboard-grid, .ef-stats-cards-row, .ef-meta-grid-3col, .over-dashboard-grid { grid-template-columns: 1fr !important; }
+}
+</style>
+<?php
 });

@@ -54,6 +54,7 @@ function ef_handle_save_property() {
 
     $duplicate_check = get_posts([
         'post_type'  => 'property',
+        'title'      => sanitize_text_field($_POST['name']),
         'meta_query' => [
             [
                 'key'   => 'add_address',
@@ -66,7 +67,7 @@ function ef_handle_save_property() {
     ]);
 
     if (!empty($duplicate_check)) {
-        wp_send_json_error('A property with this address already exists.');
+        wp_send_json_error('A property with this name and address already exists.');
     }
 
     $post_data = [
@@ -670,3 +671,20 @@ add_action('wp_footer', function() { ?>
     });
     </script>
 <?php });
+
+add_action('wp_footer', function() {
+?>
+<style>
+.properties-dashboard-grid { display: grid !important; grid-template-columns: repeat(4, 1fr) !important; gap: 20px !important; }
+.ef-stats-cards-row { display: grid !important; grid-template-columns: repeat(4, 1fr) !important; gap: 16px !important; }
+.ef-meta-grid-3col { display: grid !important; grid-template-columns: repeat(4, 1fr) !important; gap: 16px !important; }
+.over-dashboard-grid { display: grid !important; grid-template-columns: repeat(4, 1fr) !important; gap: 20px !important; }
+@media (max-width: 1024px) {
+  .properties-dashboard-grid, .ef-stats-cards-row, .ef-meta-grid-3col, .over-dashboard-grid { grid-template-columns: repeat(2, 1fr) !important; }
+}
+@media (max-width: 768px) {
+  .properties-dashboard-grid, .ef-stats-cards-row, .ef-meta-grid-3col, .over-dashboard-grid { grid-template-columns: 1fr !important; }
+}
+</style>
+<?php
+});

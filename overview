@@ -247,7 +247,7 @@ add_shortcode('ef_card_yearly_revenue', function() {
 }); 
  
 add_shortcode('ef_dashboard_overview', function() { 
-    return '<div class="ef-dashboard-grid">' .  
+    return '<div class="over-dashboard-grid">' .
            do_shortcode('[ef_card_collected_this_month]') .  
            do_shortcode('[ef_card_active_tenants]') .  
            do_shortcode('[ef_card_outstanding_total]') .  
@@ -612,7 +612,7 @@ add_shortcode('ef_outstanding_tenants_widget', function() {
         return intval($a['due_day']) <=> intval($b['due_day']); 
     }); 
  
-    $outstanding_items = array_slice($outstanding_items, 0, 5); 
+    $outstanding_items = array_slice($outstanding_items, 0, 4);
  
     ob_start(); 
     ?> 
@@ -649,7 +649,7 @@ add_shortcode('ef_recent_payments_widget', function() {
     $p_query = new WP_Query([ 
         'post_type'      => 'payment', 
         'post_status'    => ['publish', 'future'],
-        'posts_per_page' => 6, 
+        'posts_per_page' => 4,
         'orderby'        => 'date', 
         'order'          => 'DESC' 
     ]); 
@@ -700,3 +700,20 @@ add_shortcode('ef_recent_payments_widget', function() {
 });
 
 
+
+add_action('wp_footer', function() {
+?>
+<style>
+.properties-dashboard-grid { display: grid !important; grid-template-columns: repeat(4, 1fr) !important; gap: 20px !important; }
+.ef-stats-cards-row { display: grid !important; grid-template-columns: repeat(4, 1fr) !important; gap: 16px !important; }
+.ef-meta-grid-3col { display: grid !important; grid-template-columns: repeat(4, 1fr) !important; gap: 16px !important; }
+.over-dashboard-grid { display: grid !important; grid-template-columns: repeat(4, 1fr) !important; gap: 20px !important; }
+@media (max-width: 1024px) {
+  .properties-dashboard-grid, .ef-stats-cards-row, .ef-meta-grid-3col, .over-dashboard-grid { grid-template-columns: repeat(2, 1fr) !important; }
+}
+@media (max-width: 768px) {
+  .properties-dashboard-grid, .ef-stats-cards-row, .ef-meta-grid-3col, .over-dashboard-grid { grid-template-columns: 1fr !important; }
+}
+</style>
+<?php
+});

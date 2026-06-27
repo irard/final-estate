@@ -149,7 +149,7 @@ add_shortcode('tenant_header', function() {
 $tenant_list_logic = function() { 
     $payment_post_type = 'payment'; $tenant_meta_key = 'associated_tenant'; 
     $paged = max(1, get_query_var('paged'), (isset($_GET['paged']) ? intval($_GET['paged']) : 1));
-    $q = new WP_Query(['post_type'=>'ef_tenant', 'post_status'=>'publish', 'posts_per_page'=>5, 'paged' => $paged, 'order'=>'ASC']); 
+    $q = new WP_Query(['post_type'=>'ef_tenant', 'post_status'=>'publish', 'posts_per_page'=>4, 'paged' => $paged, 'order'=>'ASC']);
     $total_pages = $q->max_num_pages;
     ob_start(); ?> 
     <div class="ef-dashboard-sidebar-independent"> 
@@ -203,7 +203,6 @@ $tenant_list_logic = function() {
 };
 add_shortcode('tenant_list', $tenant_list_logic);
 add_shortcode('student_list', $tenant_list_logic);
-add_shortcode('properties_page_grid', $tenant_list_logic);
 
 add_shortcode('tenant_profile', function() { 
     ob_start(); ?> 
@@ -1925,7 +1924,7 @@ if (!function_exists('ef_render_reminder_card')) {
                 {$items_html}    
             </div>    
     
-            <div class='ef-reminder-pagination' style='" . ($count <= 5 ? 'display:none;' : '') . "'>    
+            <div class='ef-reminder-pagination' style='" . ($count <= 4 ? 'display:none;' : '') . "'>
                 <button id='ef-{$id_prefix}-prev' class='ef-reminder-pag-btn'>Previous</button>    
                 <span id='ef-{$id_prefix}-page-info' class='ef-reminder-pag-info'>Page 1 of 1</span>    
                 <button id='ef-{$id_prefix}-next' class='ef-reminder-pag-btn'>Next</button>    
@@ -1934,7 +1933,7 @@ if (!function_exists('ef_render_reminder_card')) {
     
         <script>    
         (function() {    
-            const itemsPerPage = 5;    
+            const itemsPerPage = 4;
             let currentPage = 1;    
             const container = document.getElementById('ef-{$id_prefix}-container');    
             if(!container) return;    
@@ -2378,6 +2377,7 @@ function ef_handle_save_property() {
 
     $duplicate_check = get_posts([
         'post_type'  => 'property',
+        'title'      => sanitize_text_field($_POST['name']),
         'meta_query' => [
             [
                 'key'   => 'add_address',
@@ -2390,7 +2390,7 @@ function ef_handle_save_property() {
     ]);
 
     if (!empty($duplicate_check)) {
-        wp_send_json_error('A property with this address already exists.');
+        wp_send_json_error('A property with this name and address already exists.');
     }
 
     $post_data = [
@@ -3247,7 +3247,7 @@ add_shortcode('ef_card_yearly_revenue', function() {
 }); 
  
 add_shortcode('ef_dashboard_overview', function() { 
-    return '<div class="ef-dashboard-grid">' .  
+    return '<div class="over-dashboard-grid">' .
            do_shortcode('[ef_card_collected_this_month]') .  
            do_shortcode('[ef_card_active_tenants]') .  
            do_shortcode('[ef_card_outstanding_total]') .  
@@ -3612,7 +3612,7 @@ add_shortcode('ef_outstanding_tenants_widget', function() {
         return intval($a['due_day']) <=> intval($b['due_day']); 
     }); 
  
-    $outstanding_items = array_slice($outstanding_items, 0, 5); 
+    $outstanding_items = array_slice($outstanding_items, 0, 4);
  
     ob_start(); 
     ?> 
@@ -3649,7 +3649,7 @@ add_shortcode('ef_recent_payments_widget', function() {
     $p_query = new WP_Query([ 
         'post_type'      => 'payment', 
         'post_status'    => ['publish', 'future'],
-        'posts_per_page' => 6, 
+        'posts_per_page' => 4,
         'orderby'        => 'date', 
         'order'          => 'DESC' 
     ]); 
@@ -3697,4 +3697,21 @@ add_shortcode('ef_recent_payments_widget', function() {
     </div> 
     <?php 
     return ob_get_clean(); 
+});
+
+add_action('wp_footer', function() {
+?>
+<style>
+.properties-dashboard-grid { display: grid !important; grid-template-columns: repeat(4, 1fr) !important; gap: 20px !important; }
+.ef-stats-cards-row { display: grid !important; grid-template-columns: repeat(4, 1fr) !important; gap: 16px !important; }
+.ef-meta-grid-3col { display: grid !important; grid-template-columns: repeat(4, 1fr) !important; gap: 16px !important; }
+.over-dashboard-grid { display: grid !important; grid-template-columns: repeat(4, 1fr) !important; gap: 20px !important; }
+@media (max-width: 1024px) {
+  .properties-dashboard-grid, .ef-stats-cards-row, .ef-meta-grid-3col, .over-dashboard-grid { grid-template-columns: repeat(2, 1fr) !important; }
+}
+@media (max-width: 768px) {
+  .properties-dashboard-grid, .ef-stats-cards-row, .ef-meta-grid-3col, .over-dashboard-grid { grid-template-columns: 1fr !important; }
+}
+</style>
+<?php
 });
