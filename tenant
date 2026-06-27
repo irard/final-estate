@@ -113,7 +113,7 @@ add_shortcode('add_tenant', function(){
                         unitInput.setAttribute('data-status', 'available'); 
                         form.querySelector('button[type="submit"]').disabled=false; 
                         const opt = propSelect.selectedOptions[0]; 
-                        document.getElementById('atc-rent').value = opt.dataset.rent || 1000; 
+                        // document.getElementById('atc-rent').value = opt.dataset.rent || 1000;
                         if(opt.dataset.start) document.getElementById('atc-start').value = new Date(opt.dataset.start).toISOString().split('T')[0]; 
                         if(opt.dataset.end) document.getElementById('atc-end').value = new Date(opt.dataset.end).toISOString().split('T')[0]; 
                         if(opt.dataset.due){ document.getElementById('atc-due').value=opt.dataset.due; document.getElementById('atc-due-display').value=opt.dataset.due; } 
@@ -403,7 +403,7 @@ add_shortcode('tenant_profile', function() {
                         u.setAttribute('data-status', 'available'); 
                         document.getElementById('efModalActionBtn').disabled=false; 
                         const opt = this.selectedOptions[0]; 
-                        document.getElementById('modal_field_rent').value = opt.dataset.rent || 1000; 
+                        // document.getElementById('modal_field_rent').value = opt.dataset.rent || 1000;
                         if(opt.dataset.start) document.getElementById('modal_field_start').value = new Date(opt.dataset.start).toISOString().split('T')[0]; 
                         if(opt.dataset.end) document.getElementById('modal_field_end').value = new Date(opt.dataset.end).toISOString().split('T')[0]; 
                         if(opt.dataset.due){ document.getElementById('modal_field_due').value=opt.dataset.due; document.getElementById('modal_field_due_day_display').value=opt.dataset.due; } 
