@@ -812,9 +812,6 @@ html.ef-dark-theme #content {
 	color: #94a3b8;
 	cursor: pointer;
 }
-.ef-modal-input-field-group {
-	margin-bottom: 16px;
-}
 .ef-modal-input-field-group label {
 	display: block;
 	font-size: 13px;
@@ -1154,7 +1151,7 @@ html.ef-dark-theme #content {
 	position: fixed;
 	inset: 0;
 	background: rgba(0,0,0,0.45);
-	display: flex;
+	display: none;
 	align-items: center;
 	justify-content: center;
 	z-index: 99999;
@@ -2771,24 +2768,6 @@ html.ef-dark-theme .ef-btn-receipt {
         }
     
 
-
-.mobile-only-close {
-    display: none;
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    z-index: 1001;
-    background: #fff;
-    border-radius: 50%;
-    width: 56px;
-    height: 56px;
-    line-height: 0px;
-    text-align: center;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
-    padding: 20px;
-    color: #0a8a4f;
-}
-
         @media (max-width: 768px) {
             .properties-page-sidebar {
                 position: fixed;
@@ -2819,3 +2798,5 @@ html.ef-dark-theme .ef-btn-receipt {
         }
     
  
+     
+    
