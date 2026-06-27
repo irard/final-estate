@@ -52,7 +52,7 @@ add_shortcode('add_tenant', function(){
           <div class="atc-row-full"><label class="atc-label">Name <input id="atc-name" name="tenant_name" required></label></div> 
           <div class="atc-row-full"><label class="atc-label">Property <select id="atc-property" name="property_id" required><option value="">Loading properties…</option></select></label></div> 
           <div class="atc-row"><label class="atc-label">Unit <input id="atc-unit" name="tenant_unit" value="1" readonly></label> 
-                               <label class="atc-label">Rent (AED) <input id="atc-rent" name="tenant_rent" type="number" step="100" value="" placeholder="Enter Amount" min="1000" required></label></div> 
+                               <label class="atc-label">Rent (AED) <input id="atc-rent" name="tenant_rent" type="number" step="100" value="" placeholder="Enter Amount" required></label></div>
           <div class="atc-row"><label class="atc-label">Email <input id="atc-email" name="tenant_email" type="email" required></label> 
                                <label class="atc-label">Phone <input id="atc-phone" name="tenant_phone" type="tel" required></label></div> 
           <div class="atc-row-full"><label class="atc-label">Address <input id="atc-address" name="tenant_address"></label></div> 
@@ -113,7 +113,7 @@ add_shortcode('add_tenant', function(){
                         unitInput.setAttribute('data-status', 'available'); 
                         form.querySelector('button[type="submit"]').disabled=false; 
                         const opt = propSelect.selectedOptions[0]; 
-                        document.getElementById('atc-rent').value = opt.dataset.rent || 1000; 
+                        document.getElementById('atc-rent').value = '';
                         if(opt.dataset.start) document.getElementById('atc-start').value = new Date(opt.dataset.start).toISOString().split('T')[0]; 
                         if(opt.dataset.end) document.getElementById('atc-end').value = new Date(opt.dataset.end).toISOString().split('T')[0]; 
                         if(opt.dataset.due){ document.getElementById('atc-due').value=opt.dataset.due; document.getElementById('atc-due-display').value=opt.dataset.due; } 
