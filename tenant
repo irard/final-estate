@@ -3145,24 +3145,57 @@ add_shortcode('ef_yearly_expected_revenue', function() {
 });
   
 add_shortcode('ef_collected_rate', function() {  
-    $t_query = new WP_Query(array('post_type' => 'ef_tenant', 'post_status' => 'publish', 'posts_per_page' => -1));  
-    $rent_expected = 0.00;  
     $m = date('m'); $y = date('Y');
+    $current_period = date('Y-m');
+
+    // 1. Get all payments for this month in one query
+    $p_query = new WP_Query([
+        'post_type' => 'payment',
+        'post_status' => ['publish', 'future'],
+        'posts_per_page' => -1,
+    ]);
+    $tenant_paid = [];
+    if ($p_query->have_posts()) {
+        while ($p_query->have_posts()) {
+            $p_query->the_post();
+            $p_id = get_the_ID();
+            $period = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true) ?: get_the_date('Y-m', $p_id);
+            if (strpos($period, $current_period) === 0) {
+                $t_id = get_field('associated_tenant', $p_id) ?: get_post_meta($p_id, 'associated_tenant', true);
+                if ($t_id) {
+                    $amount = floatval(get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true));
+                    $tenant_paid[$t_id] = ($tenant_paid[$t_id] ?? 0) + $amount;
+                }
+            }
+        }
+        wp_reset_postdata();
+    }
+
+    // 2. Get all tenants and check who is billable
+    $t_query = new WP_Query(['post_type' => 'ef_tenant', 'post_status' => 'publish', 'posts_per_page' => -1]);
+    $total_billable = 0;
+    $paid_tenants = 0;
+
     if ($t_query->have_posts()) {  
         while ($t_query->have_posts()) {  
             $t_query->the_post();  
             $t_id = get_the_ID();
             if (ef_is_tenant_billable($t_id, $m, $y)) {
-                $rent_val = get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true);  
-                if ($rent_val) { $rent_expected += floatval($rent_val); }  
+                $rent = floatval(get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true));
+                if ($rent <= 0) continue;
+
+                $total_billable++;
+                $paid = $tenant_paid[$t_id] ?? 0;
+                if ($paid >= $rent) {
+                    $paid_tenants++;
+                }
             }
         }  
         wp_reset_postdata();  
     }  
-    if ($rent_expected <= 0) return '0%';  
-    $collected_str = str_replace(',', '', do_shortcode('[ef_total_payments]')); 
-    $rent_collected = floatval($collected_str);  
-    $collection_rate = ($rent_collected / $rent_expected) * 100;  
+
+    if ($total_billable <= 0) return '0%';
+    $collection_rate = ($paid_tenants / $total_billable) * 100;
     return round($collection_rate) . '%';  
 }); 
  
