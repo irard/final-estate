@@ -257,7 +257,7 @@ function ef_handle_get_properties_dashboard() {
         $expected = 0; 
         $collected = 0; 
         $billable_count = 0;
-        $paid_count = 0;
+        $progress_sum = 0;
         foreach ($p_tenants as $t) {
             if (function_exists("ef_is_tenant_billable") && !ef_is_tenant_billable($t->ID, $current_month, $current_year)) continue;
 
@@ -273,12 +273,15 @@ function ef_handle_get_properties_dashboard() {
                 $t_paid_total += floatval(str_replace(',', '', $amount_val));
             } 
             $collected += $t_paid_total;
-            if (($monthly_rent > 0 && $t_paid_total >= $monthly_rent) || ($monthly_rent == 0 && $t_paid_total > 0)) {
-                $paid_count++;
+
+            if ($monthly_rent > 0) {
+                $progress_sum += min(1, $t_paid_total / $monthly_rent);
+            } elseif ($t_paid_total > 0) {
+                $progress_sum += 1;
             }
         } 
  
-        $col_pct = ($billable_count > 0) ? round(($paid_count / $billable_count) * 100) : 0;
+        $col_pct = ($billable_count > 0) ? round(($progress_sum / $billable_count) * 100) : 0;
 
         $data[] = [ 
             'id'        => $p->ID, 

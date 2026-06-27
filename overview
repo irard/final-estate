@@ -264,16 +264,18 @@ add_shortcode('ef_collected_rate', function() {
         wp_reset_postdata();
     }
 
-    // 3. Count fully paid tenants
-    $paid_count = 0;
+    // 3. Calculate sum of payment progress (capped at 100% per tenant)
+    $progress_sum = 0;
     foreach ($billable_tenants as $t_id => $rent) {
         $paid = $payments_by_tenant[$t_id] ?? 0;
-        if (($rent > 0 && $paid >= $rent) || ($rent == 0 && $paid > 0)) {
-            $paid_count++;
+        if ($rent > 0) {
+            $progress_sum += min(1, $paid / $rent);
+        } elseif ($paid > 0) {
+            $progress_sum += 1;
         }
     }
 
-    $collection_rate = ($paid_count / count($billable_tenants)) * 100;
+    $collection_rate = ($progress_sum / count($billable_tenants)) * 100;
     return round($collection_rate) . '%';  
 }); 
  
