@@ -137,21 +137,11 @@ add_shortcode('ef_log_payment_btn', function() {
             <div class="ef-modal-input-field-group">
                 <label>Date</label>
                 <input type="date" id="ef_log_date" value="<?php echo date('Y-m-d'); ?>" class="ef-modal-element-input">
-            </div>   
+            </div>
 
-            <div id="ef_bulk_period_management_area">
-                <div class="ef-bulk-period-header">
-                    <label style="display:block; font-size:13px; font-weight:600; color:#334155; margin-bottom:0;">Period (YYYY-MM)</label>
-                    <div id="ef_add_bulk_period_trigger" class="ef-add-bulk-btn" onclick="efAddBulkPeriodInput()">
-                        <span>Add Bulk Period</span>
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                    </div>
-                </div>
-                <div id="ef_bulk_period_container">
-                    <div class="ef-period-input-row">
-                        <input type="text" value="<?php echo date('Y-m-d'); ?>" placeholder="YYYY-MM-DD" class="ef-modal-element-input ef_log_period_field">
-                    </div>
-                </div>
+            <div class="ef-modal-input-field-group">
+                <label>Period (YYYY-MM-DD)</label>
+                <input type="text" id="ef_log_period" value="<?php echo date('Y-m-d'); ?>" placeholder="YYYY-MM-DD" class="ef-modal-element-input">
             </div>
    
             <div class="ef-checkbox-custom-row">   
@@ -190,41 +180,11 @@ add_shortcode('ef_log_payment_btn', function() {
                     const year = now.getFullYear();
                     const month = String(now.getMonth() + 1).padStart(2, '0');
                     const day = String(due).padStart(2, '0');
-                    const periodInputs = document.querySelectorAll('.ef_log_period_field');
-                    if (periodInputs.length === 1) {
-                        periodInputs[0].value = `${year}-${month}-${day}`;
-                    }
+                    document.getElementById('ef_log_period').value = `${year}-${month}-${day}`;
                 }
             };
         }
     });
-
-    function efAddBulkPeriodInput(value = '') {
-        const container = document.getElementById('ef_bulk_period_container');
-        const row = document.createElement('div');
-        row.className = 'ef-period-input-row';
-
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.className = 'ef-modal-element-input ef_log_period_field';
-        input.placeholder = 'YYYY-MM-DD';
-        input.value = value || '<?php echo date('Y-m-d'); ?>';
-
-        const removeBtn = document.createElement('button');
-        removeBtn.className = 'ef-remove-period-btn';
-        removeBtn.innerHTML = '✕';
-        removeBtn.onclick = function() {
-            if (container.querySelectorAll('.ef-period-input-row').length > 1) {
-                container.removeChild(row);
-            } else {
-                alert('At least one period is required.');
-            }
-        };
-
-        row.appendChild(input);
-        row.appendChild(removeBtn);
-        container.appendChild(row);
-    }
 
     function efOpenLogPaymentModal() { 
         document.getElementById('efModalTitle').innerText = 'Log a payment'; 
@@ -235,12 +195,7 @@ add_shortcode('ef_log_payment_btn', function() {
         document.getElementById('ef_log_amount').placeholder = 'Enter Amount';
         document.getElementById('ef_log_method').value = 'Bank Transfer'; 
         document.getElementById('ef_log_transaction_cheque_number').value = '';
-
-        document.getElementById('ef_add_bulk_period_trigger').style.display = 'flex';
-        const container = document.getElementById('ef_bulk_period_container');
-        container.innerHTML = '';
-        efAddBulkPeriodInput('<?php echo date('Y-m-d'); ?>');
-
+        document.getElementById('ef_log_period').value = '<?php echo date('Y-m-d'); ?>';
         document.getElementById('ef_log_date').value = '<?php echo date('Y-m-d'); ?>'; 
         document.getElementById('efLogPaymentGlobalModal').style.display = 'flex'; 
     } 
@@ -252,13 +207,9 @@ add_shortcode('ef_log_payment_btn', function() {
         const method = document.getElementById('ef_log_method').value;   
         const transaction_cheque_number = document.getElementById('ef_log_transaction_cheque_number').value;
         const date = document.getElementById('ef_log_date').value;   
-
-        const periods = [];
-        document.querySelectorAll('.ef_log_period_field').forEach(input => {
-            if (input.value) periods.push(input.value);
-        });
+        const period = document.getElementById('ef_log_period').value;
    
-        if(!tenant || !amount || !date || periods.length === 0) {
+        if(!tenant || !amount || !date || !period) {
             alert('Please select a tenant and enter all payment parameters (including period).');   
             return;   
         }   
@@ -272,8 +223,7 @@ add_shortcode('ef_log_payment_btn', function() {
         fd.append('method', method);   
         fd.append('transaction_cheque_number', transaction_cheque_number);
         fd.append('date', date);   
-
-        periods.forEach(p => fd.append('periods[]', p));
+        fd.append('period', period);
    
         fetch('<?php echo admin_url('admin-ajax.php'); ?>', { method: 'POST', body: fd })   
         .then(res => res.json())   
@@ -308,20 +258,18 @@ function ef_callback_ajax_create_payment() {
     $method     = isset($_POST['method']) ? sanitize_text_field($_POST['method']) : 'Bank Transfer';   
     $transaction_cheque_number = isset($_POST['transaction_cheque_number']) ? sanitize_text_field($_POST['transaction_cheque_number']) : '';
     $date       = isset($_POST['date']) ? sanitize_text_field($_POST['date']) : '';   
-    $periods    = isset($_POST['periods']) ? (array)$_POST['periods'] : [];
+    $period     = isset($_POST['period']) ? sanitize_text_field($_POST['period']) : ''; // YYYY-MM-DD
    
-    if (!$tenant_id || !$total_amount || !$date || empty($periods)) {
+    if (!$tenant_id || !$total_amount || !$date || !$period) {
         wp_send_json_error(['message' => 'Operational parameters data validation failure.']);   
     }   
-
-    sort($periods); // Waterfall allocation: oldest first
 
     $remaining_amount = $total_amount;
     $created_ids = [];
     $tenant_name = get_the_title($tenant_id);
     $property_id = get_field('property_id', $tenant_id) ?: get_post_meta($tenant_id, 'property_id', true);
 
-    // Pre-calculate starting voucher number
+    // Get current max voucher
     $last_payments = get_posts([
         'post_type'      => 'payment',
         'post_status'    => ['publish', 'future'],
@@ -335,25 +283,29 @@ function ef_callback_ajax_create_payment() {
         $current_max_voucher = intval(get_post_meta($last_payments[0]->ID, 'receipt_voucher', true));
     }
 
-    foreach ($periods as $index => $period_str) {
-        if ($remaining_amount <= 0 && $index < count($periods) - 1) break;
+    $current_period_ts = strtotime($period);
 
-        $p_year = intval(substr($period_str, 0, 4));
-        $p_month = intval(substr($period_str, 5, 2));
-        
+    while ($remaining_amount > 0) {
+        $p_year = intval(date('Y', $current_period_ts));
+        $p_month = intval(date('m', $current_period_ts));
+        $period_str = date('Y-m-d', $current_period_ts);
+
         $status = ef_get_tenant_monthly_status($tenant_id, $p_month, $p_year);
         $due = $status['balance'];
 
-        // If it's the last period, give it the rest of the waterfall
-        if ($index === count($periods) - 1) {
-            $allocation = $remaining_amount;
-        } else {
-            $allocation = min($remaining_amount, $due);
+        if ($due <= 0) {
+            // Move to next month if this one is full
+            $current_period_ts = strtotime("+1 month", $current_period_ts);
+            // Safety break to prevent infinite loop if rent is 0 and no balance check?
+            // Actually ef_get_tenant_monthly_status should handle rent 0.
+            // But let's add a limit just in case.
+            if (count($created_ids) > 60) break;
+            continue;
         }
 
-        if ($allocation <= 0 && count($periods) > 1) continue; // Skip if no balance and not last
+        $allocation = min($remaining_amount, $due);
+        $post_title = $tenant_name . ' - ' . date('M Y', $current_period_ts);
 
-        $post_title = $tenant_name . ' - ' . date('M Y', strtotime($period_str));
         $new_payment_id = wp_insert_post([
             'post_title'  => $post_title,
             'post_type'   => 'payment',
@@ -380,6 +332,39 @@ function ef_callback_ajax_create_payment() {
             }
             $created_ids[] = $new_payment_id;
             $remaining_amount -= $allocation;
+            $current_period_ts = strtotime("+1 month", $current_period_ts);
+        } else {
+            break; // Failed to create post
+        }
+
+        if (count($created_ids) > 60) break;
+    }
+
+    // Handle any final remainder (overpayment beyond outstanding balances)
+    if ($remaining_amount > 0) {
+        if (!empty($created_ids)) {
+            $last_id = end($created_ids);
+            $current_paid = floatval(get_post_meta($last_id, 'amount_paid', true));
+            update_post_meta($last_id, 'amount_paid', $current_paid + $remaining_amount);
+        } else {
+            // No records created (maybe all months paid?), create one for the input period
+            $post_title = $tenant_name . ' - ' . date('M Y', strtotime($period));
+            $new_payment_id = wp_insert_post(['post_title' => $post_title, 'post_type' => 'payment', 'post_status' => 'publish']);
+            if ($new_payment_id && !is_wp_error($new_payment_id)) {
+                $current_max_voucher++;
+                $meta = [
+                    'associated_tenant' => $tenant_id, 'associated_property' => $property_id,
+                    'amount_paid' => $remaining_amount, 'date_of_payment' => $date,
+                    'mode_of_payment' => $method, 'transaction_cheque_number' => $transaction_cheque_number,
+                    'receipt_voucher' => str_pad($current_max_voucher, 3, '0', STR_PAD_LEFT),
+                    'payment_period' => $period
+                ];
+                foreach ($meta as $k => $v) {
+                    if (function_exists('update_field')) update_field($k, $v, $new_payment_id);
+                    else update_post_meta($new_payment_id, $k, $v);
+                }
+                $created_ids[] = $new_payment_id;
+            }
         }
     }
 
@@ -790,12 +775,7 @@ function efEditTransaction(id) {
     document.getElementById('ef_log_amount').value = entry.amount; 
     document.getElementById('ef_log_method').value = entry.method; 
     document.getElementById('ef_log_transaction_cheque_number').value = entry.transaction_cheque_number || '';
-
-    document.getElementById('ef_add_bulk_period_trigger').style.display = 'none';
-    const container = document.getElementById('ef_bulk_period_container');
-    container.innerHTML = '';
-    efAddBulkPeriodInput(entry.period);
-
+    document.getElementById('ef_log_period').value = entry.period;
     document.getElementById('ef_log_date').value = entry.raw_date; 
  
     document.getElementById('efLogPaymentGlobalModal').style.display = 'flex'; 
