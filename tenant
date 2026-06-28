@@ -424,18 +424,29 @@ add_shortcode('tenant_profile', function() {
         };
 
         window.addEventListener('ef_load_tenant', e => { 
+            efLoadTenantLedgerPage(e.detail.id, 1);
+        });
+
+        window.efLoadTenantLedgerPage = function(tid, page) {
             const screen = document.getElementById('efWorkspaceDynamicScreen'); 
             const modal = document.getElementById('efTenantProfileModal'); 
-            if (window.innerWidth <= 768) { 
+            if (window.innerWidth <= 768 && modal.style.display !== 'flex') {
                 modal.style.display = 'flex'; 
                 efToggleScrollLock();
             } 
-            screen.innerHTML = '<div style="text-align:center; padding:40px;">Loading profile...</div>'; 
-            const fd = new FormData(); fd.append('action', 'eftm_render_tenant_profile'); fd.append('tenant_id', e.detail.id); 
+
+            // Only show "Loading" on first load, otherwise it might feel jumpy during pagination
+            if (page === 1) screen.innerHTML = '<div style="text-align:center; padding:40px;">Loading profile...</div>';
+
+            const fd = new FormData();
+            fd.append('action', 'eftm_render_tenant_profile');
+            fd.append('tenant_id', tid);
+            fd.append('paged', page);
+
             fetch(ajax, { method: 'POST', body: fd }).then(r => r.text()).then(html => { 
                 screen.innerHTML = html; attachReceiptEvents(); 
             }); 
-        }); 
+        };
 
         window.attachReceiptEvents = function() { 
             document.querySelectorAll('.ef-btn-receipt').forEach(btn => { 
@@ -661,6 +672,9 @@ function eftm_handle_check_property_availability() {
 function eftm_handle_ajax_tenant_breakdown() { 
     $tenant_id = isset($_POST['tenant_id']) ? intval($_POST['tenant_id']) : 0; 
     if (!$tenant_id) wp_die(); 
+    $paged = isset($_POST['paged']) ? max(1, intval($_POST['paged'])) : 1;
+    $posts_per_page = 3;
+
     $tenant_name    = get_the_title($tenant_id); 
     $monthly_rent   = floatval(get_field('monthly_rent', $tenant_id) ?: get_post_meta($tenant_id, 'monthly_rent', true)); 
     $due_day        = get_field('rent_due_day', $tenant_id) ?: get_post_meta($tenant_id, 'rent_due_day', true); 
@@ -675,10 +689,14 @@ function eftm_handle_ajax_tenant_breakdown() {
     $property_display = $propId ? get_the_title($propId) : 'No Property Assigned'; 
     $payment_history = []; 
     $p_query = new WP_Query([ 
-        'post_type'      => 'payment', 'post_status'    => ['publish', 'future'], 'posts_per_page' => -1, 
+        'post_type'      => 'payment',
+        'post_status'    => ['publish', 'future'],
+        'posts_per_page' => $posts_per_page,
+        'paged'          => $paged,
         'meta_query'     => [['key' => 'associated_tenant', 'value' => $tenant_id, 'compare' => '=']], 
         'meta_key'       => 'date_of_payment', 'orderby' => 'meta_value', 'order' => 'DESC' 
     ]); 
+    $total_pages = $p_query->max_num_pages;
     if ($p_query->have_posts()) { 
         while ($p_query->have_posts()) { 
             $p_query->the_post(); 
@@ -771,7 +789,15 @@ function eftm_handle_ajax_tenant_breakdown() {
                     </button> 
                 </div> 
             </div> 
-        <?php endforeach; else : ?> 
+        <?php endforeach; ?>
+
+        <div class="ef-ledger-pagination" style="display: flex; justify-content: center; align-items: center; gap: 16px; margin-top: 20px;">
+            <button class="prop-nav-btn" <?php echo ($paged <= 1) ? 'disabled' : ''; ?> onclick="efLoadTenantLedgerPage(<?php echo $tenant_id; ?>, <?php echo $paged - 1; ?>)">Previous</button>
+            <span style="font-size: 13px; color: #64748b; font-weight: 500;">Page <?php echo $paged; ?> of <?php echo $total_pages; ?></span>
+            <button class="prop-nav-btn" <?php echo ($paged >= $total_pages) ? 'disabled' : ''; ?> onclick="efLoadTenantLedgerPage(<?php echo $tenant_id; ?>, <?php echo $paged + 1; ?>)">Next</button>
+        </div>
+
+        <?php else : ?>
             <div style="color: #64748b; font-size: 14px; font-style: italic; padding: 20px 0; text-align: center; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 12px;">No recorded invoice transactions found.</div> 
         <?php endif; ?> 
     </div> 
