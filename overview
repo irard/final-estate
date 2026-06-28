@@ -831,5 +831,3 @@ add_shortcode('ef_recent_payments_widget', function() {
     <?php 
     return ob_get_clean(); 
 });
-
-
