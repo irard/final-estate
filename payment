@@ -135,11 +135,6 @@ add_shortcode('ef_log_payment_btn', function() {
             </div>   
    
             <div class="ef-modal-input-field-group">
-                <label>Date</label>
-                <input type="date" id="ef_log_date" value="<?php echo date('Y-m-d'); ?>" class="ef-modal-element-input">
-            </div>
-
-            <div class="ef-modal-input-field-group">
                 <label>Billing Start Period (Auto-detects unpaid months)</label>
                 <input type="text" id="ef_log_period" value="<?php echo date('Y-m-d'); ?>" placeholder="YYYY-MM-DD" class="ef-modal-element-input">
             </div>
@@ -196,7 +191,6 @@ add_shortcode('ef_log_payment_btn', function() {
         document.getElementById('ef_log_method').value = 'Bank Transfer'; 
         document.getElementById('ef_log_transaction_cheque_number').value = '';
         document.getElementById('ef_log_period').value = '<?php echo date('Y-m-d'); ?>';
-        document.getElementById('ef_log_date').value = '<?php echo date('Y-m-d'); ?>'; 
         document.getElementById('efLogPaymentGlobalModal').style.display = 'flex'; 
     } 
  
@@ -206,10 +200,9 @@ add_shortcode('ef_log_payment_btn', function() {
         const amount = document.getElementById('ef_log_amount').value;   
         const method = document.getElementById('ef_log_method').value;   
         const transaction_cheque_number = document.getElementById('ef_log_transaction_cheque_number').value;
-        const date = document.getElementById('ef_log_date').value;   
         const period = document.getElementById('ef_log_period').value;
    
-        if(!tenant || !amount || !date || !period) {
+        if(!tenant || !amount || !period) {
             alert('Please select a tenant and enter all payment parameters (including period).');   
             return;   
         }   
@@ -222,7 +215,6 @@ add_shortcode('ef_log_payment_btn', function() {
         fd.append('amount', amount);   
         fd.append('method', method);   
         fd.append('transaction_cheque_number', transaction_cheque_number);
-        fd.append('date', date);   
         fd.append('period', period);
    
         fetch('<?php echo admin_url('admin-ajax.php'); ?>', { method: 'POST', body: fd })   
@@ -257,10 +249,9 @@ function ef_callback_ajax_create_payment() {
     $total_amount = isset($_POST['amount']) ? floatval($_POST['amount']) : 0;
     $method     = isset($_POST['method']) ? sanitize_text_field($_POST['method']) : 'Bank Transfer';   
     $transaction_cheque_number = isset($_POST['transaction_cheque_number']) ? sanitize_text_field($_POST['transaction_cheque_number']) : '';
-    $date       = isset($_POST['date']) ? sanitize_text_field($_POST['date']) : '';   
     $period     = isset($_POST['period']) ? sanitize_text_field($_POST['period']) : ''; // YYYY-MM-DD
    
-    if (!$tenant_id || !$total_amount || !$date || !$period) {
+    if (!$tenant_id || !$total_amount || !$period) {
         wp_send_json_error(['message' => 'Operational parameters data validation failure.']);   
     }   
 
@@ -358,7 +349,7 @@ function ef_callback_ajax_create_payment() {
                 'associated_tenant' => $tenant_id,
                 'associated_property' => $property_id,
                 'amount_paid'       => $allocation,
-                'date_of_payment'   => $date,
+                'date_of_payment'   => $period_str,
                 'mode_of_payment'   => $method,
                 'transaction_cheque_number' => $transaction_cheque_number,
                 'receipt_voucher'   => $receipt_voucher,
@@ -392,7 +383,7 @@ function ef_callback_ajax_create_payment() {
                 $current_max_voucher++;
                 $meta = [
                     'associated_tenant' => $tenant_id, 'associated_property' => $property_id,
-                    'amount_paid' => $remaining_amount, 'date_of_payment' => $date,
+                    'amount_paid' => $remaining_amount, 'date_of_payment' => $period,
                     'mode_of_payment' => $method, 'transaction_cheque_number' => $transaction_cheque_number,
                     'receipt_voucher' => str_pad($current_max_voucher, 3, '0', STR_PAD_LEFT),
                     'payment_period' => $period
@@ -425,16 +416,15 @@ function ef_callback_ajax_update_payment() {
     $amount     = isset($_POST['amount']) ? floatval($_POST['amount']) : 0;   
     $method     = isset($_POST['method']) ? sanitize_text_field($_POST['method']) : 'Bank Transfer';   
     $transaction_cheque_number = isset($_POST['transaction_cheque_number']) ? sanitize_text_field($_POST['transaction_cheque_number']) : '';
-    $date       = isset($_POST['date']) ? sanitize_text_field($_POST['date']) : '';   
     $period     = isset($_POST['period']) ? sanitize_text_field($_POST['period']) : ''; // YYYY-MM
    
-    if (!$payment_id || !$tenant_id || !$amount || !$date || !$period) {   
+    if (!$payment_id || !$tenant_id || !$amount || !$period) {
         wp_send_json_error(['message' => 'Operational parameters data validation failure.']);   
     }   
 
    
     $tenant_name = get_the_title($tenant_id);   
-    $post_title  = $tenant_name . ' - ' . date('M Y', strtotime($date));   
+    $post_title  = $tenant_name . ' - ' . date('M Y', strtotime($period));
    
     $updated_payment_id = wp_update_post([ 
         'ID'          => $payment_id, 
@@ -448,7 +438,7 @@ function ef_callback_ajax_update_payment() {
             'associated_tenant' => $tenant_id,
             'associated_property' => $property_id,
             'amount_paid'       => $amount,
-            'date_of_payment'   => $date,
+            'date_of_payment'   => $period,
             'mode_of_payment'   => $method,
             'transaction_cheque_number' => $transaction_cheque_number,
             'payment_period'    => $period
@@ -814,7 +804,6 @@ function efEditTransaction(id) {
     document.getElementById('ef_log_method').value = entry.method; 
     document.getElementById('ef_log_transaction_cheque_number').value = entry.transaction_cheque_number || '';
     document.getElementById('ef_log_period').value = entry.period;
-    document.getElementById('ef_log_date').value = entry.raw_date; 
  
     document.getElementById('efLogPaymentGlobalModal').style.display = 'flex'; 
 } 
