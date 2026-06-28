@@ -36,6 +36,41 @@ if (!function_exists('ef_is_tenant_billable')) {
     }
 }
 
+if (!function_exists('ef_get_tenant_monthly_status')) {    
+    function ef_get_tenant_monthly_status($t_id, $month, $year) {    
+        $monthly_rent = floatval(get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true));    
+    
+        $period_match = $year . '-' . str_pad($month, 2, '0', STR_PAD_LEFT);
+        $payments = get_posts(array(    
+            'post_type'      => 'payment',    
+            'post_status'    => ['publish', 'future'],
+            'posts_per_page' => -1,    
+            'meta_query'     => array(
+                array('key' => 'associated_tenant', 'value' => $t_id, 'compare' => '=' )
+            )
+        ));    
+    
+        $tenant_paid_this_month = 0.00;    
+        foreach ($payments as $p) {    
+            $p_id = $p->ID;
+            $period = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true) ?: get_the_date('Y-m', $p_id);
+            if (strpos($period, $period_match) === 0) {
+                $amount = get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true);    
+                if ($amount) {    
+                    $tenant_paid_this_month += floatval($amount);    
+                }    
+            }
+        }    
+    
+        return array(    
+            'paid' => $tenant_paid_this_month,    
+            'rent' => $monthly_rent,    
+            'balance' => max(0, $monthly_rent - $tenant_paid_this_month),    
+            'is_fully_paid' => ($monthly_rent > 0) ? ($tenant_paid_this_month >= $monthly_rent) : ($tenant_paid_this_month > 0)    
+        );    
+    }    
+}
+
 add_shortcode('ef_log_payment_btn', function() {   
     $tenants_query = new WP_Query([   
         'post_type'      => 'ef_tenant',   
@@ -487,6 +522,18 @@ if ($query->have_posts()) {
             $unique_periods[] = $period_val;     
         }     
    
+        $status_label = 'Paid';
+        if ($tenant_id && $period_val) {
+            $py = substr($period_val, 0, 4);
+            $pm = substr($period_val, 5, 2);
+            if ($py && $pm) {
+                $status = ef_get_tenant_monthly_status($tenant_id, $pm, $py);
+                if (!$status['is_fully_paid']) {
+                    $status_label = 'Partial';
+                }
+            }
+        }
+
         $payments_dataset[] = [     
             'id'        => $payment_id,     
             'tenant'    => $tenant_name, 
@@ -498,7 +545,8 @@ if ($query->have_posts()) {
             'receipt_voucher' => $receipt_voucher,
             'date'      => $date_format, 
             'raw_date'  => $iso_date, 
-            'amount'    => $amount_val     
+            'amount'    => $amount_val,
+            'status'    => $status_label
         ];     
     }     
     wp_reset_postdata();     
@@ -557,6 +605,7 @@ ob_start();
                 <th>Ref/Cheque No.</th>
                 <th>Date</th>     
                 <th>Amount</th>     
+                <th>Status</th>
                 <th style="text-align: right;">Actions</th>     
             </tr>     
         </thead>     
@@ -607,7 +656,12 @@ function efProcessLedgerQueryMatrix() {
             const rowHtml = document.createElement('tr');     
             if (entry.tenant === 'Out of contract') {
                 rowHtml.style.backgroundColor = '#ff9393';
+            } else if (entry.status === 'Partial') {
+                rowHtml.style.backgroundColor = 'rgb(253 248 195)';
             }
+            
+            const statusClass = entry.status === 'Paid' ? 'status-paid' : 'status-partial';
+
             rowHtml.innerHTML = `     
                 <td class="ef-cell-bold-tenant">${efEscapeOutputChar(entry.tenant)}</td>     
                 <td style="color: #475569;">${efEscapeOutputChar(entry.property)}</td>     
@@ -616,6 +670,7 @@ function efProcessLedgerQueryMatrix() {
                 <td style="color: #475569;">${efEscapeOutputChar(entry.transaction_cheque_number)}</td>
                 <td style="color: #475569;">${efEscapeOutputChar(entry.date)}</td>     
                 <td class="ef-cell-accent-currency-green">AED ${Number(entry.amount).toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})}</td>     
+                <td><div class="ef-payment-status-badge ${statusClass}">${efEscapeOutputChar(entry.status)}</div></td>
                 <td style="text-align: right;">     
                      <button class="ef-btn-receipt-pdf-download" title="Download PDF" onclick='efDownloadReceipt(efLedgerSourcePayload.find(item => item.id === ${entry.id}))'>     
                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-top:-2px;">
