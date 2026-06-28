@@ -36,6 +36,95 @@ if (!function_exists('ef_is_tenant_billable')) {
     }
 }
 
+if (!function_exists('ef_get_id_from_any')) {
+    function ef_get_id_from_any($val) {
+        if (!$val) return 0;
+        $val = maybe_unserialize($val);
+        if (is_array($val)) $val = reset($val);
+        if (is_object($val)) return intval($val->ID ?? $val->post_id ?? 0);
+        if (is_array($val)) return intval($val['ID'] ?? $val['id'] ?? $val[0] ?? 0);
+        return intval($val);
+    }
+}
+
+if (!function_exists('ef_get_dashboard_period')) {
+    function ef_get_dashboard_period() {
+        $m = isset($_REQUEST["ef_month"]) ? $_REQUEST["ef_month"] : (isset($_COOKIE["ef_month"]) ? $_COOKIE["ef_month"] : date("m"));
+        $y = isset($_REQUEST["ef_year"]) ? $_REQUEST["ef_year"] : (isset($_COOKIE["ef_year"]) ? $_COOKIE["ef_year"] : date("Y"));
+        $m = str_pad(intval($m), 2, "0", STR_PAD_LEFT);
+        $y = intval($y);
+        return ['m' => $m, 'y' => $y, 'period' => "$y-$m"];
+    }
+}
+
+if (!function_exists('ef_clean_amount')) {
+    function ef_clean_amount($val) {
+        if (!$val) return 0.00;
+        $v = str_replace(['AED', ' ', ','], '', (string)$val);
+        return floatval($v);
+    }
+}
+
+if (!function_exists('ef_get_payment_tenant_id')) {
+    function ef_get_payment_tenant_id($p_id) {
+        $t = get_field('associated_tenant', $p_id) ?: get_field('select_tenant', $p_id) ?: get_post_meta($p_id, 'associated_tenant', true) ?: get_post_meta($p_id, 'select_tenant', true);
+        return ef_get_id_from_any($t);
+    }
+}
+
+if (!function_exists('ef_get_payment_period')) {
+    function ef_get_payment_period($p_id) {
+        $p = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true);
+        if ($p) return substr((string)$p, 0, 7);
+        $d = get_field('date_of_payment', $p_id) ?: get_post_meta($p_id, 'date_of_payment', true);
+        if ($d) {
+            $d = (string)$d;
+            if (strpos($d, '/') !== false) {
+                $parts = explode('/', $d);
+                if (count($parts) === 3) {
+                    if (strlen($parts[2]) === 4) return "$parts[2]-" . str_pad($parts[1], 2, '0', STR_PAD_LEFT);
+                    if (strlen($parts[0]) === 4) return "$parts[0]-" . str_pad($parts[1], 2, '0', STR_PAD_LEFT);
+                }
+            }
+            $ts = strtotime($d);
+            if ($ts) return date('Y-m', $ts);
+        }
+        return get_the_date('Y-m', $p_id);
+    }
+}
+
+if (!function_exists('ef_get_tenant_monthly_status')) {
+    function ef_get_tenant_monthly_status($t_id, $m, $y) {
+        $rent_val = get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true);
+        $rent = ef_clean_amount($rent_val);
+        $period_match = "$y-$m";
+
+        $payments = get_posts([
+            'post_type' => 'payment',
+            'post_status' => ['publish', 'future', 'pending', 'draft', 'private'],
+            'numberposts' => -1
+        ]);
+
+        $paid = 0;
+        foreach ($payments as $p) {
+            $p_id = $p->ID;
+            if (ef_get_payment_tenant_id($p_id) == intval($t_id)) {
+                $p_period = ef_get_payment_period($p_id);
+                if (strpos($p_period, $period_match) === 0) {
+                    $amt_val = get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true);
+                    $paid += ef_clean_amount($amt_val);
+                }
+            }
+        }
+
+        return [
+            'paid' => $paid,
+            'rent' => $rent,
+            'is_fully_paid' => ($rent > 0 && $paid >= $rent) || ($rent == 0 && $paid > 0)
+        ];
+    }
+}
+
 add_shortcode('ef_log_payment_btn', function() {   
     $tenants_query = new WP_Query([   
         'post_type'      => 'ef_tenant',   
@@ -449,7 +538,7 @@ if ($query->have_posts()) {
         $transaction_cheque_number = get_field('transaction_cheque_number', $payment_id) ?: get_post_meta($payment_id, 'transaction_cheque_number', true);
         $receipt_voucher = get_field('receipt_voucher', $payment_id) ?: get_post_meta($payment_id, 'receipt_voucher', true);
 
-        $amount_val   = $amount ? floatval($amount) : 0.00;     
+        $amount_val   = ef_clean_amount($amount);
         $method_txt   = $method ? $method : 'Bank Transfer';     
          
         $tenant_name = 'Out of contract';

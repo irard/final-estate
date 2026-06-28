@@ -36,36 +36,79 @@ if (!function_exists('ef_is_tenant_billable')) {
     }
 }
 
+if (!function_exists('ef_get_id_from_any')) {
+    function ef_get_id_from_any($val) {
+        if (!$val) return 0;
+        $val = maybe_unserialize($val);
+        if (is_array($val)) $val = reset($val);
+        if (is_object($val)) return intval($val->ID ?? $val->post_id ?? 0);
+        if (is_array($val)) return intval($val['ID'] ?? $val['id'] ?? $val[0] ?? 0);
+        return intval($val);
+    }
+}
+
 if (!function_exists('ef_get_dashboard_period')) {
     function ef_get_dashboard_period() {
-        $m = isset($_GET['ef_month']) ? str_pad(intval($_GET['ef_month']), 2, '0', STR_PAD_LEFT) : date('m');
-        $y = isset($_GET['ef_year']) ? intval($_GET['ef_year']) : date('Y');
+        $m = isset($_REQUEST['ef_month']) ? $_REQUEST['ef_month'] : (isset($_COOKIE['ef_month']) ? $_COOKIE['ef_month'] : date('m'));
+        $y = isset($_REQUEST['ef_year']) ? $_REQUEST['ef_year'] : (isset($_COOKIE['ef_year']) ? $_COOKIE['ef_year'] : date('Y'));
+
+        $m = str_pad(intval($m), 2, '0', STR_PAD_LEFT);
+        $y = intval($y);
+
         return ['m' => $m, 'y' => $y, 'period' => "$y-$m"];
+    }
+}
+
+if (!function_exists('ef_clean_amount')) {
+    function ef_clean_amount($val) {
+        if (!$val) return 0.00;
+        $v = str_replace(['AED', ' ', ','], '', (string)$val);
+        return floatval($v);
     }
 }
 
 if (!function_exists('ef_get_payment_tenant_id')) {
     function ef_get_payment_tenant_id($p_id) {
-        $t = get_field('associated_tenant', $p_id) ?: get_post_meta($p_id, 'associated_tenant', true);
-        if (!$t) {
-            $t = get_field('select_tenant', $p_id) ?: get_post_meta($p_id, 'select_tenant', true);
+        $t = get_field('associated_tenant', $p_id) ?: get_field('select_tenant', $p_id) ?: get_post_meta($p_id, 'associated_tenant', true) ?: get_post_meta($p_id, 'select_tenant', true);
+        return ef_get_id_from_any($t);
+    }
+}
+
+if (!function_exists('ef_get_tenant_property_id')) {
+    function ef_get_tenant_property_id($t_id) {
+        $p = get_field('property_id', $t_id) ?: get_post_meta($t_id, 'property_id', true);
+        return ef_get_id_from_any($p);
+    }
+}
+
+if (!function_exists('ef_get_payment_property_id')) {
+    function ef_get_payment_property_id($p_id) {
+        $p = get_field('associated_property', $p_id) ?: get_post_meta($p_id, 'associated_property', true);
+        if (!$p) {
+            $tid = ef_get_payment_tenant_id($p_id);
+            if ($tid) $p = ef_get_tenant_property_id($tid);
         }
-        if (!$t) return 0;
-        if (is_array($t)) {
-            $item = $t[0];
-            return is_object($item) ? $item->ID : (is_array($item) ? ($item['ID'] ?? 0) : intval($item));
-        }
-        if (is_object($t)) return $t->ID;
-        return intval($t);
+        return ef_get_id_from_any($p);
     }
 }
 
 if (!function_exists('ef_get_payment_period')) {
     function ef_get_payment_period($p_id) {
         $p = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true);
-        if ($p) return substr($p, 0, 7);
+        if ($p) return substr((string)$p, 0, 7);
         $d = get_field('date_of_payment', $p_id) ?: get_post_meta($p_id, 'date_of_payment', true);
-        if ($d) return date('Y-m', strtotime($d));
+        if ($d) {
+            $d = (string)$d;
+            if (strpos($d, '/') !== false) {
+                $parts = explode('/', $d);
+                if (count($parts) === 3) {
+                    if (strlen($parts[2]) === 4) return "$parts[2]-" . str_pad($parts[1], 2, '0', STR_PAD_LEFT);
+                    if (strlen($parts[0]) === 4) return "$parts[0]-" . str_pad($parts[1], 2, '0', STR_PAD_LEFT);
+                }
+            }
+            $ts = strtotime($d);
+            if ($ts) return date('Y-m', $ts);
+        }
         return get_the_date('Y-m', $p_id);
     }
 }
@@ -73,27 +116,24 @@ if (!function_exists('ef_get_payment_period')) {
 if (!function_exists('ef_get_tenant_monthly_status')) {
     function ef_get_tenant_monthly_status($t_id, $m, $y) {
         $rent_val = get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true);
-        $rent = floatval(str_replace(',', '', $rent_val));
+        $rent = ef_clean_amount($rent_val);
         $period_match = "$y-$m";
 
         $payments = get_posts([
             'post_type' => 'payment',
             'post_status' => ['publish', 'future', 'pending', 'draft', 'private'],
-            'posts_per_page' => -1,
-            'meta_query' => [
-                'relation' => 'OR',
-                ['key' => 'associated_tenant', 'value' => $t_id, 'compare' => '='],
-                ['key' => 'select_tenant', 'value' => $t_id, 'compare' => '='],
-                ['key' => 'select_tenant', 'value' => '"' . $t_id . '"', 'compare' => 'LIKE'],
-            ]
+            'numberposts' => -1
         ]);
 
         $paid = 0;
         foreach ($payments as $p) {
             $p_id = $p->ID;
-            $p_period = ef_get_payment_period($p_id);
-            if (strpos($p_period, $period_match) === 0) {
-                $paid += floatval(get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true));
+            if (ef_get_payment_tenant_id($p_id) == intval($t_id)) {
+                $p_period = ef_get_payment_period($p_id);
+                if (strpos($p_period, $period_match) === 0) {
+                    $amt_val = get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true);
+                    $paid += ef_clean_amount($amt_val);
+                }
             }
         }
 
@@ -129,7 +169,7 @@ add_shortcode('ef_total_payments', function() {
             $period = ef_get_payment_period($p_id);
             if (strpos($period, $current_period) === 0) {
                 $amount = get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true);   
-                if ($amount) { $monthly_revenue += floatval(str_replace(',', '', $amount)); }
+                $monthly_revenue += ef_clean_amount($amount);
             }
         }  
         wp_reset_postdata();  
@@ -148,7 +188,7 @@ add_shortcode('ef_total_outstanding', function() {
             $t_id = get_the_ID();
             if (ef_is_tenant_billable($t_id, $m, $y)) {
                 $rent_val = get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true);  
-                if ($rent_val) { $rent_expected += floatval(str_replace(',', '', $rent_val)); }
+                $rent_expected += ef_clean_amount($rent_val);
             }
         }  
         wp_reset_postdata();  
@@ -175,7 +215,7 @@ add_shortcode('ef_yearly_revenue', function() {
             $period = ef_get_payment_period($pay_id);
             if (strpos($period, (string)$current_year) === 0) {
                 $amt_paid = get_field('amount_paid', $pay_id) ?: get_post_meta($pay_id, 'amount_paid', true);  
-                if ($amt_paid) { $total_yearly_revenue += floatval(str_replace(',', '', $amt_paid)); }
+                $total_yearly_revenue += ef_clean_amount($amt_paid);
             }
         }  
         wp_reset_postdata();  
@@ -200,7 +240,7 @@ add_shortcode('ef_yearly_expected_revenue', function() {
             $rent_val = get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true);
             $tenants[] = [
                 'id'   => $t_id,
-                'rent' => floatval(str_replace(',', '', $rent_val))
+                'rent' => ef_clean_amount($rent_val)
             ];
         }
         wp_reset_postdata();
@@ -232,7 +272,7 @@ add_shortcode('ef_collected_rate', function() {
             $t_id = get_the_ID();
             if (ef_is_tenant_billable($t_id, $m, $y)) {
                 $rent_val = get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true);
-                $billable_tenants[$t_id] = floatval(str_replace(',', '', $rent_val));
+                $billable_tenants[$t_id] = ef_clean_amount($rent_val);
             }
         }  
         wp_reset_postdata();  
@@ -257,7 +297,7 @@ add_shortcode('ef_collected_rate', function() {
                 if ($tid && isset($billable_tenants[$tid])) {
                     if (!isset($payments_by_tenant[$tid])) $payments_by_tenant[$tid] = 0;
                     $amt_val = get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true);
-                    $payments_by_tenant[$tid] += floatval(str_replace(',', '', $amt_val));
+                    $payments_by_tenant[$tid] += ef_clean_amount($amt_val);
                 }
             }
         }
@@ -394,9 +434,11 @@ add_shortcode('ef_dashboard_filter', function() {
             const m = monthSelect.value;
             const y = yearSelect.value;
 
-            // Save to localStorage
+            // Save to localStorage and Cookies
             localStorage.setItem('ef_dashboard_month', m);
             localStorage.setItem('ef_dashboard_year', y);
+            document.cookie = "ef_month=" + m + "; path=/; max-age=" + (365*24*60*60);
+            document.cookie = "ef_year=" + y + "; path=/; max-age=" + (365*24*60*60);
 
             const url = new URL(window.location.href);
             url.searchParams.set('ef_month', m);

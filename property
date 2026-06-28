@@ -36,50 +36,110 @@ if (!function_exists('ef_is_tenant_billable')) {
     } 
 } 
 
+if (!function_exists('ef_get_id_from_any')) {
+    function ef_get_id_from_any($val) {
+        if (!$val) return 0;
+        $val = maybe_unserialize($val);
+        if (is_array($val)) $val = reset($val);
+        if (is_object($val)) return intval($val->ID ?? $val->post_id ?? 0);
+        if (is_array($val)) return intval($val['ID'] ?? $val['id'] ?? $val[0] ?? 0);
+        return intval($val);
+    }
+}
+
 if (!function_exists('ef_get_dashboard_period')) {
     function ef_get_dashboard_period() {
-        $m = isset($_REQUEST['ef_month']) ? str_pad(intval($_REQUEST['ef_month']), 2, '0', STR_PAD_LEFT) : date('m');
-        $y = isset($_REQUEST['ef_year']) ? intval($_REQUEST['ef_year']) : date('Y');
+        $m = isset($_REQUEST["ef_month"]) ? $_REQUEST["ef_month"] : (isset($_COOKIE["ef_month"]) ? $_COOKIE["ef_month"] : date("m"));
+        $y = isset($_REQUEST["ef_year"]) ? $_REQUEST["ef_year"] : (isset($_COOKIE["ef_year"]) ? $_COOKIE["ef_year"] : date("Y"));
+        $m = str_pad(intval($m), 2, "0", STR_PAD_LEFT);
+        $y = intval($y);
         return ['m' => $m, 'y' => $y, 'period' => "$y-$m"];
+    }
+}
+
+if (!function_exists('ef_clean_amount')) {
+    function ef_clean_amount($val) {
+        if (!$val) return 0.00;
+        $v = str_replace(['AED', ' ', ','], '', (string)$val);
+        return floatval($v);
     }
 }
 
 if (!function_exists('ef_get_payment_tenant_id')) {
     function ef_get_payment_tenant_id($p_id) {
-        $t = get_field('associated_tenant', $p_id) ?: get_post_meta($p_id, 'associated_tenant', true);
-        if (!$t) {
-            $t = get_field('select_tenant', $p_id) ?: get_post_meta($p_id, 'select_tenant', true);
-        }
-        if (!$t) return 0;
-        if (is_array($t)) {
-            $item = $t[0];
-            return is_object($item) ? $item->ID : (is_array($item) ? ($item['ID'] ?? 0) : intval($item));
-        }
-        if (is_object($t)) return $t->ID;
-        return intval($t);
-    }
-}
-
-if (!function_exists('ef_get_payment_period')) {
-    function ef_get_payment_period($p_id) {
-        $p = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true);
-        if ($p) return substr($p, 0, 7);
-        $d = get_field('date_of_payment', $p_id) ?: get_post_meta($p_id, 'date_of_payment', true);
-        if ($d) return date('Y-m', strtotime($d));
-        return get_the_date('Y-m', $p_id);
+        $t = get_field('associated_tenant', $p_id) ?: get_field('select_tenant', $p_id) ?: get_post_meta($p_id, 'associated_tenant', true) ?: get_post_meta($p_id, 'select_tenant', true);
+        return ef_get_id_from_any($t);
     }
 }
 
 if (!function_exists('ef_get_tenant_property_id')) {
     function ef_get_tenant_property_id($t_id) {
         $p = get_field('property_id', $t_id) ?: get_post_meta($t_id, 'property_id', true);
-        if (!$p) return 0;
-        if (is_array($p)) {
-            $item = $p[0];
-            return is_object($item) ? $item->ID : (is_array($item) ? ($item['ID'] ?? 0) : intval($item));
+        return ef_get_id_from_any($p);
+    }
+}
+
+if (!function_exists('ef_get_payment_property_id')) {
+    function ef_get_payment_property_id($p_id) {
+        $p = get_field('associated_property', $p_id) ?: get_post_meta($p_id, 'associated_property', true);
+        if (!$p) {
+            $tid = ef_get_payment_tenant_id($p_id);
+            if ($tid) $p = ef_get_tenant_property_id($tid);
         }
-        if (is_object($p)) return $p->ID;
-        return intval($p);
+        return ef_get_id_from_any($p);
+    }
+}
+
+if (!function_exists('ef_get_payment_period')) {
+    function ef_get_payment_period($p_id) {
+        $p = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true);
+        if ($p) return substr((string)$p, 0, 7);
+        $d = get_field('date_of_payment', $p_id) ?: get_post_meta($p_id, 'date_of_payment', true);
+        if ($d) {
+            $d = (string)$d;
+            if (strpos($d, '/') !== false) {
+                $parts = explode('/', $d);
+                if (count($parts) === 3) {
+                    if (strlen($parts[2]) === 4) return "$parts[2]-" . str_pad($parts[1], 2, '0', STR_PAD_LEFT);
+                    if (strlen($parts[0]) === 4) return "$parts[0]-" . str_pad($parts[1], 2, '0', STR_PAD_LEFT);
+                }
+            }
+            $ts = strtotime($d);
+            if ($ts) return date('Y-m', $ts);
+        }
+        return get_the_date('Y-m', $p_id);
+    }
+}
+
+if (!function_exists('ef_get_tenant_monthly_status')) {
+    function ef_get_tenant_monthly_status($t_id, $m, $y) {
+        $rent_val = get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true);
+        $rent = ef_clean_amount($rent_val);
+        $period_match = "$y-$m";
+
+        $payments = get_posts([
+            'post_type' => 'payment',
+            'post_status' => ['publish', 'future', 'pending', 'draft', 'private'],
+            'numberposts' => -1
+        ]);
+
+        $paid = 0;
+        foreach ($payments as $p) {
+            $p_id = $p->ID;
+            if (ef_get_payment_tenant_id($p_id) == intval($t_id)) {
+                $p_period = ef_get_payment_period($p_id);
+                if (strpos($p_period, $period_match) === 0) {
+                    $amt_val = get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true);
+                    $paid += ef_clean_amount($amt_val);
+                }
+            }
+        }
+
+        return [
+            'paid' => $paid,
+            'rent' => $rent,
+            'is_fully_paid' => ($rent > 0 && $paid >= $rent) || ($rent == 0 && $paid > 0)
+        ];
     }
 }
 add_action('wp_ajax_save_property', 'ef_handle_save_property'); 
@@ -240,11 +300,16 @@ function ef_handle_get_properties_dashboard() {
     ]);
  
     $payments_by_tenant = []; 
+    $payments_by_property = [];
     foreach ($all_payments as $pay) { 
         if (strpos(ef_get_payment_period($pay->ID), $current_period) === 0) {
             $t_id = ef_get_payment_tenant_id($pay->ID);
             if ($t_id) {
                 $payments_by_tenant[$t_id][] = $pay;
+            }
+            $p_id = ef_get_payment_property_id($pay->ID);
+            if ($p_id) {
+                $payments_by_property[$p_id][] = $pay;
             }
         }
     } 
@@ -266,21 +331,28 @@ function ef_handle_get_properties_dashboard() {
         $collected = 0; 
         $billable_count = 0;
         $progress_sum = 0;
+
+        $p_pay_total = 0;
+        $p_payments = isset($payments_by_property[$p->ID]) ? $payments_by_property[$p->ID] : [];
+        foreach ($p_payments as $pay) {
+            $p_pay_total += ef_clean_amount(get_field('amount_paid', $pay->ID) ?: get_post_meta($pay->ID, 'amount_paid', true));
+        }
+        $collected = $p_pay_total;
+
         foreach ($p_tenants as $t) {
             if (function_exists("ef_is_tenant_billable") && !ef_is_tenant_billable($t->ID, $current_month, $current_year)) continue;
 
             $billable_count++;
             $rent_val = get_field('monthly_rent', $t->ID) ?: get_post_meta($t->ID, 'monthly_rent', true);
-            $monthly_rent = floatval(str_replace(',', '', $rent_val));
+            $monthly_rent = ef_clean_amount($rent_val);
             $expected += $monthly_rent; 
  
             $t_paid_total = 0;
             $t_payments = isset($payments_by_tenant[$t->ID]) ? $payments_by_tenant[$t->ID] : []; 
             foreach ($t_payments as $pay) { 
                 $amount_val = get_field('amount_paid', $pay->ID) ?: get_post_meta($pay->ID, 'amount_paid', true);
-                $t_paid_total += floatval(str_replace(',', '', $amount_val));
+                $t_paid_total += ef_clean_amount($amount_val);
             } 
-            $collected += $t_paid_total;
 
             if ($monthly_rent > 0) {
                 $progress_sum += min(1, $t_paid_total / $monthly_rent);
