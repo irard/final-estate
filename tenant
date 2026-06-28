@@ -581,7 +581,11 @@ function eftm_handle_ajax_tenant_breakdown() {
     $p_query = new WP_Query([ 
         'post_type'      => 'payment', 'post_status'    => ['publish', 'future'], 'posts_per_page' => -1, 
         'meta_query'     => [['key' => 'associated_tenant', 'value' => $tenant_id, 'compare' => '=']], 
-        'meta_key'       => 'date_of_payment', 'orderby' => 'meta_value', 'order' => 'DESC' 
+        'meta_key'       => 'date_of_payment',
+        'orderby'        => [
+            'meta_value' => 'DESC',
+            'ID'         => 'DESC'
+        ]
     ]); 
     if ($p_query->have_posts()) { 
         while ($p_query->have_posts()) { 
