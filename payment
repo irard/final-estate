@@ -36,39 +36,73 @@ if (!function_exists('ef_is_tenant_billable')) {
     }
 }
 
-if (!function_exists('ef_get_tenant_monthly_status')) {    
-    function ef_get_tenant_monthly_status($t_id, $month, $year) {    
-        $monthly_rent = floatval(get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true));    
-    
-        $period_match = $year . '-' . str_pad($month, 2, '0', STR_PAD_LEFT);
-        $payments = get_posts(array(    
-            'post_type'      => 'payment',    
-            'post_status'    => ['publish', 'future'],
-            'posts_per_page' => -1,    
-            'meta_query'     => array(
-                array('key' => 'associated_tenant', 'value' => $t_id, 'compare' => '=' )
-            )
-        ));    
-    
-        $tenant_paid_this_month = 0.00;    
-        foreach ($payments as $p) {    
+if (!function_exists('ef_get_dashboard_period')) {
+    function ef_get_dashboard_period() {
+        $m = isset($_GET['ef_month']) ? str_pad(intval($_GET['ef_month']), 2, '0', STR_PAD_LEFT) : date('m');
+        $y = isset($_GET['ef_year']) ? intval($_GET['ef_year']) : date('Y');
+        return ['m' => $m, 'y' => $y, 'period' => "$y-$m"];
+    }
+}
+
+if (!function_exists('ef_get_payment_tenant_id')) {
+    function ef_get_payment_tenant_id($p_id) {
+        $t = get_field('associated_tenant', $p_id) ?: get_post_meta($p_id, 'associated_tenant', true);
+        if (!$t) {
+            $t = get_field('select_tenant', $p_id) ?: get_post_meta($p_id, 'select_tenant', true);
+        }
+        if (!$t) return 0;
+        if (is_array($t)) {
+            $item = $t[0];
+            return is_object($item) ? $item->ID : (is_array($item) ? ($item['ID'] ?? 0) : intval($item));
+        }
+        if (is_object($t)) return $t->ID;
+        return intval($t);
+    }
+}
+
+if (!function_exists('ef_get_payment_period')) {
+    function ef_get_payment_period($p_id) {
+        $p = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true);
+        if ($p) return substr($p, 0, 7);
+        $d = get_field('date_of_payment', $p_id) ?: get_post_meta($p_id, 'date_of_payment', true);
+        if ($d) return date('Y-m', strtotime($d));
+        return get_the_date('Y-m', $p_id);
+    }
+}
+
+if (!function_exists('ef_get_tenant_monthly_status')) {
+    function ef_get_tenant_monthly_status($t_id, $m, $y) {
+        $rent_val = get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true);
+        $rent = floatval(str_replace(',', '', $rent_val));
+        $period_match = "$y-$m";
+
+        $payments = get_posts([
+            'post_type' => 'payment',
+            'post_status' => ['publish', 'future', 'pending', 'draft', 'private'],
+            'posts_per_page' => -1,
+            'meta_query' => [
+                'relation' => 'OR',
+                ['key' => 'associated_tenant', 'value' => $t_id, 'compare' => '='],
+                ['key' => 'select_tenant', 'value' => $t_id, 'compare' => '='],
+                ['key' => 'select_tenant', 'value' => '"' . $t_id . '"', 'compare' => 'LIKE'],
+            ]
+        ]);
+
+        $paid = 0;
+        foreach ($payments as $p) {
             $p_id = $p->ID;
-            $period = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true) ?: get_the_date('Y-m', $p_id);
-            if (strpos($period, $period_match) === 0) {
-                $amount = get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true);    
-                if ($amount) {    
-                    $tenant_paid_this_month += floatval($amount);    
-                }    
+            $p_period = ef_get_payment_period($p_id);
+            if (strpos($p_period, $period_match) === 0) {
+                $paid += floatval(get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true));
             }
-        }    
-    
-        return array(    
-            'paid' => $tenant_paid_this_month,    
-            'rent' => $monthly_rent,    
-            'balance' => max(0, $monthly_rent - $tenant_paid_this_month),    
-            'is_fully_paid' => ($monthly_rent > 0) ? ($tenant_paid_this_month >= $monthly_rent) : ($tenant_paid_this_month > 0)    
-        );    
-    }    
+        }
+
+        return [
+            'paid' => $paid,
+            'rent' => $rent,
+            'is_fully_paid' => ($rent > 0 && $paid >= $rent) || ($rent == 0 && $paid > 0)
+        ];
+    }
 }
 
 add_shortcode('ef_log_payment_btn', function() {   
