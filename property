@@ -330,14 +330,7 @@ function ef_handle_get_properties_dashboard() {
         $expected = 0; 
         $collected = 0; 
         $billable_count = 0;
-        $progress_sum = 0;
-
-        $p_pay_total = 0;
-        $p_payments = isset($payments_by_property[$p->ID]) ? $payments_by_property[$p->ID] : [];
-        foreach ($p_payments as $pay) {
-            $p_pay_total += ef_clean_amount(get_field('amount_paid', $pay->ID) ?: get_post_meta($pay->ID, 'amount_paid', true));
-        }
-        $collected = $p_pay_total;
+        $fully_paid_count = 0;
 
         foreach ($p_tenants as $t) { 
             if (function_exists("ef_is_tenant_billable") && !ef_is_tenant_billable($t->ID, $current_month, $current_year)) continue; 
@@ -353,15 +346,15 @@ function ef_handle_get_properties_dashboard() {
                 $amount_val = get_field('amount_paid', $pay->ID) ?: get_post_meta($pay->ID, 'amount_paid', true); 
                 $t_paid_total += ef_clean_amount($amount_val);
             } 
+            $collected += $t_paid_total;
 
-            if ($monthly_rent > 0) {
-                $progress_sum += min(1, $t_paid_total / $monthly_rent);
-            } elseif ($t_paid_total > 0) {
-                $progress_sum += 1;
+            $is_fully_paid = ($monthly_rent > 0 && $t_paid_total >= $monthly_rent) || ($monthly_rent == 0 && $t_paid_total > 0);
+            if ($is_fully_paid) {
+                $fully_paid_count++;
             }
         } 
  
-        $col_pct = ($billable_count > 0) ? round(($progress_sum / $billable_count) * 100) : 0;
+        $col_pct = ($billable_count > 0) ? round(($fully_paid_count / $billable_count) * 100) : 0;
 
         $data[] = [ 
             'id'        => $p->ID, 
