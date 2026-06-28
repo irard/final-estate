@@ -249,6 +249,34 @@ add_shortcode('ef_log_payment_btn', function() {
     return ob_get_clean();   
 });   
    
+function ef_internal_create_payment_record($tenant_id, $property_id, $tenant_name, $amount, $method, $ref, $date, $period, $voucher) {
+    $period_ts = strtotime($period . '-01');
+    $post_title  = $tenant_name . ' - ' . ($period_ts ? date('M Y', $period_ts) : date('M Y', strtotime($date)));   
+    $new_id = wp_insert_post([   
+        'post_title'  => $post_title,   
+        'post_type'   => 'payment',    
+        'post_status' => 'publish'
+    ]);   
+    if ($new_id && !is_wp_error($new_id)) {
+        $meta = [
+            'associated_tenant' => $tenant_id,
+            'associated_property' => $property_id,
+            'amount_paid'       => $amount,
+            'date_of_payment'   => $date,
+            'mode_of_payment'   => $method,
+            'transaction_cheque_number' => $ref,
+            'receipt_voucher'   => $voucher,
+            'payment_period'    => $period
+        ];
+        foreach ($meta as $k => $v) {
+            if (function_exists('update_field')) update_field($k, $v, $new_id);
+            else update_post_meta($new_id, $k, $v);
+        }
+        return $new_id;
+    }
+    return false;
+}
+
 add_action('wp_ajax_ef_action_create_payment_record', 'ef_callback_ajax_create_payment');   
 function ef_callback_ajax_create_payment() {   
     check_ajax_referer('ef_payment_nonce', 'nonce');
@@ -257,65 +285,109 @@ function ef_callback_ajax_create_payment() {
     }
 
     $tenant_id  = isset($_POST['tenant_id']) ? intval($_POST['tenant_id']) : 0;   
-    $amount     = isset($_POST['amount']) ? floatval($_POST['amount']) : 0;   
+    $total_amount = isset($_POST['amount']) ? floatval($_POST['amount']) : 0;   
     $method     = isset($_POST['method']) ? sanitize_text_field($_POST['method']) : 'Bank Transfer';   
     $transaction_cheque_number = isset($_POST['transaction_cheque_number']) ? sanitize_text_field($_POST['transaction_cheque_number']) : '';
     $date       = isset($_POST['date']) ? sanitize_text_field($_POST['date']) : '';   
-    $period     = isset($_POST['period']) ? sanitize_text_field($_POST['period']) : ''; // YYYY-MM
+    $period_ui  = isset($_POST['period']) ? sanitize_text_field($_POST['period']) : ''; // YYYY-MM
    
-    if (!$tenant_id || !$amount || !$date || !$period) {   
+    if (!$tenant_id || $total_amount <= 0 || !$date || !$period_ui) {   
         wp_send_json_error(['message' => 'Operational parameters data validation failure.']);   
     }   
 
-   
-    $tenant_name = get_the_title($tenant_id);   
-    $post_title  = $tenant_name . ' - ' . date('M Y', strtotime($date));   
-   
-    $new_payment_id = wp_insert_post([   
-        'post_title'  => $post_title,   
-        'post_type'   => 'payment',    
-        'post_status' => 'publish'
-    ]);   
-   
-    if($new_payment_id && !is_wp_error($new_payment_id)) {   
-        // Calculate next receipt voucher number
-        $last_payments = get_posts([
-            'post_type'      => 'payment',
-            'post_status'    => ['publish', 'future'],
-            'posts_per_page' => 1,
-            'meta_key'       => 'receipt_voucher',
-            'orderby'        => 'meta_value_num',
-            'order'          => 'DESC',
-            'post__not_in'   => [$new_payment_id]
-        ]);
-        
-        $next_voucher_int = 1;
-        if (!empty($last_payments)) {
-            $last_voucher = get_post_meta($last_payments[0]->ID, 'receipt_voucher', true);
-            $next_voucher_int = intval($last_voucher) + 1;
-        }
-        $receipt_voucher = str_pad($next_voucher_int, 3, '0', STR_PAD_LEFT);
-        $property_id = get_field('property_id', $tenant_id) ?: get_post_meta($tenant_id, 'property_id', true);
+    $monthly_rent = floatval((function_exists('get_field') ? get_field('monthly_rent', $tenant_id) : null) ?: get_post_meta($tenant_id, 'monthly_rent', true));
+    $tenant_start = (function_exists('get_field') ? get_field('tenant_start', $tenant_id) : null) ?: get_post_meta($tenant_id, 'tenant_start', true);
+    $tenant_name = get_the_title($tenant_id);
+    $property_id = (function_exists('get_field') ? get_field('property_id', $tenant_id) : null) ?: get_post_meta($tenant_id, 'property_id', true);
 
-        $meta = [
-            'associated_tenant' => $tenant_id,
-            'associated_property' => $property_id,
-            'amount_paid'       => $amount,
-            'date_of_payment'   => $date,
-            'mode_of_payment'   => $method,
-            'transaction_cheque_number' => $transaction_cheque_number,
-            'receipt_voucher'   => $receipt_voucher,
-            'payment_period'    => $period
-        ];
-        foreach ($meta as $k => $v) {
-            if (function_exists('update_field')) update_field($k, $v, $new_payment_id);
-            else update_post_meta($new_payment_id, $k, $v);
+    // Calculate next receipt voucher number
+    $last_payments = get_posts([
+        'post_type'      => 'payment',
+        'post_status'    => ['publish', 'future'],
+        'posts_per_page' => 1,
+        'meta_key'       => 'receipt_voucher',
+        'orderby'        => 'meta_value_num',
+        'order'          => 'DESC'
+    ]);
+    $next_voucher_int = 1;
+    if (!empty($last_payments)) {
+        $last_voucher = get_post_meta($last_payments[0]->ID, 'receipt_voucher', true);
+        $next_voucher_int = intval($last_voucher) + 1;
+    }
+
+    if ($monthly_rent <= 0) {
+        $receipt_voucher = str_pad($next_voucher_int, 3, '0', STR_PAD_LEFT);
+        $new_id = ef_internal_create_payment_record($tenant_id, $property_id, $tenant_name, $total_amount, $method, $transaction_cheque_number, $date, $period_ui, $receipt_voucher);
+        if ($new_id) wp_send_json_success(['payment_id' => $new_id]);
+        else wp_send_json_error();
+    }
+
+    // Waterfall allocation logic
+    $amount_remaining = $total_amount;
+    $current_date_ts = $tenant_start ? strtotime($tenant_start) : time();
+    $current_date = date('Y-m-01', $current_date_ts);
+
+    // Fetch existing payments once to calculate monthly balances
+    $existing_payments = get_posts([
+        'post_type' => 'payment',
+        'post_status' => ['publish', 'future', 'pending', 'draft', 'private'],
+        'numberposts' => -1,
+        'meta_query' => [
+            'relation' => 'OR',
+            ['key' => 'associated_tenant', 'value' => $tenant_id, 'compare' => '=' ],
+            ['key' => 'select_tenant', 'value' => $tenant_id, 'compare' => '=' ]
+        ]
+    ]);
+
+    $monthly_paid = [];
+    foreach ($existing_payments as $p) {
+        $p_period = (function_exists('get_field') ? get_field('payment_period', $p->ID) : null) ?: get_post_meta($p->ID, 'payment_period', true) ?: get_the_date('Y-m', $p->ID);
+        $p_period = substr((string)$p_period, 0, 7);
+        $amt = floatval((function_exists('get_field') ? get_field('amount_paid', $p->ID) : null) ?: get_post_meta($p->ID, 'amount_paid', true));
+        if (!isset($monthly_paid[$p_period])) $monthly_paid[$p_period] = 0;
+        $monthly_paid[$p_period] += $amt;
+    }
+
+    $created_ids = [];
+    $safety_limit = 120; // 10 years limit
+    while ($amount_remaining > 0 && $safety_limit > 0) {
+        $y = date('Y', strtotime($current_date));
+        $m = date('m', strtotime($current_date));
+        $period_key = "$y-$m";
+
+        if (ef_is_tenant_billable($tenant_id, $m, $y)) {
+            $paid = isset($monthly_paid[$period_key]) ? $monthly_paid[$period_key] : 0;
+            $balance = max(0, $monthly_rent - $paid);
+
+            if ($balance > 0) {
+                $allocation = min($amount_remaining, $balance);
+                $receipt_voucher = str_pad($next_voucher_int++, 3, '0', STR_PAD_LEFT);
+                $new_id = ef_internal_create_payment_record($tenant_id, $property_id, $tenant_name, $allocation, $method, $transaction_cheque_number, $date, $period_key, $receipt_voucher);
+                if ($new_id) $created_ids[] = $new_id;
+                $amount_remaining -= $allocation;
+            }
         }
-   
-        wp_send_json_success(['payment_id' => $new_payment_id]);   
-    }   
-   
-    wp_send_json_error();   
+        $current_date = date('Y-m-01', strtotime("+1 month", strtotime($current_date)));
+        $safety_limit--;
+    }
+
+    // If there is still a remainder (e.g. advance payment beyond paid-up months)
+    if ($amount_remaining > 0) {
+        $receipt_voucher = str_pad($next_voucher_int++, 3, '0', STR_PAD_LEFT);
+        $period_to_use = date('Y-m', strtotime($current_date));
+        $new_id = ef_internal_create_payment_record($tenant_id, $property_id, $tenant_name, $amount_remaining, $method, $transaction_cheque_number, $date, $period_to_use, $receipt_voucher);
+        if ($new_id) $created_ids[] = $new_id;
+    }
+
+    if (!empty($created_ids)) {
+        wp_send_json_success(['payment_id' => end($created_ids)]);
+    } else {
+        // Fallback: If no allocation happened, create one record for UI period
+        $receipt_voucher = str_pad($next_voucher_int++, 3, '0', STR_PAD_LEFT);
+        $new_id = ef_internal_create_payment_record($tenant_id, $property_id, $tenant_name, $total_amount, $method, $transaction_cheque_number, $date, $period_ui, $receipt_voucher);
+        if ($new_id) wp_send_json_success(['payment_id' => $new_id]);
+        else wp_send_json_error();
+    }
 }   
  
 add_action('wp_ajax_ef_action_update_payment_record', 'ef_callback_ajax_update_payment'); 
