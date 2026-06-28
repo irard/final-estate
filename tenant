@@ -170,7 +170,7 @@ $tenant_list_logic = function() {
                         <div class="ef-tenant-meta"><div class="ef-avatar-circle"><?php echo substr($initials,0,2); ?></div> 
                             <div class="ef-tenant-info-text"><div class="ef-tenant-name"><?php echo esc_html($name); ?></div><div class="ef-tenant-location"><?php echo esc_html($addr); ?></div></div> 
                         </div> 
-                        <div class="ef-tenant-right-aside"><div class="ef-tenant-rent-badge">AED <span class="tenant-list-rent">----</span><div style="font-size:10px; font-weight:400; color:#64748b; margin-top:-2px;">monthly</div></div> 
+                        <div class="ef-tenant-right-aside"><div class="ef-tenant-rent-badge">AED <span class="tenant-list-rent"><?php echo number_format(floatval($rent)); ?></span><div style="font-size:10px; font-weight:400; color:#64748b; margin-top:-2px;">monthly</div></div> 
                             <?php if (floatval($rent) <= 0): ?><div style="font-size: 10px; color: #64748b; margin-top:4px;">No Rent Set</div> 
                             <?php elseif ($paid_this_month >= floatval($rent)): ?><div class="ef-payment-status-badge status-paid">Paid</div>
                             <?php elseif ($paid_this_month > 0): ?><div class="ef-payment-status-badge status-partial">Partial</div>
@@ -627,7 +627,7 @@ function eftm_handle_ajax_tenant_breakdown() {
         <?php endif; ?> 
     </div> 
     <div class="ef-meta-grid-3col"> 
-        <div class="ef-meta-info-card"><div class="ef-meta-card-label">Monthly rent</div><div class="ef-meta-card-value ef-text-green">AED ----</div></div> 
+        <div class="ef-meta-info-card"><div class="ef-meta-card-label">Monthly rent</div><div class="ef-meta-card-value ef-text-green">AED <?php echo number_format($monthly_rent); ?></div></div> 
         <div class="ef-meta-info-card"><div class="ef-meta-card-label">Due day</div><div class="ef-meta-card-value"><?php echo esc_html($due_day_display); ?> <span style="font-size: 13px; font-weight:400; color: #64748b;">of month</span></div></div> 
         <div class="ef-meta-info-card"><div class="ef-meta-card-label">Payments</div><div class="ef-meta-card-value"><?php echo count($payment_history); ?></div></div> 
     </div> 
@@ -775,7 +775,7 @@ add_shortcode('ef_master_tenant_directory', function() {
 
             $rent = get_field('monthly_rent', $t_id);
             $clean_rent = $rent ? floatval($rent) : 0;
-            $display_rent = '----';
+            $display_rent = 'AED ' . number_format($clean_rent);
 
             $due_day = get_field('rent_due_day', $t_id);
             if (!$due_day) { $due_day = get_field('due_day', $t_id); }
@@ -882,7 +882,6 @@ echo '<a href="' . esc_url(home_url('/tenants/') . '?tenant_id=' . get_the_ID())
 
     function efShowTenantDetails(name, rent, due, link, status, editUrl) {
         var card = document.getElementById("efProfileDisplayCard");
-        rent = "----";
 
         var statusHtml = "";
         if (status === "paid") {
