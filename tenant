@@ -685,12 +685,26 @@ function eftm_handle_ajax_tenant_breakdown() {
             $pay_id = get_the_ID(); 
             $raw_date = get_field('date_of_payment', $pay_id) ?: get_post_meta($pay_id, 'date_of_payment', true); 
             $ts = $raw_date ? strtotime($raw_date) : get_the_date('U', $pay_id); 
+            $period = (function_exists('get_field') ? get_field('payment_period', $pay_id) : null) ?: get_post_meta($pay_id, 'payment_period', true) ?: date('Y-m', $ts);
+            $period = substr((string)$period, 0, 7);
+
+            $status_label = 'Paid';
+            if ($tenant_id && $period) {
+                $py = substr($period, 0, 4);
+                $pm = substr($period, 5, 2);
+                if (function_exists('ef_get_tenant_monthly_status')) {
+                    $st = ef_get_tenant_monthly_status($tenant_id, $pm, $py);
+                    if (!$st['is_fully_paid']) $status_label = 'Partial';
+                }
+            }
+
             $payment_history[] = [ 
-                'id' => $pay_id, 'period' => date('Y-m', $ts), 'date' => date('n/j/Y', $ts), 
+                'id' => $pay_id, 'period' => $period, 'date' => date('n/j/Y', $ts),
                 'method' => (get_field('mode_of_payment', $pay_id) ?: get_post_meta($pay_id, 'mode_of_payment', true)) ?: 'Cash', 
                 'amount' => floatval(get_field('amount_paid', $pay_id) ?: get_post_meta($pay_id, 'amount_paid', true)),
                 'cheque' => get_field('transaction_cheque_number', $pay_id) ?: get_post_meta($pay_id, 'transaction_cheque_number', true),
-                'receipt_voucher' => get_field('receipt_voucher', $pay_id) ?: get_post_meta($pay_id, 'receipt_voucher', true)
+                'receipt_voucher' => get_field('receipt_voucher', $pay_id) ?: get_post_meta($pay_id, 'receipt_voucher', true),
+                'status' => $status_label
             ]; 
         } 
         wp_reset_postdata(); 
@@ -736,9 +750,11 @@ function eftm_handle_ajax_tenant_breakdown() {
     <div style="font-size: 14px; display: flex; align-items: center;"><span class="ef-contract-badge-pill">Contract Period</span><span style="color: #0f172a; font-weight: 500;"><?php echo esc_html($contract_start ?: 'N/A'); ?> ➔ <?php echo esc_html($contract_end ?: 'N/A'); ?></span></div> 
     <div class="ef-section-title-sub" style="margin-top: 32px;">Payment Ledger History</div> 
     <div class="ef-payment-history-list"> 
-        <?php if (!empty($payment_history)) : foreach ($payment_history as $p) : ?> 
-            <div class="ef-payment-row-card"> 
-                <div class="ef-pay-row-left"><div class="ef-pay-period-title"><?php echo esc_html($p['period']); ?></div><div class="ef-pay-meta-sub"><?php echo esc_html($p['method']); ?> · <?php echo esc_html($p['date']); ?></div></div> 
+        <?php if (!empty($payment_history)) : foreach ($payment_history as $p) :
+            $status_class = ($p['status'] === 'Paid') ? 'status-paid' : 'status-partial';
+        ?>
+            <div class="ef-payment-row-card" <?php echo ($p['status'] === 'Partial') ? 'style="background-color: #fef9c3;"' : ''; ?>>
+                <div class="ef-pay-row-left"><div class="ef-pay-period-title"><?php echo esc_html($p['period']); ?> <span class="ef-payment-status-badge <?php echo $status_class; ?>" style="font-size: 10px; padding: 2px 6px; margin-left: 8px;"><?php echo $p['status']; ?></span></div><div class="ef-pay-meta-sub"><?php echo esc_html($p['method']); ?> · <?php echo esc_html($p['date']); ?></div></div>
                 <div class="ef-pay-row-right"> 
                     <div class="ef-pay-amount-value">AED <?php echo number_format($p['amount'], 2); ?></div> 
                     <button class="ef-btn-receipt" 
