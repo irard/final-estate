@@ -140,7 +140,7 @@ add_shortcode('ef_log_payment_btn', function() {
             </div>
 
             <div class="ef-modal-input-field-group">
-                <label>Period (YYYY-MM-DD)</label>
+                <label>Billing Start Period (Auto-detects unpaid months)</label>
                 <input type="text" id="ef_log_period" value="<?php echo date('Y-m-d'); ?>" placeholder="YYYY-MM-DD" class="ef-modal-element-input">
             </div>
    
@@ -283,12 +283,50 @@ function ef_callback_ajax_create_payment() {
         $current_max_voucher = intval(get_post_meta($last_payments[0]->ID, 'receipt_voucher', true));
     }
 
-    $current_period_ts = strtotime($period);
+    // --- Automatic Segregation Start: Find Oldest Unpaid Month ---
+    $tenant_start_str = get_field('tenant_start', $tenant_id) ?: get_post_meta($tenant_id, 'tenant_start', true);
+    $search_start_ts = $tenant_start_str ? strtotime($tenant_start_str) : strtotime($period);
+
+    // Normalize to first of the month for consistent iteration
+    $search_y = intval(date('Y', $search_start_ts));
+    $search_m = intval(date('m', $search_start_ts));
+    $current_period_ts = strtotime("$search_y-$search_m-01");
+
+    $today_ts = strtotime(date('Y-m-01'));
+    $found_unpaid = false;
+
+    // Search from tenant start until today for the first unpaid month
+    while ($current_period_ts <= $today_ts) {
+        $p_year = intval(date('Y', $current_period_ts));
+        $p_month = intval(date('m', $current_period_ts));
+
+        if (ef_is_tenant_billable($tenant_id, $p_month, $p_year)) {
+            $status = ef_get_tenant_monthly_status($tenant_id, $p_month, $p_year);
+            if (!$status['is_fully_paid']) {
+                $found_unpaid = true;
+                break;
+            }
+        }
+        $current_period_ts = strtotime("+1 month", $current_period_ts);
+    }
+
+    // If no unpaid month found in the past, fall back to the provided input period
+    if (!$found_unpaid) {
+        $current_period_ts = strtotime($period);
+    }
+    // --- Automatic Segregation End ---
 
     while ($remaining_amount > 0) {
         $p_year = intval(date('Y', $current_period_ts));
         $p_month = intval(date('m', $current_period_ts));
         $period_str = date('Y-m-d', $current_period_ts);
+
+        // Only allocate to billable months
+        if (!ef_is_tenant_billable($tenant_id, $p_month, $p_year)) {
+            $current_period_ts = strtotime("+1 month", $current_period_ts);
+            if (count($created_ids) > 60) break;
+            continue;
+        }
 
         $status = ef_get_tenant_monthly_status($tenant_id, $p_month, $p_year);
         $due = $status['balance'];
