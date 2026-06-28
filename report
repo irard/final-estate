@@ -298,6 +298,17 @@ add_shortcode('monthly_breakdown', function() {
         }); 
     }); 
     </script> 
+    
+    <div class="ef-breakdown-wrapper" style="margin-top: 24px;">
+        <div class="ef-breakdown-header" style="flex-direction: row; justify-content: space-between; align-items: center;">
+            <h3 class="ef-breakdown-title">Annual Collection Rate</h3>
+            <div class="ef-live-badge" style="background: #e6fffa; color: #234e52; border: 1px solid #b2f5ea; padding: 4px 12px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600;">Yearly</div>
+        </div>
+        <div style="font-size: 32px; font-weight: 800; color: #00a86b; margin-top: 12px;">
+            <?php echo do_shortcode('[collected_rate_final]'); ?>
+        </div>
+        <div style="font-size: 14px; color: #64748b; margin-top: 4px;">Overall collection performance based on fully paid tenant-months across all properties.</div>
+    </div>
  
     <?php 
     return ob_get_clean(); 
@@ -715,3 +726,78 @@ function ef_handle_report_export_download() {
     }
     wp_die();
 }
+
+if (!function_exists('ef_get_tenant_monthly_status')) {    
+    function ef_get_tenant_monthly_status($t_id, $month, $year) {    
+        $monthly_rent = floatval(get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true));    
+    
+        $period_match = $year . '-' . str_pad($month, 2, '0', STR_PAD_LEFT);
+        $payments = get_posts(array(    
+            'post_type'      => 'payment',    
+            'post_status'    => ['publish', 'future'],
+            'posts_per_page' => -1,    
+            'meta_query'     => array(
+                array('key' => 'associated_tenant', 'value' => $t_id, 'compare' => '=' )
+            )
+        ));    
+    
+        $tenant_paid_this_month = 0.00;    
+        foreach ($payments as $p) {    
+            $p_id = $p->ID;
+            $period = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true) ?: get_the_date('Y-m', $p_id);
+            if (strpos($period, $period_match) === 0) {
+                $amount = get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true);    
+                if ($amount) {    
+                    $tenant_paid_this_month += floatval($amount);    
+                }    
+            }
+        }    
+    
+        return array(    
+            'paid' => $tenant_paid_this_month,    
+            'rent' => $monthly_rent,    
+            'balance' => max(0, $monthly_rent - $tenant_paid_this_month),    
+            'is_fully_paid' => ($monthly_rent > 0) ? ($tenant_paid_this_month >= $monthly_rent) : ($tenant_paid_this_month > 0)    
+        );    
+    }    
+}
+
+add_shortcode('collected_rate_final', function() {
+    $current_year = date('Y');
+    $selected_year = isset($_GET['report_year']) ? intval($_GET['report_year']) : $current_year;
+
+    $t_query = new WP_Query(array(
+        'post_type'      => 'ef_tenant',
+        'post_status'    => 'publish',
+        'posts_per_page' => -1,
+    ));
+
+    $total_billable_months = 0;
+    $fully_paid_months = 0;
+
+    if ($t_query->have_posts()) {
+        $tenants = [];
+        while ($t_query->have_posts()) {
+            $t_query->the_post();
+            $tenants[] = get_the_ID();
+        }
+        wp_reset_postdata();
+
+        for ($m = 1; $m <= 12; $m++) {
+            $padded_month = str_pad($m, 2, '0', STR_PAD_LEFT);
+            foreach ($tenants as $t_id) {
+                if (ef_is_tenant_billable($t_id, $padded_month, $selected_year)) {
+                    $total_billable_months++;
+                    $status = ef_get_tenant_monthly_status($t_id, $padded_month, $selected_year);
+                    if ($status['is_fully_paid']) {
+                        $fully_paid_months++;
+                    }
+                }
+            }
+        }
+    }
+
+    if ($total_billable_months <= 0) return '0%';
+    $rate = ($fully_paid_months / $total_billable_months) * 100;
+    return round($rate) . '%';
+});
