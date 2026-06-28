@@ -72,56 +72,6 @@ if (!function_exists('ef_get_tenant_monthly_status')) {
 }
 
 add_shortcode('ef_log_payment_btn', function() {   
-    ?>
-    <style>
-    .ef-bulk-period-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-top: 15px;
-        margin-bottom: 8px;
-    }
-    .ef-bulk-period-header label {
-        margin-bottom: 0 !important;
-    }
-    .ef-add-bulk-btn {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        cursor: pointer;
-        color: #64748b;
-        font-size: 12px;
-        font-weight: 600;
-        transition: color 0.2s;
-    }
-    .ef-add-bulk-btn:hover {
-        color: #00a86b;
-    }
-    .ef-add-bulk-btn svg {
-        color: #00a86b;
-    }
-    .ef-period-input-row {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        margin-bottom: 10px;
-    }
-    .ef-period-input-row input {
-        flex: 1;
-    }
-    .ef-remove-period-btn {
-        background: none;
-        border: none;
-        color: #ef4444;
-        cursor: pointer;
-        padding: 4px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 16px;
-    }
-    </style>
-    <?php
     $tenants_query = new WP_Query([   
         'post_type'      => 'ef_tenant',   
         'post_status'    => 'publish',   
