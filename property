@@ -709,7 +709,7 @@ add_action('wp_footer', function() { ?>
         const detailsContainer = document.getElementById('properties-page-details'); 
         const sidebar = document.getElementById('properties-sidebar'); 
         const closeDetailsMobile = document.getElementById('close-details-mobile'); 
-        const fmtMoney = amount => 'AED ' + (parseFloat(amount) || 0).toLocaleString('en-AE', { minimumFractionDigits: 0, maximumFractionDigits: 0 }); 
+        const fmtMoney = amount => 'AED ' + (parseFloat(amount) || 0).toLocaleString('en-AE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
  
         if (closeDetailsMobile && sidebar) { 
             closeDetailsMobile.onclick = () => { 
