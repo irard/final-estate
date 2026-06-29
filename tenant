@@ -73,7 +73,7 @@ if (!function_exists('ef_get_payment_period')) {
 if (!function_exists('ef_get_tenant_monthly_status')) {
     function ef_get_tenant_monthly_status($t_id, $m, $y) {
         $rent_val = get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true);
-        $rent = floatval(str_replace(',', '', $rent_val));
+        $rent = round(floatval(str_replace(',', '', $rent_val)), 2);
         $period_match = "$y-$m";
         
         $payments = get_posts([
@@ -93,14 +93,14 @@ if (!function_exists('ef_get_tenant_monthly_status')) {
             $p_id = $p->ID;
             $p_period = ef_get_payment_period($p_id);
             if (strpos($p_period, $period_match) === 0) {
-                $paid += floatval(get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true));
+                $paid = round($paid + floatval(get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true)), 2);
             }
         }
 
         return [
             'paid' => $paid,
             'rent' => $rent,
-            'is_fully_paid' => ($rent > 0 && $paid >= $rent) || ($rent == 0 && $paid > 0)
+            'is_fully_paid' => ($rent > 0 && $paid >= ($rent - 0.01)) || ($rent == 0 && $paid > 0)
         ];
     }
 }
@@ -735,7 +735,7 @@ function eftm_handle_ajax_tenant_breakdown() {
             $month_totals[$p_period_all] += $amt_all;
         }
         foreach ($month_totals as $period_key => $paid_val) {
-            if (($monthly_rent > 0 && $paid_val >= $monthly_rent) || ($monthly_rent == 0 && $paid_val > 0)) {
+            if (($monthly_rent > 0 && $paid_val >= ($monthly_rent - 0.01)) || ($monthly_rent == 0 && $paid_val > 0)) {
                 $fully_paid_months_count++;
             }
         }
@@ -997,7 +997,7 @@ add_shortcode('ef_master_tenant_directory', function() {
                     }
                     wp_reset_postdata();
                     if ($clean_rent > 0) {
-                        if ($total_paid >= $clean_rent) $is_paid = 'paid';
+                        if ($total_paid >= ($clean_rent - 0.01)) $is_paid = 'paid';
                         elseif ($total_paid > 0) $is_paid = 'partial';
                         else $is_paid = 'unpaid';
                     } else {

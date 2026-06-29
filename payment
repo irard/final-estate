@@ -38,7 +38,7 @@ if (!function_exists('ef_is_tenant_billable')) {
 
 if (!function_exists('ef_get_tenant_monthly_status')) {    
     function ef_get_tenant_monthly_status($t_id, $month, $year) {    
-        $monthly_rent = floatval(get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true));    
+        $monthly_rent = round(floatval(get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true)), 2);
     
         $period_match = $year . '-' . str_pad($month, 2, '0', STR_PAD_LEFT);
         $payments = get_posts(array(    
@@ -57,7 +57,7 @@ if (!function_exists('ef_get_tenant_monthly_status')) {
             if (strpos($period, $period_match) === 0) {
                 $amount = get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true);    
                 if ($amount) {    
-                    $tenant_paid_this_month += floatval($amount);    
+                    $tenant_paid_this_month = round($tenant_paid_this_month + floatval($amount), 2);
                 }    
             }
         }    
@@ -65,8 +65,8 @@ if (!function_exists('ef_get_tenant_monthly_status')) {
         return array(    
             'paid' => $tenant_paid_this_month,    
             'rent' => $monthly_rent,    
-            'balance' => max(0, $monthly_rent - $tenant_paid_this_month),    
-            'is_fully_paid' => ($monthly_rent > 0) ? ($tenant_paid_this_month >= $monthly_rent) : ($tenant_paid_this_month > 0)    
+            'balance' => round(max(0, $monthly_rent - $tenant_paid_this_month), 2),
+            'is_fully_paid' => ($monthly_rent > 0) ? ($tenant_paid_this_month >= ($monthly_rent - 0.01)) : ($tenant_paid_this_month > 0)
         );    
     }    
 }
@@ -123,7 +123,7 @@ add_shortcode('ef_log_payment_btn', function() {
             <div class="ef-input-flex-row-2col">   
                 <div class="ef-modal-input-field-group" style="margin-bottom:0;">   
                     <label>Amount (AED)</label>   
-                    <input type="number" id="ef_log_amount" placeholder="Enter Amount" class="ef-modal-element-input">   
+                    <input type="number" id="ef_log_amount" placeholder="Enter Amount" class="ef-modal-element-input" step="0.01">
                 </div>   
                 <div class="ef-modal-input-field-group" style="margin-bottom:0;">   
                     <label>Method</label>   
@@ -295,7 +295,7 @@ function ef_callback_ajax_create_payment() {
         wp_send_json_error(['message' => 'Operational parameters data validation failure.']);   
     }   
 
-    $monthly_rent = floatval((function_exists('get_field') ? get_field('monthly_rent', $tenant_id) : null) ?: get_post_meta($tenant_id, 'monthly_rent', true));
+    $monthly_rent = round(floatval((function_exists('get_field') ? get_field('monthly_rent', $tenant_id) : null) ?: get_post_meta($tenant_id, 'monthly_rent', true)), 2);
     $tenant_start = (function_exists('get_field') ? get_field('tenant_start', $tenant_id) : null) ?: get_post_meta($tenant_id, 'tenant_start', true);
     $tenant_name = get_the_title($tenant_id);
     $property_id = (function_exists('get_field') ? get_field('property_id', $tenant_id) : null) ?: get_post_meta($tenant_id, 'property_id', true);
@@ -343,9 +343,9 @@ function ef_callback_ajax_create_payment() {
     foreach ($existing_payments as $p) {
         $p_period = (function_exists('get_field') ? get_field('payment_period', $p->ID) : null) ?: get_post_meta($p->ID, 'payment_period', true) ?: get_the_date('Y-m', $p->ID);
         $p_period = substr((string)$p_period, 0, 7);
-        $amt = floatval((function_exists('get_field') ? get_field('amount_paid', $p->ID) : null) ?: get_post_meta($p->ID, 'amount_paid', true));
+        $amt = round(floatval((function_exists('get_field') ? get_field('amount_paid', $p->ID) : null) ?: get_post_meta($p->ID, 'amount_paid', true)), 2);
         if (!isset($monthly_paid[$p_period])) $monthly_paid[$p_period] = 0;
-        $monthly_paid[$p_period] += $amt;
+        $monthly_paid[$p_period] = round($monthly_paid[$p_period] + $amt, 2);
     }
 
     $created_ids = [];
@@ -357,14 +357,14 @@ function ef_callback_ajax_create_payment() {
 
         if (ef_is_tenant_billable($tenant_id, $m, $y)) {
             $paid = isset($monthly_paid[$period_key]) ? $monthly_paid[$period_key] : 0;
-            $balance = max(0, $monthly_rent - $paid);
+            $balance = round(max(0, $monthly_rent - $paid), 2);
 
-            if ($balance > 0) {
-                $allocation = min($amount_remaining, $balance);
+            if ($balance >= 0.01) {
+                $allocation = round(min($amount_remaining, $balance), 2);
                 $receipt_voucher = str_pad($next_voucher_int++, 3, '0', STR_PAD_LEFT);
                 $new_id = ef_internal_create_payment_record($tenant_id, $property_id, $tenant_name, $allocation, $method, $transaction_cheque_number, $date, $period_key, $receipt_voucher);
                 if ($new_id) $created_ids[] = $new_id;
-                $amount_remaining -= $allocation;
+                $amount_remaining = round($amount_remaining - $allocation, 2);
             }
         }
         $current_date = date('Y-m-01', strtotime("+1 month", strtotime($current_date)));
@@ -372,7 +372,7 @@ function ef_callback_ajax_create_payment() {
     }
 
     // If there is still a remainder (e.g. advance payment beyond paid-up months)
-    if ($amount_remaining > 0) {
+    if ($amount_remaining >= 0.01) {
         $receipt_voucher = str_pad($next_voucher_int++, 3, '0', STR_PAD_LEFT);
         $period_to_use = date('Y-m', strtotime($current_date));
         $new_id = ef_internal_create_payment_record($tenant_id, $property_id, $tenant_name, $amount_remaining, $method, $transaction_cheque_number, $date, $period_to_use, $receipt_voucher);
@@ -506,7 +506,7 @@ add_shortcode('ef_payments_stats', function() {
         <div class="ef-stat-card-surface">   
             <div class="ef-stat-card-label">This Month</div>   
             <div class="ef-stat-card-value ef-text-accent-green">   
-                AED <?php echo number_format($this_month_revenue); ?>   
+                AED <?php echo number_format($this_month_revenue, 2); ?>
             </div>   
         </div>   
    
@@ -743,7 +743,7 @@ function efProcessLedgerQueryMatrix() {
                 <td style="color: #475569;">${efEscapeOutputChar(entry.method)}</td>     
                 <td style="color: #475569;">${efEscapeOutputChar(entry.transaction_cheque_number)}</td>
                 <td style="color: #475569;">${efEscapeOutputChar(entry.date)}</td>     
-                <td class="ef-cell-accent-currency-green">AED ${Number(entry.amount).toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})}</td>     
+                <td class="ef-cell-accent-currency-green">AED ${Number(entry.amount).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
                 <td><div class="ef-payment-status-badge ${statusClass}">${efEscapeOutputChar(entry.status)}</div></td>
                 <td style="text-align: right;">     
                      <button class="ef-btn-receipt-pdf-download" title="Download PDF" onclick='efDownloadReceipt(efLedgerSourcePayload.find(item => item.id === ${entry.id}))'>     
@@ -766,7 +766,7 @@ function efProcessLedgerQueryMatrix() {
         }     
     });     
    
-    document.getElementById('efLedgerCounterDisplay').innerHTML = `${matchCount} results • <span>AED ${revenueAccumulator.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})}</span>`;     
+    document.getElementById('efLedgerCounterDisplay').innerHTML = `${matchCount} results • <span>AED ${revenueAccumulator.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>`;
     fallbackEl.style.display = (matchCount === 0) ? 'block' : 'none';     
 }     
    

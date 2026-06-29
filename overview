@@ -73,7 +73,7 @@ if (!function_exists('ef_get_payment_period')) {
 if (!function_exists('ef_get_tenant_monthly_status')) {
     function ef_get_tenant_monthly_status($t_id, $m, $y) {
         $rent_val = get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true);
-        $rent = floatval(str_replace(',', '', $rent_val));
+        $rent = round(floatval(str_replace(',', '', $rent_val)), 2);
         $period_match = "$y-$m";
         
         $payments = get_posts([
@@ -93,14 +93,14 @@ if (!function_exists('ef_get_tenant_monthly_status')) {
             $p_id = $p->ID;
             $p_period = ef_get_payment_period($p_id);
             if (strpos($p_period, $period_match) === 0) {
-                $paid += floatval(get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true));
+                $paid = round($paid + floatval(get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true)), 2);
             }
         }
 
         return [
             'paid' => $paid,
             'rent' => $rent,
-            'is_fully_paid' => ($rent > 0 && $paid >= $rent) || ($rent == 0 && $paid > 0)
+            'is_fully_paid' => ($rent > 0 && $paid >= ($rent - 0.01)) || ($rent == 0 && $paid > 0)
         ];
     }
 }
@@ -134,7 +134,7 @@ add_shortcode('ef_total_payments', function() {
         }  
         wp_reset_postdata();  
     }  
-    return number_format($monthly_revenue);  
+    return number_format($monthly_revenue, 2);
 });  
   
 add_shortcode('ef_total_outstanding', function() {  
@@ -156,7 +156,7 @@ add_shortcode('ef_total_outstanding', function() {
     $collected_str = str_replace(',', '', do_shortcode('[ef_total_payments]')); 
     $rent_collected = floatval($collected_str);  
     $final_outstanding = $rent_expected - $rent_collected;  
-    return number_format(max(0, $final_outstanding));  
+    return number_format(max(0, $final_outstanding), 2);
 });  
   
 add_shortcode('ef_yearly_revenue', function() {  
@@ -180,7 +180,7 @@ add_shortcode('ef_yearly_revenue', function() {
         }  
         wp_reset_postdata();  
     }  
-    return number_format($total_yearly_revenue);  
+    return number_format($total_yearly_revenue, 2);
 });  
 
 add_shortcode('ef_yearly_expected_revenue', function() {
@@ -215,7 +215,7 @@ add_shortcode('ef_yearly_expected_revenue', function() {
             }
         }
     }
-    return number_format($yearly_expected);
+    return number_format($yearly_expected, 2);
 });
   
 add_shortcode('ef_collected_rate', function() {  
@@ -638,7 +638,7 @@ add_shortcode('monthly_bar_chart', function() {
                         tooltip: { 
                             callbacks: { 
                                 label: function(context) { 
-                                    return 'Revenue: AED ' + context.parsed.y.toLocaleString(); 
+                                    return 'Revenue: AED ' + context.parsed.y.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                                 } 
                             } 
                         } 
@@ -765,7 +765,7 @@ add_shortcode('ef_outstanding_tenants_widget', function() {
                         <span class="ef-out-tenant-meta">Due day <?php echo esc_html($item['due_day']); ?></span> 
                     </div> 
                     <div class="ef-out-amount-text"> 
-                        AED <?php echo number_format($item['amount']); ?> 
+                        AED <?php echo number_format($item['amount'], 2); ?>
                     </div> 
                 </div> 
             <?php endforeach; else : ?> 
@@ -819,7 +819,7 @@ add_shortcode('ef_recent_payments_widget', function() {
                         <span class="ef-recent-subtitle"><?php echo esc_html($method); ?> · <?php echo esc_html($period); ?></span> 
                     </div> 
                     <div class="ef-recent-trailing"> 
-                        <span class="ef-recent-amount-text">AED <?php echo number_format(floatval($amount)); ?></span> 
+                        <span class="ef-recent-amount-text">AED <?php echo number_format(floatval($amount), 2); ?></span>
                         <span class="ef-recent-date-text"><?php echo esc_html($display_date); ?></span> 
                     </div> 
                 </div> 

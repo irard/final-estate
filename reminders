@@ -60,7 +60,7 @@ add_shortcode('expected_monthly_income', function() {
         }    
         wp_reset_postdata();    
     }    
-    return number_format($total_expected_rent);    
+    return number_format($total_expected_rent, 2);
 });    
  
   
@@ -116,7 +116,7 @@ if (!function_exists('ef_get_tenant_next_due_date')) {
   
 if (!function_exists('ef_get_tenant_monthly_status')) {    
     function ef_get_tenant_monthly_status($t_id, $month, $year) {    
-        $monthly_rent = floatval(get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true));    
+        $monthly_rent = round(floatval(get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true)), 2);
     
         $period_match = $year . '-' . str_pad($month, 2, '0', STR_PAD_LEFT);
         $payments = get_posts(array(    
@@ -135,7 +135,7 @@ if (!function_exists('ef_get_tenant_monthly_status')) {
             if (strpos($period, $period_match) === 0) {
                 $amount = get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true);    
                 if ($amount) {    
-                    $tenant_paid_this_month += floatval($amount);    
+                    $tenant_paid_this_month = round($tenant_paid_this_month + floatval($amount), 2);
                 }    
             }
         }    
@@ -143,8 +143,8 @@ if (!function_exists('ef_get_tenant_monthly_status')) {
         return array(    
             'paid' => $tenant_paid_this_month,    
             'rent' => $monthly_rent,    
-            'balance' => max(0, $monthly_rent - $tenant_paid_this_month),    
-            'is_fully_paid' => ($monthly_rent > 0) ? ($tenant_paid_this_month >= $monthly_rent) : ($tenant_paid_this_month > 0)    
+            'balance' => round(max(0, $monthly_rent - $tenant_paid_this_month), 2),
+            'is_fully_paid' => ($monthly_rent > 0) ? ($tenant_paid_this_month >= ($monthly_rent - 0.01)) : ($tenant_paid_this_month > 0)
         );    
     }    
 }    
@@ -369,7 +369,7 @@ add_shortcode('overdue_list_card', function() {
                         <div class='ef-reminder-item-sub'>" . esc_html($property) . "</div>    
                     </div>    
                     <div style='text-align: right;'>    
-                        <div class='ef-reminder-item-amount overdue'>AED " . number_format($status['balance']) . "</div>    
+                        <div class='ef-reminder-item-amount overdue'>AED " . number_format($status['balance'], 2) . "</div>
                         <div class='ef-reminder-item-badge ef-badge-overdue'>" . esc_html("{$days_late} {$late_label} late") . "</div>    
                     </div>    
                 </div>";    
@@ -417,7 +417,7 @@ add_shortcode('duesoon_list_card', function() {
                             <div class='ef-reminder-item-sub'>" . esc_html($property) . "</div>    
                         </div>    
                         <div style='text-align: right;'>    
-                            <div class='ef-reminder-item-amount overdue'>AED " . number_format($status['balance']) . "</div>    
+                            <div class='ef-reminder-item-amount overdue'>AED " . number_format($status['balance'], 2) . "</div>
                             <div class='ef-reminder-item-badge ef-badge-overdue'>" . esc_html($badge_text) . "</div>    
                         </div>    
                     </div>";    
@@ -461,7 +461,7 @@ add_shortcode('upcoming_list_card', function() {
                             <div class='ef-reminder-item-sub'>" . esc_html($property) . "</div>    
                         </div>    
                         <div style='text-align: right;'>    
-                            <div class='ef-reminder-item-amount'>AED " . number_format($status['balance']) . "</div>    
+                            <div class='ef-reminder-item-amount'>AED " . number_format($status['balance'], 2) . "</div>
                             <div class='ef-reminder-item-badge'>" . esc_html("in {$days_remained} {$day_label}") . "</div>    
                         </div>    
                     </div>";    
@@ -507,7 +507,7 @@ add_shortcode('paid_list_card', function() {
                     <div class='ef-reminder-item-sub'>" . esc_html($method) . " · " . esc_html($period) . "</div>    
                 </div>    
                 <div style='text-align: right;'>    
-                    <div class='ef-reminder-item-amount paid'>AED " . number_format(floatval($amount)) . "</div>    
+                    <div class='ef-reminder-item-amount paid'>AED " . number_format(floatval($amount), 2) . "</div>
                     <div class='ef-reminder-item-badge'>✓ " . esc_html($display_date) . "</div>    
                 </div>    
             </div>";    
@@ -598,7 +598,7 @@ add_shortcode('outstanding_tenants', function() {
                 <div class='ef-reminder-item-sub'>Due day " . esc_html($item['due_day']) . "</div>
             </div>
             <div style='text-align: right;'>
-                <div class='ef-reminder-item-amount overdue'>AED " . number_format($item['amount']) . "</div>
+                <div class='ef-reminder-item-amount overdue'>AED " . number_format($item['amount'], 2) . "</div>
                 <div class='ef-reminder-item-badge ef-badge-overdue'>Outstanding</div>
             </div>
         </div>";
@@ -666,7 +666,7 @@ add_shortcode('ef_upcoming_due_this_week', function() {
             echo '<span style="font-weight: 500; color: #1f2937; display: block;">' . esc_html($due['name']) . '</span>';
             echo '<span style="font-size: 12px; color: #6b7280;">Due on: ' . esc_html($due['date']) . '</span>';
             echo '</div>';
-            echo '<span style="color: #4b5563; font-weight: 600;">AED ' . number_format(floatval($due['rent'])) . '</span>';
+            echo '<span style="color: #4b5563; font-weight: 600;">AED ' . number_format(floatval($due['rent']), 2) . '</span>';
             echo '</li>';
         }
         echo '</ul>';

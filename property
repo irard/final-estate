@@ -114,7 +114,7 @@ if (!function_exists('ef_get_payment_period')) {
 if (!function_exists('ef_get_tenant_monthly_status')) {
     function ef_get_tenant_monthly_status($t_id, $m, $y) {
         $rent_val = get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true);
-        $rent = ef_clean_amount($rent_val);
+        $rent = round(ef_clean_amount($rent_val), 2);
         $period_match = "$y-$m";
         
         $payments = get_posts([
@@ -130,7 +130,7 @@ if (!function_exists('ef_get_tenant_monthly_status')) {
                 $p_period = ef_get_payment_period($p_id);
                 if (strpos($p_period, $period_match) === 0) {
                     $amt_val = get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true);
-                    $paid += ef_clean_amount($amt_val);
+                    $paid = round($paid + ef_clean_amount($amt_val), 2);
                 }
             }
         }
@@ -138,7 +138,7 @@ if (!function_exists('ef_get_tenant_monthly_status')) {
         return [
             'paid' => $paid,
             'rent' => $rent,
-            'is_fully_paid' => ($rent > 0 && $paid >= $rent) || ($rent == 0 && $paid > 0)
+            'is_fully_paid' => ($rent > 0 && $paid >= ($rent - 0.01)) || ($rent == 0 && $paid > 0)
         ];
     }
 }
@@ -602,8 +602,8 @@ add_action('wp_footer', function() { ?>
                     <div class="properties-dashboard-occ"><span>Occupancy</span><span>${p.occupied} / ${p.units}</span></div> 
                     <div class="properties-dashboard-bar-bg"><div class="properties-dashboard-bar-fill" style="width: ${occPct}%"></div></div> 
                     <div class="properties-dashboard-stats"> 
-                        <div class="properties-dashboard-stat-item"><small>Expected</small><span>AED ${p.expected.toLocaleString()}</span></div> 
-                        <div class="properties-dashboard-stat-item"><small>Collected</small><span class="properties-dashboard-collected">AED ${p.collected.toLocaleString()} (${colPct}%)</span></div> 
+                        <div class="properties-dashboard-stat-item"><small>Expected</small><span>AED ${p.expected.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+                        <div class="properties-dashboard-stat-item"><small>Collected</small><span class="properties-dashboard-collected">AED ${p.collected.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${colPct}%)</span></div>
                     </div> 
                     <div class="properties-dashboard-actions"> 
                         <button class="dashboard-btn edit-btn" data-id="${p.id}">✏️ Edit</button> 
@@ -709,7 +709,7 @@ add_action('wp_footer', function() { ?>
         const detailsContainer = document.getElementById('properties-page-details'); 
         const sidebar = document.getElementById('properties-sidebar'); 
         const closeDetailsMobile = document.getElementById('close-details-mobile'); 
-        const fmtMoney = amount => 'AED ' + (parseFloat(amount) || 0).toLocaleString('en-AE', { minimumFractionDigits: 0, maximumFractionDigits: 0 }); 
+        const fmtMoney = amount => 'AED ' + (parseFloat(amount) || 0).toLocaleString('en-AE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
  
         if (closeDetailsMobile && sidebar) { 
             closeDetailsMobile.onclick = () => { 
