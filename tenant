@@ -35,6 +35,75 @@ if (!function_exists('ef_is_tenant_billable')) {
         return true;
     }
 }
+
+if (!function_exists('ef_get_dashboard_period')) {
+    function ef_get_dashboard_period() {
+        $m = isset($_GET['ef_month']) ? str_pad(intval($_GET['ef_month']), 2, '0', STR_PAD_LEFT) : date('m');
+        $y = isset($_GET['ef_year']) ? intval($_GET['ef_year']) : date('Y');
+        return ['m' => $m, 'y' => $y, 'period' => "$y-$m"];
+    }
+}
+
+if (!function_exists('ef_get_payment_tenant_id')) {
+    function ef_get_payment_tenant_id($p_id) {
+        $t = get_field('associated_tenant', $p_id) ?: get_post_meta($p_id, 'associated_tenant', true);
+        if (!$t) {
+            $t = get_field('select_tenant', $p_id) ?: get_post_meta($p_id, 'select_tenant', true);
+        }
+        if (!$t) return 0;
+        if (is_array($t)) {
+            $item = $t[0];
+            return is_object($item) ? $item->ID : (is_array($item) ? ($item['ID'] ?? 0) : intval($item));
+        }
+        if (is_object($t)) return $t->ID;
+        return intval($t);
+    }
+}
+
+if (!function_exists('ef_get_payment_period')) {
+    function ef_get_payment_period($p_id) {
+        $p = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true);
+        if ($p) return substr($p, 0, 7);
+        $d = get_field('date_of_payment', $p_id) ?: get_post_meta($p_id, 'date_of_payment', true);
+        if ($d) return date('Y-m', strtotime($d));
+        return get_the_date('Y-m', $p_id);
+    }
+}
+
+if (!function_exists('ef_get_tenant_monthly_status')) {
+    function ef_get_tenant_monthly_status($t_id, $m, $y) {
+        $rent_val = get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true);
+        $rent = floatval(str_replace(',', '', $rent_val));
+        $period_match = "$y-$m";
+        
+        $payments = get_posts([
+            'post_type' => 'payment',
+            'post_status' => ['publish', 'future', 'pending', 'draft', 'private'],
+            'posts_per_page' => -1,
+            'meta_query' => [
+                'relation' => 'OR',
+                ['key' => 'associated_tenant', 'value' => $t_id, 'compare' => '='],
+                ['key' => 'select_tenant', 'value' => $t_id, 'compare' => '='],
+                ['key' => 'select_tenant', 'value' => '"' . $t_id . '"', 'compare' => 'LIKE'],
+            ]
+        ]);
+
+        $paid = 0;
+        foreach ($payments as $p) {
+            $p_id = $p->ID;
+            $p_period = ef_get_payment_period($p_id);
+            if (strpos($p_period, $period_match) === 0) {
+                $paid += floatval(get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true));
+            }
+        }
+
+        return [
+            'paid' => $paid,
+            'rent' => $rent,
+            'is_fully_paid' => ($rent > 0 && $paid >= $rent) || ($rent == 0 && $paid > 0)
+        ];
+    }
+}
 if ( ! defined( "ABSPATH" ) ) exit; 
 
 add_shortcode('add_tenant', function(){ 
@@ -160,20 +229,47 @@ $tenant_list_logic = function() {
                     $tid=get_the_ID(); $rent=get_field('monthly_rent', $tid) ?: get_post_meta($tid, 'monthly_rent', true); $name=get_the_title(); 
                     $pid=get_field('property_id', $tid) ?: get_post_meta($tid, 'property_id', true); 
                     $addr=$pid?(get_field('add_address',$pid)?:get_post_meta($pid,'add_address',true)?:get_the_title($pid)):'No Address'; 
-                    $paid_this_month = 0.00; 
-                    $current_month=date('m'); $current_year=date('Y');
-                    $p_query = new WP_Query(['post_type'=>$payment_post_type,'post_status'=>['publish', 'future'],'posts_per_page'=>-1,'date_query'=>[['year'=>$current_year,'month'=>$current_month]],'meta_query'=>[['key'=>$tenant_meta_key,'value'=>$tid,'compare'=>'=']]]); 
-                    if($p_query->have_posts()){ while($p_query->have_posts()){$p_query->the_post(); $p_id = get_the_ID(); $paid_this_month+=floatval(get_field('amount_paid',$p_id) ?: get_post_meta($p_id, 'amount_paid', true));}wp_reset_postdata();} 
+                    $current_month = date('m'); $current_year = date('Y');
+                    if (function_exists('ef_get_dashboard_period')) {
+                        $period = ef_get_dashboard_period();
+                        $current_month = $period['m'];
+                        $current_year = $period['y'];
+                    }
+                    $status = ['paid' => 0, 'rent' => floatval($rent), 'is_fully_paid' => false];
+                    if (function_exists('ef_get_tenant_monthly_status')) {
+                        $status = ef_get_tenant_monthly_status($tid, $current_month, $current_year);
+                    } else {
+                        $paid_this_month = 0.00;
+                        $p_query = new WP_Query([
+                            'post_type' => 'payment',
+                            'post_status' => ['publish', 'future'],
+                            'posts_per_page' => -1,
+                            'meta_query' => [['key' => 'associated_tenant', 'value' => $tid, 'compare' => '=' ]]
+                        ]);
+                        if($p_query->have_posts()){ 
+                            while($p_query->have_posts()){
+                                $p_query->the_post(); 
+                                $p_id = get_the_ID();
+                                $p_period = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true) ?: get_the_date('Y-m', $p_id);
+                                if (strpos($p_period, "$current_year-$current_month") === 0) {
+                                    $paid_this_month += floatval(get_field('amount_paid',$p_id) ?: get_post_meta($p_id, 'amount_paid', true));
+                                }
+                            }
+                            wp_reset_postdata();
+                        }
+                        $status['paid'] = $paid_this_month;
+                        $status['is_fully_paid'] = ($status['rent'] > 0) ? ($paid_this_month >= $status['rent']) : ($paid_this_month > 0);
+                    }
                     $initials=''; $words=explode(' ', $name); foreach($words as $w) $initials.=strtoupper(substr($w,0,1)); 
                 ?> 
                     <div class="ef-tenant-card-item" data-id="<?php echo $tid; ?>" id="tenant-row-<?php echo $tid; ?>" onclick="efDispatchGlobalView(<?php echo $tid; ?>)"> 
                         <div class="ef-tenant-meta"><div class="ef-avatar-circle"><?php echo substr($initials,0,2); ?></div> 
                             <div class="ef-tenant-info-text"><div class="ef-tenant-name"><?php echo esc_html($name); ?></div><div class="ef-tenant-location"><?php echo esc_html($addr); ?></div></div> 
                         </div> 
-                        <div class="ef-tenant-right-aside"><div class="ef-tenant-rent-badge">AED <span class="tenant-list-rent"><?php echo number_format(floatval($rent)); ?></span><div style="font-size:10px; font-weight:400; color:#64748b; margin-top:-2px;">monthly</div></div> 
-                            <?php if (floatval($rent) <= 0): ?><div style="font-size: 10px; color: #64748b; margin-top:4px;">No Rent Set</div> 
-                            <?php elseif ($paid_this_month >= floatval($rent)): ?><div class="ef-payment-status-badge status-paid">Paid</div>
-                            <?php elseif ($paid_this_month > 0): ?><div class="ef-payment-status-badge status-partial">Partial</div>
+                        <div class="ef-tenant-right-aside"><div class="ef-tenant-rent-badge">AED <span class="tenant-list-rent"><?php echo number_format($status['rent']); ?></span><div style="font-size:10px; font-weight:400; color:#64748b; margin-top:-2px;">monthly</div></div> 
+                            <?php if ($status['rent'] <= 0 && $status['paid'] <= 0): ?><div style="font-size: 10px; color: #64748b; margin-top:4px;">No Rent Set</div> 
+                            <?php elseif ($status['is_fully_paid']): ?><div class="ef-payment-status-badge status-paid">Paid</div>
+                            <?php elseif ($status['paid'] > 0): ?><div class="ef-payment-status-badge status-partial">Partial</div>
                             <?php else: ?><div class="ef-payment-status-badge status-unpaid">Unpaid</div><?php endif; ?> 
                         </div> 
                     </div> 
@@ -328,18 +424,29 @@ add_shortcode('tenant_profile', function() {
         };
 
         window.addEventListener('ef_load_tenant', e => { 
+            efLoadTenantLedgerPage(e.detail.id, 1);
+        }); 
+
+        window.efLoadTenantLedgerPage = function(tid, page) {
             const screen = document.getElementById('efWorkspaceDynamicScreen'); 
             const modal = document.getElementById('efTenantProfileModal'); 
-            if (window.innerWidth <= 768) { 
+            if (window.innerWidth <= 768 && modal.style.display !== 'flex') { 
                 modal.style.display = 'flex'; 
                 efToggleScrollLock();
             } 
-            screen.innerHTML = '<div style="text-align:center; padding:40px;">Loading profile...</div>'; 
-            const fd = new FormData(); fd.append('action', 'eftm_render_tenant_profile'); fd.append('tenant_id', e.detail.id); 
+            
+            // Only show "Loading" on first load, otherwise it might feel jumpy during pagination
+            if (page === 1) screen.innerHTML = '<div style="text-align:center; padding:40px;">Loading profile...</div>'; 
+            
+            const fd = new FormData(); 
+            fd.append('action', 'eftm_render_tenant_profile'); 
+            fd.append('tenant_id', tid); 
+            fd.append('paged', page);
+            
             fetch(ajax, { method: 'POST', body: fd }).then(r => r.text()).then(html => { 
                 screen.innerHTML = html; attachReceiptEvents(); 
             }); 
-        }); 
+        };
 
         window.attachReceiptEvents = function() { 
             document.querySelectorAll('.ef-btn-receipt').forEach(btn => { 
@@ -565,6 +672,9 @@ function eftm_handle_check_property_availability() {
 function eftm_handle_ajax_tenant_breakdown() { 
     $tenant_id = isset($_POST['tenant_id']) ? intval($_POST['tenant_id']) : 0; 
     if (!$tenant_id) wp_die(); 
+    $paged = isset($_POST['paged']) ? max(1, intval($_POST['paged'])) : 1;
+    $posts_per_page = 3;
+
     $tenant_name    = get_the_title($tenant_id); 
     $monthly_rent   = floatval(get_field('monthly_rent', $tenant_id) ?: get_post_meta($tenant_id, 'monthly_rent', true)); 
     $due_day        = get_field('rent_due_day', $tenant_id) ?: get_post_meta($tenant_id, 'rent_due_day', true); 
@@ -579,22 +689,40 @@ function eftm_handle_ajax_tenant_breakdown() {
     $property_display = $propId ? get_the_title($propId) : 'No Property Assigned'; 
     $payment_history = []; 
     $p_query = new WP_Query([ 
-        'post_type'      => 'payment', 'post_status'    => ['publish', 'future'], 'posts_per_page' => -1, 
+        'post_type'      => 'payment', 
+        'post_status'    => ['publish', 'future'], 
+        'posts_per_page' => $posts_per_page, 
+        'paged'          => $paged,
         'meta_query'     => [['key' => 'associated_tenant', 'value' => $tenant_id, 'compare' => '=']], 
         'meta_key'       => 'date_of_payment', 'orderby' => 'meta_value', 'order' => 'DESC' 
     ]); 
+    $total_pages = $p_query->max_num_pages;
     if ($p_query->have_posts()) { 
         while ($p_query->have_posts()) { 
             $p_query->the_post(); 
             $pay_id = get_the_ID(); 
             $raw_date = get_field('date_of_payment', $pay_id) ?: get_post_meta($pay_id, 'date_of_payment', true); 
             $ts = $raw_date ? strtotime($raw_date) : get_the_date('U', $pay_id); 
+            $period = (function_exists('get_field') ? get_field('payment_period', $pay_id) : null) ?: get_post_meta($pay_id, 'payment_period', true) ?: date('Y-m', $ts);
+            $period = substr((string)$period, 0, 7);
+
+            $status_label = 'Paid';
+            if ($tenant_id && $period) {
+                $py = substr($period, 0, 4);
+                $pm = substr($period, 5, 2);
+                if (function_exists('ef_get_tenant_monthly_status')) {
+                    $st = ef_get_tenant_monthly_status($tenant_id, $pm, $py);
+                    if (!$st['is_fully_paid']) $status_label = 'Partial';
+                }
+            }
+
             $payment_history[] = [ 
-                'id' => $pay_id, 'period' => date('Y-m', $ts), 'date' => date('n/j/Y', $ts), 
+                'id' => $pay_id, 'period' => $period, 'date' => date('n/j/Y', $ts), 
                 'method' => (get_field('mode_of_payment', $pay_id) ?: get_post_meta($pay_id, 'mode_of_payment', true)) ?: 'Cash', 
                 'amount' => floatval(get_field('amount_paid', $pay_id) ?: get_post_meta($pay_id, 'amount_paid', true)),
                 'cheque' => get_field('transaction_cheque_number', $pay_id) ?: get_post_meta($pay_id, 'transaction_cheque_number', true),
-                'receipt_voucher' => get_field('receipt_voucher', $pay_id) ?: get_post_meta($pay_id, 'receipt_voucher', true)
+                'receipt_voucher' => get_field('receipt_voucher', $pay_id) ?: get_post_meta($pay_id, 'receipt_voucher', true),
+                'status' => $status_label
             ]; 
         } 
         wp_reset_postdata(); 
@@ -640,9 +768,11 @@ function eftm_handle_ajax_tenant_breakdown() {
     <div style="font-size: 14px; display: flex; align-items: center;"><span class="ef-contract-badge-pill">Contract Period</span><span style="color: #0f172a; font-weight: 500;"><?php echo esc_html($contract_start ?: 'N/A'); ?> ➔ <?php echo esc_html($contract_end ?: 'N/A'); ?></span></div> 
     <div class="ef-section-title-sub" style="margin-top: 32px;">Payment Ledger History</div> 
     <div class="ef-payment-history-list"> 
-        <?php if (!empty($payment_history)) : foreach ($payment_history as $p) : ?> 
-            <div class="ef-payment-row-card"> 
-                <div class="ef-pay-row-left"><div class="ef-pay-period-title"><?php echo esc_html($p['period']); ?></div><div class="ef-pay-meta-sub"><?php echo esc_html($p['method']); ?> · <?php echo esc_html($p['date']); ?></div></div> 
+        <?php if (!empty($payment_history)) : foreach ($payment_history as $p) : 
+            $status_class = ($p['status'] === 'Paid') ? 'status-paid' : 'status-partial';
+        ?> 
+            <div class="ef-payment-row-card" <?php echo ($p['status'] === 'Partial') ? 'style="background-color: #fef9c3;"' : ''; ?>> 
+                <div class="ef-pay-row-left"><div class="ef-pay-period-title"><?php echo esc_html($p['period']); ?> <span class="ef-payment-status-badge <?php echo $status_class; ?>" style="font-size: 10px; padding: 2px 6px; margin-left: 8px;"><?php echo $p['status']; ?></span></div><div class="ef-pay-meta-sub"><?php echo esc_html($p['method']); ?> · <?php echo esc_html($p['date']); ?></div></div> 
                 <div class="ef-pay-row-right"> 
                     <div class="ef-pay-amount-value">AED <?php echo number_format($p['amount'], 2); ?></div> 
                     <button class="ef-btn-receipt" 
@@ -659,7 +789,15 @@ function eftm_handle_ajax_tenant_breakdown() {
                     </button> 
                 </div> 
             </div> 
-        <?php endforeach; else : ?> 
+        <?php endforeach; ?>
+        
+        <div class="ef-ledger-pagination" style="display: flex; justify-content: center; align-items: center; gap: 16px; margin-top: 20px;">
+            <button class="prop-nav-btn" <?php echo ($paged <= 1) ? 'disabled' : ''; ?> onclick="efLoadTenantLedgerPage(<?php echo $tenant_id; ?>, <?php echo $paged - 1; ?>)">Previous</button>
+            <span style="font-size: 13px; color: #64748b; font-weight: 500;">Page <?php echo $paged; ?> of <?php echo $total_pages; ?></span>
+            <button class="prop-nav-btn" <?php echo ($paged >= $total_pages) ? 'disabled' : ''; ?> onclick="efLoadTenantLedgerPage(<?php echo $tenant_id; ?>, <?php echo $paged + 1; ?>)">Next</button>
+        </div>
+
+        <?php else : ?> 
             <div style="color: #64748b; font-size: 14px; font-style: italic; padding: 20px 0; text-align: center; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 12px;">No recorded invoice transactions found.</div> 
         <?php endif; ?> 
     </div> 
@@ -740,8 +878,12 @@ add_shortcode('ef_master_tenant_directory', function() {
         'posts_per_page' => -1,
     ));
 
-    $current_year  = current_time('Y');
-    $current_month = current_time('m');
+    $current_month = date('m'); $current_year = date('Y');
+    if (function_exists('ef_get_dashboard_period')) {
+        $period = ef_get_dashboard_period();
+        $current_month = $period['m'];
+        $current_year = $period['y'];
+    }
 
     ob_start();
 
@@ -784,54 +926,44 @@ add_shortcode('ef_master_tenant_directory', function() {
 
             $edit_url = admin_url('post.php?post=' . $t_id . '&action=edit');
 
-            $has_paid_this_month = false;
-
-            $p_query = new WP_Query(array(
-                'post_type'      => 'payment',
-                'post_status'    => array('publish', 'future', 'pending', 'draft', 'private'),
-                'posts_per_page' => -1,
-                'date_query'     => array(
-                    array(
-                        'year'  => $current_year,
-                        'month' => $current_month,
-                    ),
-                ),
-            ));
-
-            if ($p_query->have_posts()) {
-                while ($p_query->have_posts()) {
-                    $p_query->the_post();
-                    $pay_id = get_the_ID();
-
-                    $assigned_tenant = get_field('select_tenant', $pay_id);
-
-                    $matched_tenant_id = 0;
-                    if (is_array($assigned_tenant) && !empty($assigned_tenant)) {
-                        $item = $assigned_tenant[0];
-                        if (is_object($item)) {
-                            $matched_tenant_id = $item->ID;
-                        } elseif (is_array($item)) {
-                            $matched_tenant_id = isset($item['ID']) ? $item['ID'] : 0;
-                        } else {
-                            $matched_tenant_id = intval($item);
+            if (function_exists('ef_get_tenant_monthly_status')) {
+                $st = ef_get_tenant_monthly_status($t_id, $current_month, $current_year);
+                if ($st['is_fully_paid']) $is_paid = 'paid';
+                elseif ($st['paid'] > 0) $is_paid = 'partial';
+                else $is_paid = 'unpaid';
+            } else {
+                $has_paid_this_month = false;
+                $p_query = new WP_Query(array(
+                    'post_type'      => 'payment',
+                    'post_status'    => array('publish', 'future', 'pending', 'draft', 'private'),
+                    'posts_per_page' => -1,
+                    'meta_query'     => array(
+                        array('key' => 'associated_tenant', 'value' => $t_id, 'compare' => '=' )
+                    )
+                ));
+                if ($p_query->have_posts()) {
+                    $total_paid = 0;
+                    while ($p_query->have_posts()) {
+                        $p_query->the_post();
+                        $pay_id = get_the_ID();
+                        $p_period = get_field('payment_period', $pay_id) ?: get_post_meta($pay_id, 'payment_period', true) ?: get_the_date('Y-m', $pay_id);
+                        if (strpos($p_period, "$current_year-$current_month") === 0) {
+                            $total_paid += floatval(get_field('amount_paid', $pay_id) ?: get_post_meta($pay_id, 'amount_paid', true));
                         }
-                    } elseif (is_object($assigned_tenant)) {
-                        $matched_tenant_id = $assigned_tenant->ID;
-                    } elseif (is_array($assigned_tenant)) {
-                        $matched_tenant_id = isset($assigned_tenant['ID']) ? $assigned_tenant['ID'] : 0;
+                    }
+                    wp_reset_postdata();
+                    if ($clean_rent > 0) {
+                        if ($total_paid >= $clean_rent) $is_paid = 'paid';
+                        elseif ($total_paid > 0) $is_paid = 'partial';
+                        else $is_paid = 'unpaid';
                     } else {
-                        $matched_tenant_id = intval($assigned_tenant);
+                        $is_paid = ($total_paid > 0) ? 'paid' : 'unpaid';
                     }
-
-                    if ($matched_tenant_id === intval($t_id)) {
-                        $has_paid_this_month = true;
-                        break; 
-                    }
+                } else {
+                    $is_paid = 'unpaid';
                 }
-                wp_reset_postdata();
             }
 
-            $is_paid = ($has_paid_this_month === true) ? 'paid' : 'unpaid';
             $profile_url = esc_url(get_permalink($t_id));
 
             echo '<tr class="tenant-row" style="border-bottom:1px solid #e5e7eb; transition: background 0.2s;" onmouseover="this.style.backgroundColor=\'#f9fafb\'" onmouseout="this.style.backgroundColor=\'transparent\'">';
@@ -839,7 +971,7 @@ add_shortcode('ef_master_tenant_directory', function() {
             echo '<td style="padding:14px 16px; font-weight:600; color:#608D3F;">' . $display_rent . '</td>';
             echo '<td style="padding:14px 16px; text-align:right;">';
 
-echo '<button type="button" onclick="efShowTenantDetails(\'' . addslashes($tenant_title) . '\', \'' . $display_rent . '\', \'' . $display_due . '\', \'' . $profile_url . '\', \'' . $is_paid . '\')" style="cursor:pointer; display:inline-block; background-color:#608D3F; color:#ffffff; padding:6px 14px; border:none; border-radius:6px; font-size:12px; font-weight:500; margin-right:8px; transition:background 0.2s;" onmouseover="this.style.backgroundColor=\'#4b6e31\'" onmouseout="this.style.backgroundColor=\'#608D3F\'">View Profile</button>';
+echo '<button type="button" onclick="efShowTenantDetails(\'' . addslashes($tenant_title) . '\', \'' . $display_rent . '\', \'' . $display_due . '\', \'' . $profile_url . '\', \'' . $is_paid . '\', \'' . $edit_url . '\')" style="cursor:pointer; display:inline-block; background-color:#608D3F; color:#ffffff; padding:6px 14px; border:none; border-radius:6px; font-size:12px; font-weight:500; margin-right:8px; transition:background 0.2s;" onmouseover="this.style.backgroundColor=\'#4b6e31\'" onmouseout="this.style.backgroundColor=\'#608D3F\'">View Profile</button>';
 
 echo '<a href="' . esc_url(home_url('/tenants/') . '?tenant_id=' . get_the_ID()) . '" style="display:inline-block; background-color:#1a2b3c; color:#ffffff; padding:6px 14px; border-radius:6px; font-size:12px; text-decoration:none; font-weight:500; transition:background 0.2s;" onmouseover="this.style.backgroundColor=\'#0e1821\'" onmouseout="this.style.backgroundColor=\'#1a2b3c\'">Edit</a>';
             echo '</td>';
@@ -886,8 +1018,10 @@ echo '<a href="' . esc_url(home_url('/tenants/') . '?tenant_id=' . get_the_ID())
         var statusHtml = "";
         if (status === "paid") {
             statusHtml = `<span style="background: #E8FFEB; color: #2c4a1a; font-size: 13px; padding: 4px 10px; border-radius: 6px; font-weight: 600;">🟢 Paid</span>`;
+        } else if (status === "partial") {
+            statusHtml = `<span style="background: #FEF9C3; color: #854D0E; font-size: 13px; padding: 4px 10px; border-radius: 6px; font-weight: 600;">🟡 Partial</span>`;
         } else {
-            statusHtml = `<span style="background: #FEE2E2; color: #991B1B; font-size: 13px; padding: 4px 10px; border-radius: 6px; font-weight: 600;">🔴 Not Paid</span>`;
+            statusHtml = `<span style="background: #FEE2E2; color: #991B1B; font-size: 13px; padding: 4px 10px; border-radius: 6px; font-weight: 600;">🔴 Unpaid</span>`;
         }
 
         card.innerHTML = `
