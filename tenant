@@ -121,7 +121,7 @@ add_shortcode('add_tenant', function(){
           <div class="atc-row-full"><label class="atc-label">Name <input id="atc-name" name="tenant_name" required></label></div> 
           <div class="atc-row-full"><label class="atc-label">Property <select id="atc-property" name="property_id" required><option value="">Loading properties…</option></select></label></div> 
           <div class="atc-row"><label class="atc-label">Unit <input id="atc-unit" name="tenant_unit" value="1" readonly></label> 
-                               <label class="atc-label">Rent (AED) <input id="atc-rent" name="tenant_rent" type="number" step="100" value="" placeholder="Enter Amount" min="1000" required></label></div> 
+                               <label class="atc-label">Rent (AED) <input id="atc-rent" name="tenant_rent" type="number" step="0.01" value="" placeholder="Enter Amount" required></label></div> 
           <div class="atc-row"><label class="atc-label">Email <input id="atc-email" name="tenant_email" type="email" required></label> 
                                <label class="atc-label">Phone <input id="atc-phone" name="tenant_phone" type="tel" required></label></div> 
           <div class="atc-row-full"><label class="atc-label">Address <input id="atc-address" name="tenant_address"></label></div> 
@@ -266,7 +266,7 @@ $tenant_list_logic = function() {
                         <div class="ef-tenant-meta"><div class="ef-avatar-circle"><?php echo substr($initials,0,2); ?></div> 
                             <div class="ef-tenant-info-text"><div class="ef-tenant-name"><?php echo esc_html($name); ?></div><div class="ef-tenant-location"><?php echo esc_html($addr); ?></div></div> 
                         </div> 
-                        <div class="ef-tenant-right-aside"><div class="ef-tenant-rent-badge">AED <span class="tenant-list-rent"><?php echo number_format($status['rent']); ?></span><div style="font-size:10px; font-weight:400; color:#64748b; margin-top:-2px;">monthly</div></div> 
+                        <div class="ef-tenant-right-aside"><div class="ef-tenant-rent-badge">AED <span class="tenant-list-rent"><?php echo number_format($status['rent'], 2); ?></span><div style="font-size:10px; font-weight:400; color:#64748b; margin-top:-2px;">monthly</div></div> 
                             <?php if ($status['rent'] <= 0 && $status['paid'] <= 0): ?><div style="font-size: 10px; color: #64748b; margin-top:4px;">No Rent Set</div> 
                             <?php elseif ($status['is_fully_paid']): ?><div class="ef-payment-status-badge status-paid">Paid</div>
                             <?php elseif ($status['paid'] > 0): ?><div class="ef-payment-status-badge status-partial">Partial</div>
@@ -316,24 +316,26 @@ add_shortcode('tenant_profile', function() {
         <div class="ef-popup-modal-box" style="position: relative;"> 
             <button onclick="efCloseEditModal()" style="position: absolute; top: 15px; right: 15px; border: none; background: transparent; font-size: 20px; cursor: pointer; color: #64748b;">✕</button> 
             <h3 style="margin-top:0;">Modify Tenant Profile</h3> 
-            <input type="hidden" id="modal_field_id"> 
-            <div class="ef-form-group"><label>Name</label><input type="text" id="modal_field_name" class="ef-form-input-box"></div> 
-            <div class="ef-form-group"><label>Property</label><select id="modal_field_property" class="ef-form-input-box"></select></div> 
-            <div class="ef-grid-modal-2col"> 
-                <div class="ef-form-group"><label>Unit</label><input type="text" id="modal_field_unit" class="ef-form-input-box" readonly></div> 
-                <div class="ef-form-group"><label>Rent (AED)</label><input type="number" id="modal_field_rent" class="ef-form-input-box" step="0.01"></div> 
-            </div> 
-            <div class="ef-grid-modal-2col"> 
-                <div class="ef-form-group"><label>Email</label><input type="email" id="modal_field_email" class="ef-form-input-box"></div> 
-                <div class="ef-form-group"><label>Phone</label><input type="text" id="modal_field_phone" class="ef-form-input-box"></div> 
-            </div> 
-            <div class="ef-form-group"><label>Address</label><input type="text" id="modal_field_address" class="ef-form-input-box"></div> 
-            <div class="ef-grid-modal-2col contract"> 
-                <div class="ef-form-group"><label>Start Date</label><input type="date" id="modal_field_start" class="ef-form-input-box"></div> 
-                <div class="ef-form-group"><label>End Date</label><input type="date" id="modal_field_end" class="ef-form-input-box"></div> 
-            </div> 
-            <div class="ef-form-group"><label>Due Day</label><input type="text" id="modal_field_due_day_display" class="ef-form-input-box" readonly></div> 
-            <input type="hidden" id="modal_field_due"> 
+            <form id="efEditTenantForm">
+                <input type="hidden" id="modal_field_id"> 
+                <div class="ef-form-group"><label>Name</label><input type="text" id="modal_field_name" class="ef-form-input-box" required></div> 
+                <div class="ef-form-group"><label>Property</label><select id="modal_field_property" class="ef-form-input-box" required></select></div> 
+                <div class="ef-grid-modal-2col"> 
+                    <div class="ef-form-group"><label>Unit</label><input type="text" id="modal_field_unit" class="ef-form-input-box" readonly></div> 
+                    <div class="ef-form-group"><label>Rent (AED)</label><input type="number" id="modal_field_rent" class="ef-form-input-box" step="0.01" required></div> 
+                </div> 
+                <div class="ef-grid-modal-2col"> 
+                    <div class="ef-form-group"><label>Email</label><input type="email" id="modal_field_email" class="ef-form-input-box" required></div> 
+                    <div class="ef-form-group"><label>Phone</label><input type="text" id="modal_field_phone" class="ef-form-input-box"></div> 
+                </div> 
+                <div class="ef-form-group"><label>Address</label><input type="text" id="modal_field_address" class="ef-form-input-box"></div> 
+                <div class="ef-grid-modal-2col contract"> 
+                    <div class="ef-form-group"><label>Start Date</label><input type="date" id="modal_field_start" class="ef-form-input-box" required></div> 
+                    <div class="ef-form-group"><label>End Date</label><input type="date" id="modal_field_end" class="ef-form-input-box" required></div> 
+                </div> 
+                <div class="ef-form-group"><label>Due Day</label><input type="text" id="modal_field_due_day_display" class="ef-form-input-box" readonly></div> 
+                <input type="hidden" id="modal_field_due"> 
+            </form>
             <div id="ef-modal-due-popup" class="ef-modal-due-popup"><div class="ef-due-grid"><?php for($i=1;$i<=31;$i++)echo "<button class='ef-due-box' data-day='$i'>$i</button>"; ?></div></div> 
             <div style="display:flex; justify-content:flex-end; gap:12px; margin-top:10px;"> 
                 <button onclick="efCloseEditModal()" class="ef-btn-action">Cancel</button> 
@@ -457,14 +459,25 @@ add_shortcode('tenant_profile', function() {
                     document.getElementById('r-date').innerText = d.date; document.getElementById('r-period').innerText = d.period; document.getElementById('r-method').innerText = d.method; 
                     document.getElementById('r-amt-table').innerText = d.amount; document.getElementById('r-amt-total').innerText = d.amount; 
                     document.getElementById('r-desc').innerText = `Unit Reference: ${d.prop} (${d.period})`; 
-                    const element = document.querySelector('#receipt-template .receipt-container'); 
-                    html2pdf().from(element).set({ 
+                    
+                    const source = document.querySelector('#receipt-template .receipt-container');
+                    const wrapper = document.createElement('div');
+                    wrapper.style.position = 'absolute';
+                    wrapper.style.left = '-9999px';
+                    wrapper.style.top = '0';
+                    const clone = source.cloneNode(true);
+                    wrapper.appendChild(clone);
+                    document.body.appendChild(wrapper);
+
+                    html2pdf().from(clone).set({ 
                         margin: 0.2, 
                         filename: `Receipt-${d.ref}.pdf`, 
                         image: { type: 'jpeg', quality: 0.98 }, 
-                        html2canvas: { scale: 2, logging: false, useCORS: true }, 
+                        html2canvas: { scale: 2, logging: false, useCORS: true, windowWidth: 800, scrollY: 0, scrollX: 0 }, 
                         jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' } 
-                    }).save(); 
+                    }).save().then(() => {
+                        document.body.removeChild(wrapper);
+                    }); 
                 }; 
             }); 
         } 
@@ -525,6 +538,9 @@ add_shortcode('tenant_profile', function() {
           else if(e.target === mDuePop) { mDuePop.style.display = 'none'; } 
         }; 
         window.efSubmitModalFormEdits = function(){ 
+            const form = document.getElementById('efEditTenantForm');
+            if (form && !form.reportValidity()) return;
+
             const b = document.getElementById('efModalActionBtn'); b.disabled=true; 
             const fd = new FormData(); fd.append('action','eftm_edit_tenant'); fd.append('security','<?php echo wp_create_nonce("edit_tenant_nonce"); ?>'); 
             fd.append('tenant_id', document.getElementById('modal_field_id').value); fd.append('new_name', document.getElementById('modal_field_name').value); 
@@ -697,6 +713,34 @@ function eftm_handle_ajax_tenant_breakdown() {
         'meta_key'       => 'date_of_payment', 'orderby' => 'meta_value', 'order' => 'DESC' 
     ]); 
     $total_pages = $p_query->max_num_pages;
+
+    $fully_paid_months_count = 0;
+    $all_payments = get_posts([
+        'post_type' => 'payment',
+        'post_status' => ['publish', 'future', 'pending', 'draft', 'private'],
+        'posts_per_page' => -1,
+        'meta_query' => [
+            'relation' => 'OR',
+            ['key' => 'associated_tenant', 'value' => $tenant_id, 'compare' => '='],
+            ['key' => 'select_tenant', 'value' => $tenant_id, 'compare' => '='],
+            ['key' => 'select_tenant', 'value' => '"' . $tenant_id . '"', 'compare' => 'LIKE'],
+        ]
+    ]);
+    if (!empty($all_payments)) {
+        $month_totals = [];
+        foreach ($all_payments as $p_all) {
+            $p_period_all = ef_get_payment_period($p_all->ID);
+            $amt_all = floatval(str_replace(',', '', get_field('amount_paid', $p_all->ID) ?: get_post_meta($p_all->ID, 'amount_paid', true)));
+            if (!isset($month_totals[$p_period_all])) $month_totals[$p_period_all] = 0;
+            $month_totals[$p_period_all] += $amt_all;
+        }
+        foreach ($month_totals as $period_key => $paid_val) {
+            if (($monthly_rent > 0 && $paid_val >= $monthly_rent) || ($monthly_rent == 0 && $paid_val > 0)) {
+                $fully_paid_months_count++;
+            }
+        }
+    }
+
     if ($p_query->have_posts()) { 
         while ($p_query->have_posts()) { 
             $p_query->the_post(); 
@@ -755,9 +799,9 @@ function eftm_handle_ajax_tenant_breakdown() {
         <?php endif; ?> 
     </div> 
     <div class="ef-meta-grid-3col"> 
-        <div class="ef-meta-info-card"><div class="ef-meta-card-label">Monthly rent</div><div class="ef-meta-card-value ef-text-green">AED <?php echo number_format($monthly_rent); ?></div></div> 
+        <div class="ef-meta-info-card"><div class="ef-meta-card-label">Monthly rent</div><div class="ef-meta-card-value ef-text-green">AED <?php echo number_format($monthly_rent, 2); ?></div></div> 
         <div class="ef-meta-info-card"><div class="ef-meta-card-label">Due day</div><div class="ef-meta-card-value"><?php echo esc_html($due_day_display); ?> <span style="font-size: 13px; font-weight:400; color: #64748b;">of month</span></div></div> 
-        <div class="ef-meta-info-card"><div class="ef-meta-card-label">Payments</div><div class="ef-meta-card-value"><?php echo count($payment_history); ?></div></div> 
+        <div class="ef-meta-info-card"><div class="ef-meta-card-label">Payments</div><div class="ef-meta-card-value"><?php echo $fully_paid_months_count; ?></div></div> 
     </div> 
     <div class="ef-section-title-sub">Contact & Contract Details</div> 
     <div class="ef-contact-row-flex" style="margin-bottom: 12px;"> 
@@ -917,7 +961,7 @@ add_shortcode('ef_master_tenant_directory', function() {
 
             $rent = get_field('monthly_rent', $t_id);
             $clean_rent = $rent ? floatval($rent) : 0;
-            $display_rent = 'AED ' . number_format($clean_rent);
+            $display_rent = 'AED ' . number_format($clean_rent, 2);
 
             $due_day = get_field('rent_due_day', $t_id);
             if (!$due_day) { $due_day = get_field('due_day', $t_id); }
