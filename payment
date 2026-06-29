@@ -905,7 +905,7 @@ function efDownloadReceipt(d) {
         margin: 0.2,    
         filename: `Receipt-${ref}.pdf`,    
         image: { type: "jpeg", quality: 0.98 },    
-        html2canvas: { scale: 2, logging: false, useCORS: true, scrollY: 0, scrollX: 0 },    
+        html2canvas: { scale: 2, logging: false, useCORS: true, windowWidth: 800, scrollY: 0, scrollX: 0 },    
         jsPDF: { unit: "in", format: "letter", orientation: "portrait" }    
     }).save().then(() => {  
         document.body.removeChild(wrapper);  
