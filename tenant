@@ -316,24 +316,26 @@ add_shortcode('tenant_profile', function() {
         <div class="ef-popup-modal-box" style="position: relative;"> 
             <button onclick="efCloseEditModal()" style="position: absolute; top: 15px; right: 15px; border: none; background: transparent; font-size: 20px; cursor: pointer; color: #64748b;">✕</button> 
             <h3 style="margin-top:0;">Modify Tenant Profile</h3> 
-            <input type="hidden" id="modal_field_id"> 
-            <div class="ef-form-group"><label>Name</label><input type="text" id="modal_field_name" class="ef-form-input-box"></div> 
-            <div class="ef-form-group"><label>Property</label><select id="modal_field_property" class="ef-form-input-box"></select></div> 
-            <div class="ef-grid-modal-2col"> 
-                <div class="ef-form-group"><label>Unit</label><input type="text" id="modal_field_unit" class="ef-form-input-box" readonly></div> 
-                <div class="ef-form-group"><label>Rent (AED)</label><input type="number" id="modal_field_rent" class="ef-form-input-box" step="0.01"></div> 
-            </div> 
-            <div class="ef-grid-modal-2col"> 
-                <div class="ef-form-group"><label>Email</label><input type="email" id="modal_field_email" class="ef-form-input-box"></div> 
-                <div class="ef-form-group"><label>Phone</label><input type="text" id="modal_field_phone" class="ef-form-input-box"></div> 
-            </div> 
-            <div class="ef-form-group"><label>Address</label><input type="text" id="modal_field_address" class="ef-form-input-box"></div> 
-            <div class="ef-grid-modal-2col contract"> 
-                <div class="ef-form-group"><label>Start Date</label><input type="date" id="modal_field_start" class="ef-form-input-box"></div> 
-                <div class="ef-form-group"><label>End Date</label><input type="date" id="modal_field_end" class="ef-form-input-box"></div> 
-            </div> 
-            <div class="ef-form-group"><label>Due Day</label><input type="text" id="modal_field_due_day_display" class="ef-form-input-box" readonly></div> 
-            <input type="hidden" id="modal_field_due"> 
+            <form id="efEditTenantForm">
+                <input type="hidden" id="modal_field_id">
+                <div class="ef-form-group"><label>Name</label><input type="text" id="modal_field_name" class="ef-form-input-box" required></div>
+                <div class="ef-form-group"><label>Property</label><select id="modal_field_property" class="ef-form-input-box" required></select></div>
+                <div class="ef-grid-modal-2col">
+                    <div class="ef-form-group"><label>Unit</label><input type="text" id="modal_field_unit" class="ef-form-input-box" readonly></div>
+                    <div class="ef-form-group"><label>Rent (AED)</label><input type="number" id="modal_field_rent" class="ef-form-input-box" step="0.01" required></div>
+                </div>
+                <div class="ef-grid-modal-2col">
+                    <div class="ef-form-group"><label>Email</label><input type="email" id="modal_field_email" class="ef-form-input-box" required></div>
+                    <div class="ef-form-group"><label>Phone</label><input type="text" id="modal_field_phone" class="ef-form-input-box"></div>
+                </div>
+                <div class="ef-form-group"><label>Address</label><input type="text" id="modal_field_address" class="ef-form-input-box"></div>
+                <div class="ef-grid-modal-2col contract">
+                    <div class="ef-form-group"><label>Start Date</label><input type="date" id="modal_field_start" class="ef-form-input-box" required></div>
+                    <div class="ef-form-group"><label>End Date</label><input type="date" id="modal_field_end" class="ef-form-input-box" required></div>
+                </div>
+                <div class="ef-form-group"><label>Due Day</label><input type="text" id="modal_field_due_day_display" class="ef-form-input-box" readonly></div>
+                <input type="hidden" id="modal_field_due">
+            </form>
             <div id="ef-modal-due-popup" class="ef-modal-due-popup"><div class="ef-due-grid"><?php for($i=1;$i<=31;$i++)echo "<button class='ef-due-box' data-day='$i'>$i</button>"; ?></div></div> 
             <div style="display:flex; justify-content:flex-end; gap:12px; margin-top:10px;"> 
                 <button onclick="efCloseEditModal()" class="ef-btn-action">Cancel</button> 
@@ -525,6 +527,9 @@ add_shortcode('tenant_profile', function() {
           else if(e.target === mDuePop) { mDuePop.style.display = 'none'; } 
         }; 
         window.efSubmitModalFormEdits = function(){ 
+            const form = document.getElementById('efEditTenantForm');
+            if (form && !form.reportValidity()) return;
+
             const b = document.getElementById('efModalActionBtn'); b.disabled=true; 
             const fd = new FormData(); fd.append('action','eftm_edit_tenant'); fd.append('security','<?php echo wp_create_nonce("edit_tenant_nonce"); ?>'); 
             fd.append('tenant_id', document.getElementById('modal_field_id').value); fd.append('new_name', document.getElementById('modal_field_name').value); 
