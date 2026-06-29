@@ -459,14 +459,25 @@ add_shortcode('tenant_profile', function() {
                     document.getElementById('r-date').innerText = d.date; document.getElementById('r-period').innerText = d.period; document.getElementById('r-method').innerText = d.method; 
                     document.getElementById('r-amt-table').innerText = d.amount; document.getElementById('r-amt-total').innerText = d.amount; 
                     document.getElementById('r-desc').innerText = `Unit Reference: ${d.prop} (${d.period})`; 
-                    const element = document.querySelector('#receipt-template .receipt-container'); 
-                    html2pdf().from(element).set({ 
+
+                    const source = document.querySelector('#receipt-template .receipt-container');
+                    const wrapper = document.createElement('div');
+                    wrapper.style.position = 'absolute';
+                    wrapper.style.left = '-9999px';
+                    wrapper.style.top = '0';
+                    const clone = source.cloneNode(true);
+                    wrapper.appendChild(clone);
+                    document.body.appendChild(wrapper);
+
+                    html2pdf().from(clone).set({
                         margin: 0.2, 
                         filename: `Receipt-${d.ref}.pdf`, 
                         image: { type: 'jpeg', quality: 0.98 }, 
-                        html2canvas: { scale: 2, logging: false, useCORS: true }, 
+                        html2canvas: { scale: 2, logging: false, useCORS: true, windowWidth: 800, scrollY: 0, scrollX: 0 },
                         jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' } 
-                    }).save(); 
+                    }).save().then(() => {
+                        document.body.removeChild(wrapper);
+                    });
                 }; 
             }); 
         } 
