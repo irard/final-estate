@@ -602,8 +602,8 @@ add_action('wp_footer', function() { ?>
                     <div class="properties-dashboard-occ"><span>Occupancy</span><span>${p.occupied} / ${p.units}</span></div> 
                     <div class="properties-dashboard-bar-bg"><div class="properties-dashboard-bar-fill" style="width: ${occPct}%"></div></div> 
                     <div class="properties-dashboard-stats"> 
-                        <div class="properties-dashboard-stat-item"><small>Expected</small><span>AED ${p.expected.toLocaleString()}</span></div> 
-                        <div class="properties-dashboard-stat-item"><small>Collected</small><span class="properties-dashboard-collected">AED ${p.collected.toLocaleString()} (${colPct}%)</span></div> 
+                        <div class="properties-dashboard-stat-item"><small>Expected</small><span>AED ${p.expected.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span></div>
+                        <div class="properties-dashboard-stat-item"><small>Collected</small><span class="properties-dashboard-collected">AED ${p.collected.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} (${colPct}%)</span></div>
                     </div> 
                     <div class="properties-dashboard-actions"> 
                         <button class="dashboard-btn edit-btn" data-id="${p.id}">✏️ Edit</button> 
@@ -709,7 +709,7 @@ add_action('wp_footer', function() { ?>
         const detailsContainer = document.getElementById('properties-page-details'); 
         const sidebar = document.getElementById('properties-sidebar'); 
         const closeDetailsMobile = document.getElementById('close-details-mobile'); 
-        const fmtMoney = amount => 'AED ' + (parseFloat(amount) || 0).toLocaleString('en-AE', { minimumFractionDigits: 0, maximumFractionDigits: 0 }); 
+        const fmtMoney = amount => 'AED ' + (parseFloat(amount) || 0).toLocaleString('en-AE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
  
         if (closeDetailsMobile && sidebar) { 
             closeDetailsMobile.onclick = () => { 
