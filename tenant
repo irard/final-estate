@@ -437,7 +437,6 @@ add_shortcode('tenant_profile', function() {
                 efToggleScrollLock();
             } 
             
-            // Only show "Loading" on first load, otherwise it might feel jumpy during pagination
             if (page === 1) screen.innerHTML = '<div style="text-align:center; padding:40px;">Loading profile...</div>'; 
             
             const fd = new FormData(); 
@@ -460,24 +459,37 @@ add_shortcode('tenant_profile', function() {
                     document.getElementById('r-amt-table').innerText = d.amount; document.getElementById('r-amt-total').innerText = d.amount; 
                     document.getElementById('r-desc').innerText = `Unit Reference: ${d.prop} (${d.period})`; 
                     
-                    const source = document.querySelector('#receipt-template .receipt-container');
-                    const wrapper = document.createElement('div');
-                    wrapper.style.position = 'absolute';
-                    wrapper.style.left = '-9999px';
-                    wrapper.style.top = '0';
-                    const clone = source.cloneNode(true);
-                    wrapper.appendChild(clone);
-                    document.body.appendChild(wrapper);
-
-                    html2pdf().from(clone).set({ 
+                 const element = document.querySelector('#receipt-template .receipt-container'); 
+                    html2pdf().from(element).set({ 
                         margin: 0.2, 
                         filename: `Receipt-${d.ref}.pdf`, 
                         image: { type: 'jpeg', quality: 0.98 }, 
-                        html2canvas: { scale: 2, logging: false, useCORS: true, windowWidth: 800, scrollY: 0, scrollX: 0 }, 
+                        html2canvas: { scale: 2, logging: false, useCORS: true }, 
                         jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' } 
-                    }).save().then(() => {
-                        document.body.removeChild(wrapper);
-                    }); 
+                    }).save(); 
+
+const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+html2pdf()
+    .set(options)
+    .from(clone)
+    .outputPdf('blob')
+    .then(function(blob) {
+
+        const url = URL.createObjectURL(blob);
+
+       if (isMobile) {
+    window.open(url, '_blank');
+} else {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Receipt-${d.ref}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+}
+
+    });
                 }; 
             }); 
         } 
