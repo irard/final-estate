@@ -129,12 +129,12 @@ add_shortcode('ef_total_payments', function() {
             $period = ef_get_payment_period($p_id);
             if (strpos($period, $current_period) === 0) {
                 $amount = get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true);   
-                if ($amount) { $monthly_revenue += floatval(str_replace(',', '', $amount)); }  
+                if ($amount) { $monthly_revenue += floatval(str_replace(['AED', ' ', ','], '', (string)$amount)); }  
             }
         }  
         wp_reset_postdata();  
     }  
-    return number_format($monthly_revenue);  
+    return number_format($monthly_revenue, 2);  
 });  
   
 add_shortcode('ef_total_outstanding', function() {  
@@ -153,10 +153,10 @@ add_shortcode('ef_total_outstanding', function() {
         }  
         wp_reset_postdata();  
     }  
-    $collected_str = str_replace(',', '', do_shortcode('[ef_total_payments]')); 
+    $collected_str = str_replace(['AED', ' ', ','], '', do_shortcode('[ef_total_payments]')); 
     $rent_collected = floatval($collected_str);  
     $final_outstanding = $rent_expected - $rent_collected;  
-    return number_format(max(0, $final_outstanding));  
+    return number_format(max(0, $final_outstanding), 2);  
 });  
   
 add_shortcode('ef_yearly_revenue', function() {  
@@ -175,12 +175,12 @@ add_shortcode('ef_yearly_revenue', function() {
             $period = ef_get_payment_period($pay_id);
             if (strpos($period, (string)$current_year) === 0) {
                 $amt_paid = get_field('amount_paid', $pay_id) ?: get_post_meta($pay_id, 'amount_paid', true);  
-                if ($amt_paid) { $total_yearly_revenue += floatval(str_replace(',', '', $amt_paid)); }  
+                if ($amt_paid) { $total_yearly_revenue += floatval(str_replace(['AED', ' ', ','], '', (string)$amt_paid)); }  
             }
         }  
         wp_reset_postdata();  
     }  
-    return number_format($total_yearly_revenue);  
+    return number_format($total_yearly_revenue, 2);  
 });  
 
 add_shortcode('ef_yearly_expected_revenue', function() {
@@ -215,7 +215,7 @@ add_shortcode('ef_yearly_expected_revenue', function() {
             }
         }
     }
-    return number_format($yearly_expected);
+    return number_format($yearly_expected, 2);
 });
   
 add_shortcode('ef_collected_rate', function() {  
@@ -765,7 +765,7 @@ add_shortcode('ef_outstanding_tenants_widget', function() {
                         <span class="ef-out-tenant-meta">Due day <?php echo esc_html($item['due_day']); ?></span> 
                     </div> 
                     <div class="ef-out-amount-text"> 
-                        AED <?php echo number_format($item['amount']); ?> 
+                        AED <?php echo number_format($item['amount'], 2); ?> 
                     </div> 
                 </div> 
             <?php endforeach; else : ?> 
@@ -819,7 +819,7 @@ add_shortcode('ef_recent_payments_widget', function() {
                         <span class="ef-recent-subtitle"><?php echo esc_html($method); ?> · <?php echo esc_html($period); ?></span> 
                     </div> 
                     <div class="ef-recent-trailing"> 
-                        <span class="ef-recent-amount-text">AED <?php echo number_format(floatval($amount)); ?></span> 
+                        <span class="ef-recent-amount-text">AED <?php echo number_format(floatval(str_replace(['AED', ' ', ','], '', (string)$amount)), 2); ?></span> 
                         <span class="ef-recent-date-text"><?php echo esc_html($display_date); ?></span> 
                     </div> 
                 </div> 
