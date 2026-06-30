@@ -467,18 +467,30 @@ add_shortcode('tenant_profile', function() {
                     const source = document.querySelector('#receipt-template .receipt-container');
                     const clone = source.cloneNode(true);
                     const wrapper = document.createElement('div');
-                    wrapper.style.position = 'absolute';
-                    wrapper.style.left = '-9999px';
+                    wrapper.style.position = 'fixed';
+                    wrapper.style.left = '0';
                     wrapper.style.top = '0';
+                    wrapper.style.width = '800px';
+                    wrapper.style.zIndex = '-9999';
                     wrapper.style.display = 'block';
                     wrapper.appendChild(clone);
                     document.body.appendChild(wrapper);
 
                     const options = {
-                        margin: 0.2,
+                        margin: 0,
                         filename: `Receipt-${d.ref}.pdf`,
                         image: { type: 'jpeg', quality: 0.98 },
-                        html2canvas: { scale: 2, logging: false, useCORS: true, windowWidth: 800, scrollY: 0, scrollX: 0 },
+                        html2canvas: {
+                            scale: 2,
+                            logging: false,
+                            useCORS: true,
+                            windowWidth: 800,
+                            width: 800,
+                            x: 0,
+                            y: 0,
+                            scrollY: 0,
+                            scrollX: 0
+                        },
                         jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
                     };
 
