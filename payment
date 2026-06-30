@@ -937,17 +937,33 @@ function efDownloadReceipt(d) {
         </div>   
     `;  
   
-    const element = wrapper.querySelector(".receipt-container");  
-    html2pdf().from(element).set({    
-        margin: 0.2,    
-        filename: `Receipt-${ref}.pdf`,    
-        image: { type: "jpeg", quality: 0.98 },    
-        html2canvas: { scale: 2, logging: false, useCORS: true, windowWidth: 800, scrollY: 0, scrollX: 0 },    
-        jsPDF: { unit: "in", format: "letter", orientation: "portrait" }    
-    }).save().then(() => {  
-        document.body.removeChild(wrapper);  
-    });  
-}  
+    const element = wrapper.querySelector(".receipt-container");
+    const options = {
+        margin: 0.2,
+        filename: `Receipt-${ref}.pdf`,
+        image: { type: "jpeg", quality: 0.98 },
+        html2canvas: { scale: 2, logging: false, useCORS: true, windowWidth: 800, scrollY: 0, scrollX: 0 },
+        jsPDF: { unit: "in", format: "letter", orientation: "portrait" }
+    };
+
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+    html2pdf().set(options).from(element).outputPdf('blob').then(function(blob) {
+        const url = URL.createObjectURL(blob);
+        if (isMobile) {
+            window.open(url, '_blank');
+        } else {
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Receipt-${ref}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+        }
+        URL.revokeObjectURL(url);
+        document.body.removeChild(wrapper);
+    });
+}
    
 document.addEventListener("DOMContentLoaded", function() {     
     efProcessLedgerQueryMatrix();     

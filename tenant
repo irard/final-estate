@@ -453,43 +453,52 @@ add_shortcode('tenant_profile', function() {
             document.querySelectorAll('.ef-btn-receipt').forEach(btn => { 
                 btn.onclick = () => { 
                     const d = btn.dataset; 
-                    document.getElementById('r-ref').innerText = d.ref; document.getElementById('r-tenant').innerText = d.tenant; document.getElementById('r-prop').innerText = d.prop; 
+                    document.getElementById('r-ref').innerText = d.ref;
+                    document.getElementById('r-tenant').innerText = d.tenant;
+                    document.getElementById('r-prop').innerText = d.prop;
                     document.getElementById('r-cheque').innerText = d.cheque || '';
-                    document.getElementById('r-date').innerText = d.date; document.getElementById('r-period').innerText = d.period; document.getElementById('r-method').innerText = d.method; 
-                    document.getElementById('r-amt-table').innerText = d.amount; document.getElementById('r-amt-total').innerText = d.amount; 
+                    document.getElementById('r-date').innerText = d.date;
+                    document.getElementById('r-period').innerText = d.period;
+                    document.getElementById('r-method').innerText = d.method;
+                    document.getElementById('r-amt-table').innerText = d.amount;
+                    document.getElementById('r-amt-total').innerText = d.amount;
                     document.getElementById('r-desc').innerText = `Unit Reference: ${d.prop} (${d.period})`; 
                     
-                 const element = document.querySelector('#receipt-template .receipt-container'); 
-                    html2pdf().from(element).set({ 
-                        margin: 0.2, 
-                        filename: `Receipt-${d.ref}.pdf`, 
-                        image: { type: 'jpeg', quality: 0.98 }, 
-                        html2canvas: { scale: 2, logging: false, useCORS: true }, 
-                        jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' } 
-                    }).save(); 
+                    const source = document.querySelector('#receipt-template .receipt-container');
+                    const clone = source.cloneNode(true);
+                    const wrapper = document.createElement('div');
+                    wrapper.style.position = 'absolute';
+                    wrapper.style.left = '-9999px';
+                    wrapper.style.top = '0';
+                    wrapper.style.display = 'block';
+                    wrapper.appendChild(clone);
+                    document.body.appendChild(wrapper);
 
-const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+                    const options = {
+                        margin: 0.2,
+                        filename: `Receipt-${d.ref}.pdf`,
+                        image: { type: 'jpeg', quality: 0.98 },
+                        html2canvas: { scale: 2, logging: false, useCORS: true, windowWidth: 800, scrollY: 0, scrollX: 0 },
+                        jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+                    };
 
-html2pdf()
-    .set(options)
-    .from(clone)
-    .outputPdf('blob')
-    .then(function(blob) {
+                    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-        const url = URL.createObjectURL(blob);
-
-       if (isMobile) {
-    window.open(url, '_blank');
-} else {
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Receipt-${d.ref}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-}
-
-    });
+                    html2pdf().set(options).from(clone).outputPdf('blob').then(function(blob) {
+                        const url = URL.createObjectURL(blob);
+                        if (isMobile) {
+                            window.open(url, '_blank');
+                        } else {
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `Receipt-${d.ref}.pdf`;
+                            document.body.appendChild(a);
+                            a.click();
+                            a.remove();
+                        }
+                        URL.revokeObjectURL(url);
+                        document.body.removeChild(wrapper);
+                    });
                 }; 
             }); 
         } 
