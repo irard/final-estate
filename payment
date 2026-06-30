@@ -12,6 +12,14 @@ if (!function_exists('ef_get_tenant_due_day')) {
         return $ts ? intval(date('j', $ts)) : 5;
     }
 }
+if (!function_exists('ef_clean_amount')) {
+    function ef_clean_amount($val) {
+        if (!$val) return 0.00;
+        $v = str_replace(['AED', ' ', ','], '', (string)$val);
+        return floatval($v);
+    }
+}
+
 if (!function_exists('ef_is_tenant_billable')) {
     function ef_is_tenant_billable($t_id, $m, $y) {
         $s_str = get_field('tenant_start', $t_id) ?: get_post_meta($t_id, 'tenant_start', true);
@@ -38,7 +46,7 @@ if (!function_exists('ef_is_tenant_billable')) {
 
 if (!function_exists('ef_get_tenant_monthly_status')) {    
     function ef_get_tenant_monthly_status($t_id, $month, $year) {    
-        $monthly_rent = floatval(get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true));    
+        $monthly_rent = ef_clean_amount(get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true));    
     
         $period_match = $year . '-' . str_pad($month, 2, '0', STR_PAD_LEFT);
         $payments = get_posts(array(    
@@ -57,7 +65,7 @@ if (!function_exists('ef_get_tenant_monthly_status')) {
             if (strpos($period, $period_match) === 0) {
                 $amount = get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true);    
                 if ($amount) {    
-                    $tenant_paid_this_month += floatval($amount);    
+                    $tenant_paid_this_month += ef_clean_amount($amount);    
                 }    
             }
         }    
@@ -66,7 +74,7 @@ if (!function_exists('ef_get_tenant_monthly_status')) {
             'paid' => $tenant_paid_this_month,    
             'rent' => $monthly_rent,    
             'balance' => max(0, $monthly_rent - $tenant_paid_this_month),    
-            'is_fully_paid' => ($monthly_rent > 0) ? ($tenant_paid_this_month >= $monthly_rent) : ($tenant_paid_this_month > 0)    
+            'is_fully_paid' => ($monthly_rent > 0) ? ($tenant_paid_this_month >= ($monthly_rent - 0.001)) : ($tenant_paid_this_month > 0)    
         );    
     }    
 }
@@ -123,7 +131,7 @@ add_shortcode('ef_log_payment_btn', function() {
             <div class="ef-input-flex-row-2col">   
                 <div class="ef-modal-input-field-group" style="margin-bottom:0;">   
                     <label>Amount (AED)</label>   
-                    <input type="number" id="ef_log_amount" placeholder="Enter Amount" class="ef-modal-element-input">   
+                    <input type="number" id="ef_log_amount" step="0.01" placeholder="Enter Amount" class="ef-modal-element-input">   
                 </div>   
                 <div class="ef-modal-input-field-group" style="margin-bottom:0;">   
                     <label>Method</label>   
@@ -173,7 +181,7 @@ add_shortcode('ef_log_payment_btn', function() {
                 const due = selected?.dataset.due;
                 const amountInput = document.getElementById('ef_log_amount');
                 if (rent && rent > 0) {
-                    amountInput.placeholder = 'Rent: ' + Number(rent).toLocaleString();
+                    amountInput.placeholder = 'Rent: ' + Number(rent).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
                 } else {
                     amountInput.placeholder = 'Enter Amount';
                 }
@@ -240,7 +248,7 @@ add_shortcode('ef_log_payment_btn', function() {
    
                 window.location.reload();    
             } else {   
-                alert('Database entry submission failure.');   
+                alert(res.data && res.data.message ? res.data.message : 'Database entry submission failure.');   
             }   
         }).catch(err => { alert('Database communication channel interrupted.'); });   
     }   
@@ -285,7 +293,7 @@ function ef_callback_ajax_create_payment() {
     }
 
     $tenant_id  = isset($_POST['tenant_id']) ? intval($_POST['tenant_id']) : 0;   
-    $total_amount = isset($_POST['amount']) ? floatval($_POST['amount']) : 0;   
+    $total_amount = isset($_POST['amount']) ? ef_clean_amount($_POST['amount']) : 0;   
     $method     = isset($_POST['method']) ? sanitize_text_field($_POST['method']) : 'Bank Transfer';   
     $transaction_cheque_number = isset($_POST['transaction_cheque_number']) ? sanitize_text_field($_POST['transaction_cheque_number']) : '';
     $date       = isset($_POST['date']) ? sanitize_text_field($_POST['date']) : '';   
@@ -295,8 +303,9 @@ function ef_callback_ajax_create_payment() {
         wp_send_json_error(['message' => 'Operational parameters data validation failure.']);   
     }   
 
-    $monthly_rent = floatval((function_exists('get_field') ? get_field('monthly_rent', $tenant_id) : null) ?: get_post_meta($tenant_id, 'monthly_rent', true));
+    $monthly_rent = ef_clean_amount((function_exists('get_field') ? get_field('monthly_rent', $tenant_id) : null) ?: get_post_meta($tenant_id, 'monthly_rent', true));
     $tenant_start = (function_exists('get_field') ? get_field('tenant_start', $tenant_id) : null) ?: get_post_meta($tenant_id, 'tenant_start', true);
+    $tenant_end = (function_exists('get_field') ? get_field('tenant_end', $tenant_id) : null) ?: get_post_meta($tenant_id, 'tenant_end', true);
     $tenant_name = get_the_title($tenant_id);
     $property_id = (function_exists('get_field') ? get_field('property_id', $tenant_id) : null) ?: get_post_meta($tenant_id, 'property_id', true);
 
@@ -324,7 +333,7 @@ function ef_callback_ajax_create_payment() {
 
     // Waterfall allocation logic
     $amount_remaining = $total_amount;
-    $current_date_ts = $tenant_start ? strtotime($tenant_start) : time();
+    $current_date_ts = $period_ui ? strtotime($period_ui . '-01') : ($tenant_start ? strtotime($tenant_start) : time());
     $current_date = date('Y-m-01', $current_date_ts);
 
     // Fetch existing payments once to calculate monthly balances
@@ -343,14 +352,42 @@ function ef_callback_ajax_create_payment() {
     foreach ($existing_payments as $p) {
         $p_period = (function_exists('get_field') ? get_field('payment_period', $p->ID) : null) ?: get_post_meta($p->ID, 'payment_period', true) ?: get_the_date('Y-m', $p->ID);
         $p_period = substr((string)$p_period, 0, 7);
-        $amt = floatval((function_exists('get_field') ? get_field('amount_paid', $p->ID) : null) ?: get_post_meta($p->ID, 'amount_paid', true));
+        $amt = ef_clean_amount((function_exists('get_field') ? get_field('amount_paid', $p->ID) : null) ?: get_post_meta($p->ID, 'amount_paid', true));
         if (!isset($monthly_paid[$p_period])) $monthly_paid[$p_period] = 0;
         $monthly_paid[$p_period] += $amt;
     }
 
+    // BLOCKER: Simulation to ensure payment doesn't surpass contract end
+    $sim_amount = $amount_remaining;
+    $sim_date = $current_date;
+    $sim_limit = 120;
+    while ($sim_amount >= 0.01 && $sim_limit > 0) {
+        $y = date('Y', strtotime($sim_date));
+        $m = date('m', strtotime($sim_date));
+        $period_key = "$y-$m";
+        if ($tenant_end && $sim_date > date('Y-m-01', strtotime($tenant_end))) {
+            wp_send_json_error(['message' => "Payment cannot be accepted as it surpasses the tenant's contract end date ($tenant_end)."]);
+        }
+        if (ef_is_tenant_billable($tenant_id, $m, $y)) {
+            $paid = isset($monthly_paid[$period_key]) ? $monthly_paid[$period_key] : 0;
+            $balance = max(0, $monthly_rent - $paid);
+            if ($balance > 0) {
+                $allocation = min($sim_amount, $balance);
+                $sim_amount -= $allocation;
+            }
+        }
+        $sim_date = date('Y-m-01', strtotime("+1 month", strtotime($sim_date)));
+        $sim_limit--;
+    }
+    if ($sim_amount >= 0.01) {
+        if ($tenant_end && $sim_date > date('Y-m-01', strtotime($tenant_end))) {
+             wp_send_json_error(['message' => "Payment cannot be accepted as it surpasses the tenant's contract end date ($tenant_end)."]);
+        }
+    }
+
     $created_ids = [];
     $safety_limit = 120; // 10 years limit
-    while ($amount_remaining > 0 && $safety_limit > 0) {
+    while ($amount_remaining >= 0.01 && $safety_limit > 0) {
         $y = date('Y', strtotime($current_date));
         $m = date('m', strtotime($current_date));
         $period_key = "$y-$m";
@@ -372,7 +409,7 @@ function ef_callback_ajax_create_payment() {
     }
 
     // If there is still a remainder (e.g. advance payment beyond paid-up months)
-    if ($amount_remaining > 0) {
+    if ($amount_remaining >= 0.01) {
         $receipt_voucher = str_pad($next_voucher_int++, 3, '0', STR_PAD_LEFT);
         $period_to_use = date('Y-m', strtotime($current_date));
         $new_id = ef_internal_create_payment_record($tenant_id, $property_id, $tenant_name, $amount_remaining, $method, $transaction_cheque_number, $date, $period_to_use, $receipt_voucher);
@@ -399,7 +436,7 @@ function ef_callback_ajax_update_payment() {
 
     $payment_id = isset($_POST['payment_id']) ? intval($_POST['payment_id']) : 0; 
     $tenant_id  = isset($_POST['tenant_id']) ? intval($_POST['tenant_id']) : 0;   
-    $amount     = isset($_POST['amount']) ? floatval($_POST['amount']) : 0;   
+    $amount     = isset($_POST['amount']) ? ef_clean_amount($_POST['amount']) : 0;   
     $method     = isset($_POST['method']) ? sanitize_text_field($_POST['method']) : 'Bank Transfer';   
     $transaction_cheque_number = isset($_POST['transaction_cheque_number']) ? sanitize_text_field($_POST['transaction_cheque_number']) : '';
     $date       = isset($_POST['date']) ? sanitize_text_field($_POST['date']) : '';   
@@ -485,7 +522,7 @@ add_shortcode('ef_payments_stats', function() {
             $month_query->the_post();   
             $amount = get_field('amount_paid', get_the_ID());    
             if ($amount) {   
-                $this_month_revenue += floatval($amount);   
+                $this_month_revenue += ef_clean_amount($amount);   
             }   
         }   
         wp_reset_postdata();   
@@ -506,7 +543,7 @@ add_shortcode('ef_payments_stats', function() {
         <div class="ef-stat-card-surface">   
             <div class="ef-stat-card-label">This Month</div>   
             <div class="ef-stat-card-value ef-text-accent-green">   
-                AED <?php echo number_format($this_month_revenue); ?>   
+                AED <?php echo number_format($this_month_revenue, 2); ?>   
             </div>   
         </div>   
    
@@ -558,7 +595,7 @@ if ($query->have_posts()) {
         $transaction_cheque_number = get_field('transaction_cheque_number', $payment_id) ?: get_post_meta($payment_id, 'transaction_cheque_number', true);
         $receipt_voucher = get_field('receipt_voucher', $payment_id) ?: get_post_meta($payment_id, 'receipt_voucher', true);
 
-        $amount_val   = $amount ? floatval($amount) : 0.00;     
+        $amount_val   = $amount ? ef_clean_amount($amount) : 0.00;     
         $method_txt   = $method ? $method : 'Bank Transfer';     
          
         $tenant_name = 'Out of contract';
@@ -743,7 +780,7 @@ function efProcessLedgerQueryMatrix() {
                 <td style="color: #475569;">${efEscapeOutputChar(entry.method)}</td>     
                 <td style="color: #475569;">${efEscapeOutputChar(entry.transaction_cheque_number)}</td>
                 <td style="color: #475569;">${efEscapeOutputChar(entry.date)}</td>     
-                <td class="ef-cell-accent-currency-green">AED ${Number(entry.amount).toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})}</td>     
+                <td class="ef-cell-accent-currency-green">AED ${Number(entry.amount).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>     
                 <td><div class="ef-payment-status-badge ${statusClass}">${efEscapeOutputChar(entry.status)}</div></td>
                 <td style="text-align: right;">     
                      <button class="ef-btn-receipt-pdf-download" title="Download PDF" onclick='efDownloadReceipt(efLedgerSourcePayload.find(item => item.id === ${entry.id}))'>     
@@ -766,7 +803,7 @@ function efProcessLedgerQueryMatrix() {
         }     
     });     
    
-    document.getElementById('efLedgerCounterDisplay').innerHTML = `${matchCount} results • <span>AED ${revenueAccumulator.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})}</span>`;     
+    document.getElementById('efLedgerCounterDisplay').innerHTML = `${matchCount} results • <span>AED ${revenueAccumulator.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>`;     
     fallbackEl.style.display = (matchCount === 0) ? 'block' : 'none';     
 }     
    
