@@ -449,50 +449,112 @@ add_shortcode('tenant_profile', function() {
             }); 
         };
 
-        window.attachReceiptEvents = function() { 
-            document.querySelectorAll('.ef-btn-receipt').forEach(btn => { 
-                btn.onclick = () => { 
-                    const d = btn.dataset; 
-                    document.getElementById('r-ref').innerText = d.ref; document.getElementById('r-tenant').innerText = d.tenant; document.getElementById('r-prop').innerText = d.prop; 
-                    document.getElementById('r-cheque').innerText = d.cheque || '';
-                    document.getElementById('r-date').innerText = d.date; document.getElementById('r-period').innerText = d.period; document.getElementById('r-method').innerText = d.method; 
-                    document.getElementById('r-amt-table').innerText = d.amount; document.getElementById('r-amt-total').innerText = d.amount; 
-                    document.getElementById('r-desc').innerText = `Unit Reference: ${d.prop} (${d.period})`; 
-                    
-                 const element = document.querySelector('#receipt-template .receipt-container'); 
-                    html2pdf().from(element).set({ 
-                        margin: 0.2, 
-                        filename: `Receipt-${d.ref}.pdf`, 
-                        image: { type: 'jpeg', quality: 0.98 }, 
-                        html2canvas: { scale: 2, logging: false, useCORS: true }, 
-                        jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' } 
-                    }).save(); 
+        window.attachReceiptEvents = function() {
+    document.querySelectorAll('.ef-btn-receipt').forEach(btn => {
+        btn.onclick = () => {
+            const d = btn.dataset;
+            
+            // Fill receipt data
+            const updateElement = (id, text) => {
+                const el = document.getElementById(id);
+                if (el) el.innerText = text;
+            };
 
-const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+            updateElement('r-ref', d.ref);
+            updateElement('r-tenant', d.tenant);
+            updateElement('r-prop', d.prop);
+            updateElement('r-cheque', d.cheque || '');
+            updateElement('r-date', d.date);
+            updateElement('r-period', d.period);
+            updateElement('r-method', d.method);
+            updateElement('r-amt-table', d.amount);
+            updateElement('r-amt-total', d.amount);
+            updateElement('r-desc', `Unit Reference: ${d.prop} (${d.period})`);
+             
+            const source = document.querySelector('#receipt-template .receipt-container');
+            if (!source) {
+                console.error('Receipt template not found');
+                return;
+            }
 
-html2pdf()
-    .set(options)
-    .from(clone)
-    .outputPdf('blob')
-    .then(function(blob) {
+            const clone = source.cloneNode(true); 
+            const wrapper = document.createElement('div'); 
+            wrapper.style.position = 'fixed'; 
+            wrapper.style.left = '0'; 
+            wrapper.style.top = '0'; 
+            wrapper.style.width = '800px'; 
+            wrapper.style.zIndex = '-9999'; 
+            wrapper.style.display = 'block'; 
+            wrapper.appendChild(clone); 
+            document.body.appendChild(wrapper); 
+ 
+            const options = { 
+                margin: 0, 
+                filename: `Receipt-${d.ref}.pdf`, 
+                image: { type: 'jpeg', quality: 0.98 }, 
+                html2canvas: {  
+                    scale: 2,  
+                    logging: false,  
+                    useCORS: true,  
+                    windowWidth: 800,  
+                    width: 800, 
+                    x: 0, 
+                    y: 0, 
+                    scrollY: 0,  
+                    scrollX: 0  
+                }, 
+                jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' } 
+            }; 
+ 
+            // Better iOS detection (including iPad Pro)
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+                          (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
-        const url = URL.createObjectURL(blob);
+            let pdfWindow;
+            if (isIOS) {
+                // Open a blank window immediately to bypass popup blockers
+                pdfWindow = window.open('', '_blank');
+                if (pdfWindow) {
+                    pdfWindow.document.write('Generating PDF... Please wait.');
+                }
+            }
+ 
+            html2pdf().set(options).from(clone).outputPdf('blob').then(function(blob) { 
+                const url = URL.createObjectURL(blob); 
+                if (isIOS) { 
+                    if (pdfWindow) {
+                        pdfWindow.location.href = url;
+                    } else {
+                        // Fallback if window.open was blocked or failed
+                        window.location.href = url;
+                    }
+                } else { 
+                    const a = document.createElement('a'); 
+                    a.href = url; 
+                    a.download = `Receipt-${d.ref}.pdf`; 
+                    document.body.appendChild(a); 
+                    a.click(); 
+                    a.remove(); 
+                } 
 
-       if (isMobile) {
-    window.open(url, '_blank');
-} else {
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Receipt-${d.ref}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-}
-
-    });
-                }; 
+                // Revoke the object URL after a delay to ensure the browser has loaded it
+                setTimeout(() => {
+                    URL.revokeObjectURL(url); 
+                    if (document.body.contains(wrapper)) {
+                        document.body.removeChild(wrapper); 
+                    }
+                }, 2000);
+            }).catch(err => {
+                console.error('PDF Generation Error:', err);
+                if (pdfWindow) pdfWindow.close();
+                if (document.body.contains(wrapper)) {
+                    document.body.removeChild(wrapper); 
+                }
             }); 
-        } 
+        };  
+    });  
+}
+ 
         window.efTriggerFormPopup = function(btn) { 
             const d = btn.dataset; 
             document.getElementById('modal_field_id').value = d.id; 
@@ -722,7 +784,7 @@ function eftm_handle_ajax_tenant_breakdown() {
         'posts_per_page' => $posts_per_page, 
         'paged'          => $paged,
         'meta_query'     => [['key' => 'associated_tenant', 'value' => $tenant_id, 'compare' => '=']], 
-        'meta_key'       => 'date_of_payment', 'orderby' => 'meta_value', 'order' => 'DESC' 
+        'meta_key'       => 'payment_period', 'orderby' => 'meta_value', 'order' => 'DESC' 
     ]); 
     $total_pages = $p_query->max_num_pages;
 
