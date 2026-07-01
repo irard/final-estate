@@ -962,22 +962,71 @@ function efDownloadReceipt(d) {
         jsPDF: { unit: "in", format: "letter", orientation: "portrait" }
     };
 
-    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    // Better iOS detection (including iPad Pro)
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+                  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+    let pdfWindow;
+    if (isIOS) {
+        // Open a blank window immediately to bypass popup blockers
+        pdfWindow = window.open('', '_blank');
+        if (pdfWindow) {
+            pdfWindow.document.write('Generating PDF... Please wait.');
+        }
+    }
 
     html2pdf().set(options).from(clone).outputPdf('blob').then(function(blob) {
-        const url = URL.createObjectURL(blob);
-        if (isMobile) {
-            window.open(url, '_blank');
+        // For iOS, using octet-stream helps trigger a download prompt instead of just viewing
+        const finalBlob = isIOS ? new Blob([blob], { type: 'application/octet-stream' }) : blob;
+        const url = URL.createObjectURL(finalBlob);
+        const filename = `Receipt-${ref}.pdf`;
+
+        if (isIOS) {
+            if (pdfWindow) {
+                // Try to use the pre-opened window to trigger an anchor click for better filename support
+                const a = pdfWindow.document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                pdfWindow.document.body.appendChild(a);
+                a.click();
+
+                // Fallback: if anchor click didn't work, navigate directly
+                setTimeout(() => {
+                    if (pdfWindow && !pdfWindow.closed) pdfWindow.location.href = url;
+                }, 500);
+            } else {
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+            }
         } else {
             const a = document.createElement('a');
             a.href = url;
-            a.download = `Receipt-${ref}.pdf`;
+            a.download = filename;
             document.body.appendChild(a);
             a.click();
             a.remove();
         }
-        URL.revokeObjectURL(url);
-        document.body.removeChild(wrapper);
+
+        // Revoke the object URL after a delay to ensure the browser has loaded it
+        setTimeout(() => {
+            URL.revokeObjectURL(url);
+            if (document.body.contains(wrapper)) {
+                document.body.removeChild(wrapper);
+            }
+            if (isIOS && pdfWindow && !pdfWindow.closed) {
+                pdfWindow.close();
+            }
+        }, 3000);
+    }).catch(err => {
+        console.error('PDF Generation Error:', err);
+        if (pdfWindow) pdfWindow.close();
+        if (document.body.contains(wrapper)) {
+            document.body.removeChild(wrapper);
+        }
     });
 }
    
