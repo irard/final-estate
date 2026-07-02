@@ -13,6 +13,22 @@ if (!function_exists('ef_get_tenant_due_day')) {
         return $ts ? intval(date('j', $ts)) : 5;
     }
 }
+if (!function_exists('ef_clean_amount')) {
+    function ef_clean_amount($val) {
+        if (!$val) return 0.00;
+        $v = str_replace(['AED', ' ', ','], '', (string)$val);
+        return floatval($v);
+    }
+}
+if (!function_exists('ef_get_dashboard_period')) {
+    function ef_get_dashboard_period() {
+        $m = isset($_REQUEST["ef_month"]) ? $_REQUEST["ef_month"] : (isset($_COOKIE["ef_month"]) ? $_COOKIE["ef_month"] : date("m"));
+        $y = isset($_REQUEST["ef_year"]) ? $_REQUEST["ef_year"] : (isset($_COOKIE["ef_year"]) ? $_COOKIE["ef_year"] : date("Y"));
+        $m = str_pad(intval($m), 2, "0", STR_PAD_LEFT);
+        $y = intval($y);
+        return ['m' => $m, 'y' => $y, 'period' => "$y-$m"];
+    }
+}
 if (!function_exists('ef_is_tenant_billable')) {
     function ef_is_tenant_billable($t_id, $m, $y) {
         $s_str = get_field('tenant_start', $t_id) ?: get_post_meta($t_id, 'tenant_start', true);
@@ -45,7 +61,8 @@ add_shortcode('expected_monthly_income', function() {
     ));    
     
     $total_expected_rent = 0.00;    
-    $m = date('m'); $y = date('Y');
+    $period = ef_get_dashboard_period();
+    $m = $period['m']; $y = $period['y'];
     
     if ($t_query->have_posts()) {    
         while ($t_query->have_posts()) {    
@@ -54,7 +71,7 @@ add_shortcode('expected_monthly_income', function() {
             if (ef_is_tenant_billable($t_id, $m, $y)) {
                 $rent_val = get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true);    
                 if ($rent_val) {    
-                    $total_expected_rent += floatval(str_replace(['AED', ' ', ','], '', (string)$rent_val));    
+                    $total_expected_rent += ef_clean_amount($rent_val);
                 }    
             }
         }    
@@ -62,32 +79,6 @@ add_shortcode('expected_monthly_income', function() {
     }    
     return number_format($total_expected_rent, 2);    
 });    
- 
-  
-if (!function_exists('ef_get_tenant_due_day')) {    
-    function ef_get_tenant_due_day($t_id) {    
-        // Try both field names used in the snippets 
-        $due_day_raw = get_field('rent_due_day', $t_id);    
-        if (!$due_day_raw) { 
-            $due_day_raw = get_field('due_day', $t_id); 
-        } 
-         
-        if (!$due_day_raw) return 5;    
-    
-        if (is_numeric($due_day_raw)) {    
-            $val = intval($due_day_raw);    
-            if ($val >= 1 && $val <= 31) return $val;    
-            if (strlen((string)$val) === 8) {    
-                return intval(substr((string)$val, 6, 2));    
-            }    
-        }    
-    
-        $timestamp = strtotime((string)$due_day_raw);    
-        if ($timestamp) return intval(date('j', $timestamp));    
-    
-        return 5;    
-    }    
-}    
  
   
 if (!function_exists('ef_get_tenant_next_due_date')) {  
@@ -116,7 +107,7 @@ if (!function_exists('ef_get_tenant_next_due_date')) {
   
 if (!function_exists('ef_get_tenant_monthly_status')) {    
     function ef_get_tenant_monthly_status($t_id, $month, $year) {    
-        $monthly_rent = floatval(get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true));    
+        $monthly_rent = ef_clean_amount(get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true));
     
         $period_match = $year . '-' . str_pad($month, 2, '0', STR_PAD_LEFT);
         $payments = get_posts(array(    
@@ -124,7 +115,9 @@ if (!function_exists('ef_get_tenant_monthly_status')) {
             'post_status'    => ['publish', 'future'],
             'posts_per_page' => -1,    
             'meta_query'     => array(
-                array('key' => 'associated_tenant', 'value' => $t_id, 'compare' => '=' )
+                'relation' => 'OR',
+                array('key' => 'associated_tenant', 'value' => $t_id, 'compare' => '=' ),
+                array('key' => 'select_tenant', 'value' => $t_id, 'compare' => '=' )
             )
         ));    
     
@@ -135,7 +128,7 @@ if (!function_exists('ef_get_tenant_monthly_status')) {
             if (strpos($period, $period_match) === 0) {
                 $amount = get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true);    
                 if ($amount) {    
-                    $tenant_paid_this_month += floatval($amount);    
+                    $tenant_paid_this_month += ef_clean_amount($amount);
                 }    
             }
         }    
@@ -144,7 +137,7 @@ if (!function_exists('ef_get_tenant_monthly_status')) {
             'paid' => $tenant_paid_this_month,    
             'rent' => $monthly_rent,    
             'balance' => max(0, $monthly_rent - $tenant_paid_this_month),    
-            'is_fully_paid' => ($monthly_rent > 0) ? ($tenant_paid_this_month >= $monthly_rent) : ($tenant_paid_this_month > 0)    
+            'is_fully_paid' => ($monthly_rent > 0) ? ($tenant_paid_this_month >= ($monthly_rent - 0.001)) : ($tenant_paid_this_month > 0)
         );    
     }    
 }    
@@ -167,25 +160,19 @@ if (!function_exists('ef_get_property_display_name')) {
 add_shortcode('count_tenant_overdue', function() {    
     $t_query = new WP_Query(array('post_type' => 'ef_tenant', 'post_status' => 'publish', 'posts_per_page' => -1));    
     $overdue_count = 0;    
-    $now_str = function_exists('current_time') ? current_time('mysql') : 'now';  
-    $today = new DateTimeImmutable($now_str);  
-  
+
+    $period = ef_get_dashboard_period();
+    // Requirements: "overdue dont the due on current month"
+    // So for the current selected period, we check the month BEFORE it.
+    $current_period_date = new DateTimeImmutable($period['y'] . '-' . $period['m'] . '-01');
+    $overdue_period_date = $current_period_date->modify('first day of last month');
+    $check_month = $overdue_period_date->format('m');
+    $check_year = $overdue_period_date->format('Y');
+
     if ($t_query->have_posts()) {    
         while ($t_query->have_posts()) {    
             $t_query->the_post();    
             $t_id = get_the_ID();    
-              
-            $due_day = ef_get_tenant_due_day($t_id);  
-            $current_day = (int)$today->format('j');  
-              
-            if ($current_day > $due_day) {  
-                $check_month = $today->format('m');  
-                $check_year = $today->format('Y');  
-            } else {  
-                $last_month = $today->modify('first day of last month');  
-                $check_month = $last_month->format('m');  
-                $check_year = $last_month->format('Y');  
-            }  
             
             if (!ef_is_tenant_billable($t_id, $check_month, $check_year)) continue;
   
@@ -201,8 +188,11 @@ add_shortcode('count_tenant_overdue', function() {
 add_shortcode('count_tenant_due_soon', function() {    
     $t_query = new WP_Query(array('post_type' => 'ef_tenant', 'post_status' => 'publish', 'posts_per_page' => -1));    
     $due_soon_count = 0;    
-    $now_str = function_exists('current_time') ? current_time('mysql') : 'now';  
-    $today = new DateTimeImmutable($now_str);  
+
+    $period = ef_get_dashboard_period();
+    $days_in_month = (int)date('t', strtotime($period['y'] . '-' . $period['m'] . '-01'));
+    $day_to_use = str_pad(min((int)date('d'), $days_in_month), 2, '0', STR_PAD_LEFT);
+    $today = new DateTimeImmutable($period['y'] . '-' . $period['m'] . '-' . $day_to_use);
     $today_zero = $today->setTime(0, 0, 0);  
   
     if ($t_query->have_posts()) {    
@@ -333,28 +323,28 @@ if (!function_exists('ef_render_reminder_card')) {
 add_shortcode('overdue_list_card', function() {    
     $t_query = new WP_Query(array('post_type' => 'ef_tenant', 'post_status' => 'publish', 'posts_per_page' => -1));    
     $items_html = ''; $count = 0;    
-    $now_str = function_exists('current_time') ? current_time('mysql') : 'now';  
-    $today = new DateTimeImmutable($now_str);  
+
+    $period = ef_get_dashboard_period();
+    $days_in_month_now = (int)date('t', strtotime($period['y'] . '-' . $period['m'] . '-01'));
+    $day_to_use = str_pad(min((int)date('d'), $days_in_month_now), 2, '0', STR_PAD_LEFT);
+    $today = new DateTimeImmutable($period['y'] . '-' . $period['m'] . '-' . $day_to_use);
     $today_zero = $today->setTime(0, 0, 0);  
+
+    $overdue_period_date = (new DateTimeImmutable($period['y'] . '-' . $period['m'] . '-01'))->modify('first day of last month');
+    $check_month = $overdue_period_date->format('m');
+    $check_year = $overdue_period_date->format('Y');
     
     if ($t_query->have_posts()) {    
         while ($t_query->have_posts()) {    
             $t_query->the_post();    
             $t_id = get_the_ID();    
             $due_day = ef_get_tenant_due_day($t_id);    
-            $current_day = (int)$today->format('j');  
-  
-            if ($current_day > $due_day) {  
-                $check_date = $today;  
-            } else {  
-                $check_date = $today->modify('first day of last month');  
-            }  
               
-            $days_in_month = (int)$check_date->format('t');  
-            $due_date = $check_date->setDate((int)$check_date->format('Y'), (int)$check_date->format('m'), min($due_day, $days_in_month))->setTime(0, 0, 0);  
+            $days_in_month = (int)$overdue_period_date->format('t');
+            $due_date = $overdue_period_date->setDate((int)$check_year, (int)$check_month, min($due_day, $days_in_month))->setTime(0, 0, 0);
     
-            if (!ef_is_tenant_billable($t_id, $due_date->format('m'), $due_date->format('Y'))) continue;
-            $status = ef_get_tenant_monthly_status($t_id, $due_date->format('m'), $due_date->format('Y'));    
+            if (!ef_is_tenant_billable($t_id, $check_month, $check_year)) continue;
+            $status = ef_get_tenant_monthly_status($t_id, $check_month, $check_year);
             if (!$status['is_fully_paid']) {    
                 $count++;    
                 $diff = $due_date->diff($today_zero);  
@@ -384,8 +374,11 @@ add_shortcode('overdue_list_card', function() {
 add_shortcode('duesoon_list_card', function() {    
     $t_query = new WP_Query(array('post_type' => 'ef_tenant', 'post_status' => 'publish', 'posts_per_page' => -1));    
     $items_html = ''; $count = 0;    
-    $now_str = function_exists('current_time') ? current_time('mysql') : 'now';  
-    $today = new DateTimeImmutable($now_str);  
+
+    $period = ef_get_dashboard_period();
+    $days_in_month = (int)date('t', strtotime($period['y'] . '-' . $period['m'] . '-01'));
+    $day_to_use = str_pad(min((int)date('d'), $days_in_month), 2, '0', STR_PAD_LEFT);
+    $today = new DateTimeImmutable($period['y'] . '-' . $period['m'] . '-' . $day_to_use);
     $today_zero = $today->setTime(0, 0, 0);  
     
     if ($t_query->have_posts()) {    
@@ -433,8 +426,11 @@ add_shortcode('duesoon_list_card', function() {
 add_shortcode('upcoming_list_card', function() {    
     $t_query = new WP_Query(array('post_type' => 'ef_tenant', 'post_status' => 'publish', 'posts_per_page' => -1));    
     $items_html = ''; $count = 0;    
-    $now_str = function_exists('current_time') ? current_time('mysql') : 'now';  
-    $today = new DateTimeImmutable($now_str);  
+
+    $period = ef_get_dashboard_period();
+    $days_in_month = (int)date('t', strtotime($period['y'] . '-' . $period['m'] . '-01'));
+    $day_to_use = str_pad(min((int)date('d'), $days_in_month), 2, '0', STR_PAD_LEFT);
+    $today = new DateTimeImmutable($period['y'] . '-' . $period['m'] . '-' . $day_to_use);
     $today_zero = $today->setTime(0, 0, 0);  
     
     if ($t_query->have_posts()) {    
@@ -507,7 +503,7 @@ add_shortcode('paid_list_card', function() {
                     <div class='ef-reminder-item-sub'>" . esc_html($method) . " · " . esc_html($period) . "</div>    
                 </div>    
                 <div style='text-align: right;'>    
-                    <div class='ef-reminder-item-amount paid'>AED " . number_format(floatval(str_replace(['AED', ' ', ','], '', (string)$amount)), 2) . "</div>    
+                    <div class='ef-reminder-item-amount paid'>AED " . number_format(ef_clean_amount($amount), 2) . "</div>
                     <div class='ef-reminder-item-badge'>✓ " . esc_html($display_date) . "</div>    
                 </div>    
             </div>";    
@@ -522,7 +518,8 @@ add_shortcode('outstanding_tenants', function() {
         return ''; 
     } 
  
-    $current_month_year = date('Y-m');   
+    $period = ef_get_dashboard_period();
+    $current_period = $period['period'];
        
     $tenants = get_posts([   
         'post_type'      => 'ef_tenant',   
@@ -534,7 +531,6 @@ add_shortcode('outstanding_tenants', function() {
     $outstanding_items = []; 
  
     if (!empty($tenants)) { 
-        $current_period = date('Y-m');
         $p_query = new WP_Query([   
             'post_type'      => 'payment',   
             'post_status'    => ['publish', 'future'],
@@ -545,10 +541,11 @@ add_shortcode('outstanding_tenants', function() {
             while ($p_query->have_posts()) {   
                 $p_query->the_post();   
                 $pay_id = get_the_ID();   
-                $period = get_field('payment_period', $pay_id) ?: get_post_meta($pay_id, 'payment_period', true) ?: get_the_date('Y-m', $pay_id);
-                if (strpos($period, $current_period) === 0) {
+                $p_period = get_field('payment_period', $pay_id) ?: get_post_meta($pay_id, 'payment_period', true) ?: get_the_date('Y-m', $pay_id);
+                if (strpos($p_period, $current_period) === 0) {
                     $tid = get_field('associated_tenant', $pay_id) ?: get_post_meta($pay_id, 'associated_tenant', true);   
-                    $amount = floatval(get_field('amount_paid', $pay_id) ?: get_post_meta($pay_id, 'amount_paid', true));   
+                    if (!$tid) $tid = get_field('select_tenant', $pay_id) ?: get_post_meta($pay_id, 'select_tenant', true);
+                    $amount = ef_clean_amount(get_field('amount_paid', $pay_id) ?: get_post_meta($pay_id, 'amount_paid', true));
                        
                     if ($tid) {   
                         if (!isset($payments_by_tenant[$tid])) {   
@@ -561,17 +558,17 @@ add_shortcode('outstanding_tenants', function() {
             wp_reset_postdata();   
         }   
    
-        $m = date('m'); $y = date('Y');
+        $m = $period['m']; $y = $period['y'];
         foreach ($tenants as $tenant) {   
             $tid = $tenant->ID;   
             if (ef_is_tenant_billable($tid, $m, $y)) {
-                $rent = floatval(get_field('monthly_rent', $tid) ?: get_post_meta($tid, 'monthly_rent', true));   
+                $rent = ef_clean_amount(get_field('monthly_rent', $tid) ?: get_post_meta($tid, 'monthly_rent', true));
                    
                 if ($rent <= 0) continue;   
     
                 $paid = isset($payments_by_tenant[$tid]) ? $payments_by_tenant[$tid] : 0; 
    
-                if ($paid < $rent) {   
+                if ($paid < ($rent - 0.001)) {
                     $due_day = get_field('rent_due_day', $tid) ?: get_post_meta($tid, 'rent_due_day', true);   
                     $outstanding_items[] = [   
                         'name'    => get_the_title($tid),   
@@ -617,15 +614,17 @@ add_shortcode('ef_upcoming_due_this_week', function() {
     ));
 
     $upcoming_dues = array();
-    $current_year  = date('Y');
-    $current_month = date('m');
+
+    $period = ef_get_dashboard_period();
+    $current_year  = $period['y'];
+    $current_month = $period['m'];
 
     if ($t_query->have_posts()) {
         while ($t_query->have_posts()) {
             $t_query->the_post();
             $t_id = $t_query->post->ID;
 
-            $due_day = get_field('rent_due_day', $t_id);
+            $due_day = ef_get_tenant_due_day($t_id);
 
             if ($due_day) {
                 $due_timestamp = strtotime("$current_year-$current_month-" . str_pad($due_day, 2, '0', STR_PAD_LEFT));
@@ -666,7 +665,7 @@ add_shortcode('ef_upcoming_due_this_week', function() {
             echo '<span style="font-weight: 500; color: #1f2937; display: block;">' . esc_html($due['name']) . '</span>';
             echo '<span style="font-size: 12px; color: #6b7280;">Due on: ' . esc_html($due['date']) . '</span>';
             echo '</div>';
-            echo '<span style="color: #4b5563; font-weight: 600;">AED ' . number_format(floatval(str_replace(['AED', ' ', ','], '', (string)$due['rent'])), 2) . '</span>';
+            echo '<span style="color: #4b5563; font-weight: 600;">AED ' . number_format(ef_clean_amount($due['rent']), 2) . '</span>';
             echo '</li>';
         }
         echo '</ul>';
