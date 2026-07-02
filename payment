@@ -44,6 +44,24 @@ if (!function_exists('ef_is_tenant_billable')) {
     }
 }
 
+if (!function_exists('ef_get_dashboard_period')) {
+    function ef_get_dashboard_period() {
+        $m = isset($_GET['ef_month']) ? str_pad(intval($_GET['ef_month']), 2, '0', STR_PAD_LEFT) : date('m');
+        $y = isset($_GET['ef_year']) ? intval($_GET['ef_year']) : date('Y');
+        return ['m' => $m, 'y' => $y, 'period' => "$y-$m"];
+    }
+}
+
+if (!function_exists('ef_get_payment_period')) {
+    function ef_get_payment_period($p_id) {
+        $p = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true);
+        if ($p) return substr($p, 0, 7);
+        $d = get_field('date_of_payment', $p_id) ?: get_post_meta($p_id, 'date_of_payment', true);
+        if ($d) return date('Y-m', strtotime($d));
+        return get_the_date('Y-m', $p_id);
+    }
+}
+
 if (!function_exists('ef_get_tenant_monthly_status')) {    
     function ef_get_tenant_monthly_status($t_id, $month, $year) {    
         $monthly_rent = ef_clean_amount(get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true));    
@@ -501,29 +519,27 @@ function ef_callback_ajax_delete_payment() {
 } 
    
 add_shortcode('ef_payments_stats', function() {   
-    $current_month = date('m');   
-    $current_year  = date('Y');   
+    $period_data = ef_get_dashboard_period();
+    $current_period = $period_data['period'];
    
     $this_month_revenue = 0.00;   
     $month_query = new WP_Query([   
         'post_type'      => 'payment',   
-        'post_status'    => ['publish', 'future'],   
+        'post_status'    => ['publish', 'future', 'pending', 'draft', 'private'],
         'posts_per_page' => -1,   
-        'date_query'     => [   
-            [   
-                'year'  => $current_year,   
-                'month' => $current_month,   
-            ]   
-        ]   
     ]);   
    
     if ($month_query->have_posts()) {   
         while ($month_query->have_posts()) {   
             $month_query->the_post();   
-            $amount = get_field('amount_paid', get_the_ID());    
-            if ($amount) {   
-                $this_month_revenue += ef_clean_amount($amount);   
-            }   
+            $p_id = get_the_ID();
+            $period = ef_get_payment_period($p_id);
+            if (strpos($period, $current_period) === 0) {
+                $amount = get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true);
+                if ($amount) {
+                    $this_month_revenue += ef_clean_amount($amount);
+                }
+            }
         }   
         wp_reset_postdata();   
     }   
@@ -541,7 +557,7 @@ add_shortcode('ef_payments_stats', function() {
     <div class="ef-stats-cards-row">   
    
         <div class="ef-stat-card-surface">   
-            <div class="ef-stat-card-label">This Month</div>   
+            <div class="ef-stat-card-label">Collected in <?php echo date('M Y', strtotime($current_period . '-01')); ?></div>
             <div class="ef-stat-card-value ef-text-accent-green">   
                 AED <?php echo number_format($this_month_revenue, 2); ?>   
             </div>   
@@ -674,7 +690,7 @@ ob_start();
    
      
    
-<div id="payment-receipt-template" style="display:none;"> 
+<div id="receipt-template" style="display:none;">
     <div class="receipt-container" style="padding:40px !important; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important; color:#334155 !important; width:800px !important; background:#fff !important; box-sizing: border-box !important; margin: 0 !important;"> 
         <div class="receipt-header" style="display:flex !important; justify-content:space-between !important; border-bottom:2px solid #f1f5f9 !important; padding-bottom:20px !important;"> 
             <div style="display:flex !important; align-items:center !important; gap:15px !important;"> 
@@ -686,22 +702,22 @@ ob_start();
             </div> 
             <div style="text-align:right !important;"> 
                 <div style="color:#00a86b !important; font-size:24px !important; font-weight:800 !important; margin-bottom:4px !important; letter-spacing:-0.5px !important;">PAYMENT RECEIPT</div> 
-                <div style="color:#64748b !important; font-size:13px !important;">Receipt Voucher: <span id="pr-ref" style="font-weight:700 !important; color:#0f172a !important;"></span></div> 
+                <div style="color:#64748b !important; font-size:13px !important;">Receipt Voucher: <span id="r-ref" style="font-weight:700 !important; color:#0f172a !important;"></span></div>
             </div> 
         </div> 
         <div style="display:flex !important; justify-content:space-between !important; margin:32px 0 !important;"> 
             <div> 
                 <div style="color:#94a3b8 !important; font-size:11px !important; font-weight:700 !important; text-transform:uppercase !important; margin-bottom:12px !important; letter-spacing:0.5px !important;">Received From</div> 
-                <div id="pr-tenant" style="font-size:20px !important; font-weight:700 !important; color:#0f172a !important; margin-bottom:4px !important;"></div> 
-                <div id="pr-prop" style="color:#64748b !important; font-size:14px !important;"></div> 
+                <div id="r-tenant" style="font-size:20px !important; font-weight:700 !important; color:#0f172a !important; margin-bottom:4px !important;"></div>
+                <div id="r-prop" style="color:#64748b !important; font-size:14px !important;"></div>
             </div> 
             <div style="text-align:right !important; min-width:240px !important;"> 
                 <div style="color:#94a3b8 !important; font-size:11px !important; font-weight:700 !important; text-transform:uppercase !important; margin-bottom:12px !important; letter-spacing:0.5px !important;">Transaction Details</div> 
                 <div style="display:grid !important; grid-template-columns:1fr 1fr !important; gap:8px 16px !important; font-size:13px !important; text-align:left !important;"> 
-                    <span style="color:#64748b !important; font-weight:600 !important;">Ref/Cheque No.:</span><span id="pr-cheque" style="text-align:right !important; font-weight:700 !important; color:#0f172a !important;"></span>
-                    <span style="color:#64748b !important; font-weight:600 !important;">Payment Date:</span><span id="pr-date" style="text-align:right !important; font-weight:700 !important; color:#0f172a !important;"></span> 
-                    <span style="color:#64748b !important; font-weight:600 !important;">Allocation Period:</span><span id="pr-period" style="text-align:right !important; font-weight:700 !important; color:#0f172a !important;"></span> 
-                    <span style="color:#64748b !important; font-weight:600 !important;">Method:</span><span id="pr-method" style="text-align:right !important; font-weight:700 !important; color:#0f172a !important;"></span> 
+                    <span style="color:#64748b !important; font-weight:600 !important;">Ref/Cheque No.:</span><span id="r-cheque" style="text-align:right !important; font-weight:700 !important; color:#0f172a !important;"></span>
+                    <span style="color:#64748b !important; font-weight:600 !important;">Payment Date:</span><span id="r-date" style="text-align:right !important; font-weight:700 !important; color:#0f172a !important;"></span>
+                    <span style="color:#64748b !important; font-weight:600 !important;">Allocation Period:</span><span id="r-period" style="text-align:right !important; font-weight:700 !important; color:#0f172a !important;"></span>
+                    <span style="color:#64748b !important; font-weight:600 !important;">Method:</span><span id="r-method" style="text-align:right !important; font-weight:700 !important; color:#0f172a !important;"></span>
                 </div> 
             </div> 
         </div> 
@@ -716,17 +732,17 @@ ob_start();
                 <tr> 
                     <td style="padding:20px 0 !important; border-bottom:1px solid #f1f5f9 !important;"> 
                         <div style="font-weight:700 !important; color:#0f172a !important; margin-bottom:4px !important; font-size:15px !important;">Rental Payment Allocation</div> 
-                        <div id="pr-desc" style="color:#64748b !important; font-size:13px !important;"></div> 
+                        <div id="r-desc" style="color:#64748b !important; font-size:13px !important;"></div>
                     </td> 
                     <td style="text-align:right !important; padding:20px 0 !important; border-bottom:1px solid #f1f5f9 !important; font-weight:700 !important; font-size:16px !important; color:#0f172a !important;"> 
-                        AED <span id="pr-amt-table"></span> 
+                        AED <span id="r-amt-table"></span>
                     </td> 
                 </tr> 
             </tbody> 
         </table> 
         <div style="display:flex !important; justify-content:flex-end !important; align-items:center !important; gap:32px !important; margin-top:32px !important;"> 
             <span style="font-weight:700 !important; color:#0f172a !important; font-size:15px !important;">Amount Paid:</span> 
-            <span style="color:#00a86b !important; font-size:24px !important; font-weight:800 !important; letter-spacing:-0.5px !important;">AED <span id="pr-amt-total"></span></span> 
+            <span style="color:#00a86b !important; font-size:24px !important; font-weight:800 !important; letter-spacing:-0.5px !important;">AED <span id="r-amt-total"></span></span>
         </div> 
         <div style="text-align:center !important; color:#94a3b8 !important; font-size:11px !important; margin-top:60px !important; padding-top:20px !important; border-top:1px solid #f1f5f9 !important;"> 
             This is an electronically generated document. No physical signature is required.<br> 
@@ -843,7 +859,15 @@ function efProcessLedgerQueryMatrix() {
                 <td class="ef-cell-accent-currency-green">AED ${Number(entry.amount).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>     
                 <td><div class="ef-payment-status-badge ${statusClass}">${efEscapeOutputChar(entry.status)}</div></td>
                 <td style="text-align: right;">     
-                     <button class="ef-btn-receipt-pdf-download" title="Download PDF" onclick='efDownloadReceipt(efLedgerSourcePayload.find(item => item.id === ${entry.id}))'>     
+                     <button class="ef-btn-receipt" title="Download PDF"
+                        data-ref="${entry.receipt_voucher || ('REC-' + String(entry.id).padStart(6, '0'))}"
+                        data-tenant="${efEscapeOutputChar(entry.tenant)}"
+                        data-prop="${efEscapeOutputChar(entry.property)}"
+                        data-date="${entry.date}"
+                        data-period="${entry.period}"
+                        data-method="${entry.method}"
+                        data-cheque="${entry.transaction_cheque_number || ''}"
+                        data-amount="${Number(entry.amount).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}">
                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-top:-2px;">
         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
         <polyline points="7 10 12 15 17 10"></polyline>
@@ -865,6 +889,7 @@ function efProcessLedgerQueryMatrix() {
    
     document.getElementById('efLedgerCounterDisplay').innerHTML = `${matchCount} results • <span>AED ${revenueAccumulator.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>`;     
     fallbackEl.style.display = (matchCount === 0) ? 'block' : 'none';     
+    if (window.attachReceiptEvents) window.attachReceiptEvents();
 }     
    
 function efEscapeOutputChar(str) {     
@@ -914,70 +939,109 @@ function efDeleteTransaction(id) {
     } 
 } 
   
-function efDownloadReceipt(d) {  
-    if (!d) return;  
-    
-    const ref = d.receipt_voucher || d.ref || ('REC-' + String(d.id).padStart(6, '0'));  
-    const amount = d.amount_formatted || (typeof d.amount === 'number' ? d.amount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) : d.amount);  
-    const prop = d.property || d.prop || 'N/A';
+window.attachReceiptEvents = function() {
+    document.querySelectorAll('.ef-btn-receipt').forEach(btn => {
+        btn.onclick = () => {
+            const d = btn.dataset;
 
-    document.getElementById('pr-ref').innerText = ref;
-    document.getElementById('pr-tenant').innerText = d.tenant || 'Unknown';
-    document.getElementById('pr-prop').innerText = prop;
-    document.getElementById('pr-cheque').innerText = d.transaction_cheque_number || '';
-    document.getElementById('pr-date').innerText = d.date || '';
-    document.getElementById('pr-period').innerText = d.period || '';
-    document.getElementById('pr-method').innerText = d.method || '';
-    document.getElementById('pr-amt-table').innerText = amount;
-    document.getElementById('pr-amt-total').innerText = amount;
-    document.getElementById('pr-desc').innerText = `Unit Reference: ${prop} (${d.period || ''})`;
+            // Fill receipt data
+            const updateElement = (id, text) => {
+                const el = document.getElementById(id);
+                if (el) el.innerText = text;
+            };
 
-    const source = document.querySelector('#payment-receipt-template .receipt-container'); 
-    const clone = source.cloneNode(true);
-    
-    const wrapper = document.createElement('div');  
-    wrapper.style.position = 'fixed';  
-    wrapper.style.left = '0';  
-    wrapper.style.top = '0';  
-    wrapper.style.width = '800px';
-    wrapper.style.zIndex = '-9999';
-    wrapper.style.display = 'block';
-    wrapper.appendChild(clone);
-    document.body.appendChild(wrapper);  
-    const options = {
-        margin: 0,
-        filename: `Receipt-${ref}.pdf`,
-        image: { type: "jpeg", quality: 0.98 },
-        html2canvas: { 
-            scale: 2, 
-            logging: false, 
-            useCORS: true, 
-            windowWidth: 800, 
-            width: 800,
-            x: 0,
-            y: 0,
-            scrollY: 0, 
-            scrollX: 0 
-        },
-        jsPDF: { unit: "in", format: "letter", orientation: "portrait" }
-    };
+            updateElement('r-ref', d.ref);
+            updateElement('r-tenant', d.tenant);
+            updateElement('r-prop', d.prop);
+            updateElement('r-cheque', d.cheque || '');
+            updateElement('r-date', d.date);
+            updateElement('r-period', d.period);
+            updateElement('r-method', d.method);
+            updateElement('r-amt-table', d.amount);
+            updateElement('r-amt-total', d.amount);
+            updateElement('r-desc', `Unit Reference: ${d.prop} (${d.period})`);
 
-    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+            const source = document.querySelector('#receipt-template .receipt-container');
+            if (!source) {
+                console.error('Receipt template not found');
+                return;
+            }
 
-    html2pdf().set(options).from(clone).outputPdf('blob').then(function(blob) {
-        const url = URL.createObjectURL(blob);
-        if (isMobile) {
-            window.open(url, '_blank');
-        } else {
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `Receipt-${ref}.pdf`;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-        }
-        URL.revokeObjectURL(url);
-        document.body.removeChild(wrapper);
+            const clone = source.cloneNode(true);
+            const wrapper = document.createElement('div');
+            wrapper.style.position = 'fixed';
+            wrapper.style.left = '0';
+            wrapper.style.top = '0';
+            wrapper.style.width = '800px';
+            wrapper.style.zIndex = '-9999';
+            wrapper.style.display = 'block';
+            wrapper.appendChild(clone);
+            document.body.appendChild(wrapper);
+
+            const options = {
+                margin: 0,
+                filename: `Receipt-${d.ref}.pdf`,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: {
+                    scale: 2,
+                    logging: false,
+                    useCORS: true,
+                    windowWidth: 800,
+                    width: 800,
+                    x: 0,
+                    y: 0,
+                    scrollY: 0,
+                    scrollX: 0
+                },
+                jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+            };
+
+            // Better iOS detection (including iPad Pro)
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+                          (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+            let pdfWindow;
+            if (isIOS) {
+                // Open a blank window immediately to bypass popup blockers
+                pdfWindow = window.open('', '_blank');
+                if (pdfWindow) {
+                    pdfWindow.document.write('Generating PDF... Please wait.');
+                }
+            }
+
+            html2pdf().set(options).from(clone).outputPdf('blob').then(function(blob) {
+                const url = URL.createObjectURL(blob);
+                if (isIOS) {
+                    if (pdfWindow) {
+                        pdfWindow.location.href = url;
+                    } else {
+                        // Fallback if window.open was blocked or failed
+                        window.location.href = url;
+                    }
+                } else {
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `Receipt-${d.ref}.pdf`;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                }
+
+                // Revoke the object URL after a delay to ensure the browser has loaded it
+                setTimeout(() => {
+                    URL.revokeObjectURL(url);
+                    if (document.body.contains(wrapper)) {
+                        document.body.removeChild(wrapper);
+                    }
+                }, 2000);
+            }).catch(err => {
+                console.error('PDF Generation Error:', err);
+                if (pdfWindow) pdfWindow.close();
+                if (document.body.contains(wrapper)) {
+                    document.body.removeChild(wrapper);
+                }
+            });
+        };
     });
 }
    
