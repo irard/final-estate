@@ -44,6 +44,24 @@ if (!function_exists('ef_is_tenant_billable')) {
     }
 }
 
+if (!function_exists('ef_get_dashboard_period')) {
+    function ef_get_dashboard_period() {
+        $m = isset($_GET['ef_month']) ? str_pad(intval($_GET['ef_month']), 2, '0', STR_PAD_LEFT) : date('m');
+        $y = isset($_GET['ef_year']) ? intval($_GET['ef_year']) : date('Y');
+        return ['m' => $m, 'y' => $y, 'period' => "$y-$m"];
+    }
+}
+
+if (!function_exists('ef_get_payment_period')) {
+    function ef_get_payment_period($p_id) {
+        $p = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true);
+        if ($p) return substr($p, 0, 7);
+        $d = get_field('date_of_payment', $p_id) ?: get_post_meta($p_id, 'date_of_payment', true);
+        if ($d) return date('Y-m', strtotime($d));
+        return get_the_date('Y-m', $p_id);
+    }
+}
+
 if (!function_exists('ef_get_tenant_monthly_status')) {    
     function ef_get_tenant_monthly_status($t_id, $month, $year) {    
         $monthly_rent = ef_clean_amount(get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true));    
@@ -501,29 +519,27 @@ function ef_callback_ajax_delete_payment() {
 } 
    
 add_shortcode('ef_payments_stats', function() {   
-    $current_month = date('m');   
-    $current_year  = date('Y');   
+    $period_data = ef_get_dashboard_period();
+    $current_period = $period_data['period'];
    
     $this_month_revenue = 0.00;   
     $month_query = new WP_Query([   
         'post_type'      => 'payment',   
-        'post_status'    => ['publish', 'future'],   
+        'post_status'    => ['publish', 'future', 'pending', 'draft', 'private'],
         'posts_per_page' => -1,   
-        'date_query'     => [   
-            [   
-                'year'  => $current_year,   
-                'month' => $current_month,   
-            ]   
-        ]   
     ]);   
    
     if ($month_query->have_posts()) {   
         while ($month_query->have_posts()) {   
             $month_query->the_post();   
-            $amount = get_field('amount_paid', get_the_ID());    
-            if ($amount) {   
-                $this_month_revenue += ef_clean_amount($amount);   
-            }   
+            $p_id = get_the_ID();
+            $period = ef_get_payment_period($p_id);
+            if (strpos($period, $current_period) === 0) {
+                $amount = get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true);
+                if ($amount) {
+                    $this_month_revenue += ef_clean_amount($amount);
+                }
+            }
         }   
         wp_reset_postdata();   
     }   
@@ -541,7 +557,7 @@ add_shortcode('ef_payments_stats', function() {
     <div class="ef-stats-cards-row">   
    
         <div class="ef-stat-card-surface">   
-            <div class="ef-stat-card-label">This Month</div>   
+            <div class="ef-stat-card-label">Collected in <?php echo date('M Y', strtotime($current_period . '-01')); ?></div>
             <div class="ef-stat-card-value ef-text-accent-green">   
                 AED <?php echo number_format($this_month_revenue, 2); ?>   
             </div>   
