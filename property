@@ -345,7 +345,14 @@ function ef_handle_get_properties_dashboard() {
             $billable_count++;
             $rent_val = get_field('monthly_rent', $t->ID) ?: get_post_meta($t->ID, 'monthly_rent', true); 
             $monthly_rent = ef_clean_amount($rent_val);
-            $expected += $monthly_rent; 
+
+            $contract_val = get_field('total_contract_amount', $t->ID) ?: get_post_meta($t->ID, 'total_contract_amount', true);
+            $contract_amount = ef_clean_amount($contract_val);
+            if ($contract_amount > 0) {
+                $expected += $contract_amount;
+            } else {
+                $expected += $monthly_rent;
+            }
  
             $t_paid_total = 0;
             $t_payments = isset($payments_by_tenant[$t->ID]) ? $payments_by_tenant[$t->ID] : []; 

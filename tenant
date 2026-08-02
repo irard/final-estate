@@ -346,6 +346,7 @@ add_shortcode('tenant_profile', function() {
                     <div class="ef-form-group"><label>Unit</label><input type="text" id="modal_field_unit" class="ef-form-input-box" readonly></div> 
                     <div class="ef-form-group"><label>Rent (AED)</label><input type="number" id="modal_field_rent" class="ef-form-input-box" step="0.01" required></div> 
                 </div> 
+                <div class="ef-form-group"><label>Total Contract Amount (AED)</label><input type="number" id="modal_field_total_contract_amount" class="ef-form-input-box" step="0.01"></div>
                 <div class="ef-grid-modal-2col"> 
                     <div class="ef-form-group"><label>Email</label><input type="email" id="modal_field_email" class="ef-form-input-box" required></div> 
                     <div class="ef-form-group"><label>Phone</label><input type="text" id="modal_field_phone" class="ef-form-input-box"></div> 
@@ -583,6 +584,7 @@ add_shortcode('tenant_profile', function() {
             document.getElementById('modal_field_name').value = d.name; 
             document.getElementById('modal_field_unit').value = d.unit; 
             document.getElementById('modal_field_rent').value = d.rent; 
+            document.getElementById('modal_field_total_contract_amount').value = d.totalContractAmount || '';
             document.getElementById('modal_field_address').value = d.address; 
             document.getElementById('modal_field_email').value = d.email; 
             document.getElementById('modal_field_phone').value = d.phone; 
@@ -641,7 +643,9 @@ add_shortcode('tenant_profile', function() {
             const fd = new FormData(); fd.append('action','eftm_edit_tenant'); fd.append('security','<?php echo wp_create_nonce("edit_tenant_nonce"); ?>'); 
             fd.append('tenant_id', document.getElementById('modal_field_id').value); fd.append('new_name', document.getElementById('modal_field_name').value); 
             fd.append('new_property_id', document.getElementById('modal_field_property').value); fd.append('new_unit', document.getElementById('modal_field_unit').value); 
-            fd.append('new_rent', document.getElementById('modal_field_rent').value); fd.append('new_address', document.getElementById('modal_field_address').value); 
+            fd.append('new_rent', document.getElementById('modal_field_rent').value);
+            fd.append('new_total_contract_amount', document.getElementById('modal_field_total_contract_amount').value);
+            fd.append('new_address', document.getElementById('modal_field_address').value);
             fd.append('new_email', document.getElementById('modal_field_email').value); fd.append('new_phone', document.getElementById('modal_field_phone').value); 
             fd.append('new_start', document.getElementById('modal_field_start').value); fd.append('new_end', document.getElementById('modal_field_end').value); 
             fd.append('new_due_day', document.getElementById('modal_field_due').value); 
@@ -747,10 +751,12 @@ function eftm_handle_create_tenant() {
         'post_status' => 'publish', 
     ], true); 
     if ( is_wp_error($tenant_id) || ! $tenant_id ) wp_send_json_error('Could not create tenant'); 
+    $total_contract_amount = floatval($_POST['total_rent_cost'] ?? 0);
     $meta = [ 
         'tenant_email' => $email, 'tenant_phone' => $phone, 'tenant_address' => $address, 
         'tenant_unit' => $unit, 'monthly_rent' => $rent, 'tenant_start' => $start, 
-        'tenant_end' => $end, 'rent_due_day' => $due, 'property_id' => $propId 
+        'tenant_end' => $end, 'rent_due_day' => $due, 'property_id' => $propId,
+        'total_contract_amount' => $total_contract_amount
     ]; 
     foreach ($meta as $k => $v) { 
         if ( function_exists('update_field') ) update_field($k, $v, $tenant_id); 
@@ -789,6 +795,7 @@ function eftm_handle_ajax_tenant_breakdown() {
 
     $tenant_name    = get_the_title($tenant_id); 
     $monthly_rent   = floatval(get_field('monthly_rent', $tenant_id) ?: get_post_meta($tenant_id, 'monthly_rent', true)); 
+    $total_contract_amount = floatval(get_field('total_contract_amount', $tenant_id) ?: get_post_meta($tenant_id, 'total_contract_amount', true));
     $due_day        = get_field('rent_due_day', $tenant_id) ?: get_post_meta($tenant_id, 'rent_due_day', true); 
     $email          = get_field('tenant_email', $tenant_id) ?: get_post_meta($tenant_id, 'tenant_email', true); 
     $phone          = get_field('tenant_phone', $tenant_id) ?: get_post_meta($tenant_id, 'tenant_phone', true); 
@@ -885,7 +892,8 @@ function eftm_handle_ajax_tenant_breakdown() {
                     data-id="<?php echo $tenant_id; ?>" data-name="<?php echo esc_attr($tenant_name); ?>" data-property-id="<?php echo $propId; ?>" 
                     data-unit="<?php echo esc_attr($unit); ?>" data-rent="<?php echo $monthly_rent; ?>" data-address="<?php echo esc_attr($address); ?>" 
                     data-email="<?php echo esc_attr($email); ?>" data-phone="<?php echo esc_attr($phone); ?>" data-start="<?php echo $contract_start; ?>" 
-                    data-end="<?php echo $contract_end; ?>" data-due="<?php echo esc_attr($due_day); ?>" onclick="efTriggerFormPopup(this)"> 
+                    data-end="<?php echo $contract_end; ?>" data-due="<?php echo esc_attr($due_day); ?>"
+                    data-total-contract-amount="<?php echo $total_contract_amount; ?>" onclick="efTriggerFormPopup(this)">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4z"></path></svg> Edit 
             </button> 
             <button class="ef-btn-action ef-btn-delete-icon" onclick="efLiveDeleteTenant(<?php echo $tenant_id; ?>, '<?php echo esc_js($tenant_name); ?>')"> 
@@ -962,6 +970,7 @@ function eftm_execute_ajax_tenant_modification() {
         'tenant_address' => sanitize_text_field($_POST['new_address'] ?? ''), 
         'tenant_unit' => intval($_POST['new_unit'] ?? 1), 
         'monthly_rent' => floatval($_POST['new_rent'] ?? 0), 
+        'total_contract_amount' => floatval($_POST['new_total_contract_amount'] ?? 0),
         'tenant_start' => sanitize_text_field($_POST['new_start'] ?? ''), 
         'tenant_end' => sanitize_text_field($_POST['new_end'] ?? ''), 
         'rent_due_day' => intval($_POST['new_due_day'] ?? 0), 
