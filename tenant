@@ -121,7 +121,7 @@ add_shortcode('add_tenant', function(){
           <div class="atc-row-full"><label class="atc-label">Name <input id="atc-name" name="tenant_name" required></label></div> 
           <div class="atc-row-full"><label class="atc-label">Property <select id="atc-property" name="property_id" required><option value="">Loading properties…</option></select></label></div> 
           <div class="atc-row"><label class="atc-label">Unit <input id="atc-unit" name="tenant_unit" value="1" readonly></label> 
-                               <label class="atc-label">Rent (AED) <input id="atc-rent" name="tenant_rent" value="" placeholder="Enter Amount" required></label></div> 
+                               <label class="atc-label">Rent (AED) <input id="atc-rent" name="tenant_rent" value="" placeholder="Enter Amount" disabled></label></div> 
           <div class="atc-row"><label class="atc-label">Email <input id="atc-email" name="tenant_email" type="email" required></label> 
                                <label class="atc-label">Phone <input id="atc-phone" name="tenant_phone" type="tel" required></label></div> 
           <div class="atc-row-full"><label class="atc-label">Address <input id="atc-address" name="tenant_address"></label></div> 
