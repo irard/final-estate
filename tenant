@@ -480,8 +480,8 @@ add_shortcode('tenant_profile', function() {
             const clone = source.cloneNode(true); 
             const wrapper = document.createElement('div'); 
             wrapper.style.position = 'fixed'; 
-            wrapper.style.left = '0'; 
-            wrapper.style.top = '0'; 
+            wrapper.style.left = '-10000px'; 
+            wrapper.style.top = '-10000px'; 
             wrapper.style.width = '800px'; 
             wrapper.style.zIndex = '-9999'; 
             wrapper.style.display = 'block'; 
@@ -506,13 +506,13 @@ add_shortcode('tenant_profile', function() {
                 jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' } 
             }; 
  
-            // Better iOS detection (including iPad Pro)
+           
             const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
                           (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
             let pdfWindow;
             if (isIOS) {
-                // Open a blank window immediately to bypass popup blockers
+                
                 pdfWindow = window.open('', '_blank');
                 if (pdfWindow) {
                     pdfWindow.document.write('Generating PDF... Please wait.');
@@ -525,7 +525,7 @@ add_shortcode('tenant_profile', function() {
                     if (pdfWindow) {
                         pdfWindow.location.href = url;
                     } else {
-                        // Fallback if window.open was blocked or failed
+                        
                         window.location.href = url;
                     }
                 } else { 
@@ -537,7 +537,7 @@ add_shortcode('tenant_profile', function() {
                     a.remove(); 
                 } 
 
-                // Revoke the object URL after a delay to ensure the browser has loaded it
+            
                 setTimeout(() => {
                     URL.revokeObjectURL(url); 
                     if (document.body.contains(wrapper)) {
