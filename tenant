@@ -120,8 +120,10 @@ add_shortcode('add_tenant', function(){
           <?php wp_nonce_field('create_tenant_action','create_tenant_nonce'); ?> 
           <div class="atc-row-full"><label class="atc-label">Name <input id="atc-name" name="tenant_name" required></label></div> 
           <div class="atc-row-full"><label class="atc-label">Property <select id="atc-property" name="property_id" required><option value="">Loading properties…</option></select></label></div> 
+          <div class="atc-row"><label class="atc-label">Total Rent Cost (AED) <input type="number" id="atc-total-rent" name="total_rent_cost" step="0.01" min="0" placeholder="0.00"></label>
+                               <label class="atc-label">Total Months Contract <input type="number" id="atc-total-months" name="total_months" step="1" min="1" placeholder="12"></label></div>
           <div class="atc-row"><label class="atc-label">Unit <input id="atc-unit" name="tenant_unit" value="1" readonly></label> 
-                               <label class="atc-label">Rent (AED) <input id="atc-rent" name="tenant_rent" value="" disabled></label></div> 
+                               <label class="atc-label">Rent (AED) <input id="atc-rent" name="tenant_rent" value="" readonly></label></div>
           <div class="atc-row"><label class="atc-label">Email <input id="atc-email" name="tenant_email" type="email" required></label> 
                                <label class="atc-label">Phone <input id="atc-phone" name="tenant_phone" type="tel" required></label></div> 
           <div class="atc-row-full"><label class="atc-label">Address <input id="atc-address" name="tenant_address"></label></div> 
@@ -150,6 +152,26 @@ add_shortcode('add_tenant', function(){
             document.body.classList.remove('ef-no-scroll'); 
             form.reset(); 
         } 
+        const totalRentInput = document.getElementById('atc-total-rent');
+        const totalMonthsInput = document.getElementById('atc-total-months');
+        const rentInput = document.getElementById('atc-rent');
+
+        function autoComputeRent() {
+            const totalRent = parseFloat(totalRentInput.value);
+            const totalMonths = parseInt(totalMonthsInput.value, 10);
+            if (!isNaN(totalRent) && !isNaN(totalMonths) && totalMonths > 0) {
+                const computed = totalRent / totalMonths;
+                rentInput.value = computed.toFixed(2);
+            } else {
+                rentInput.value = '';
+            }
+        }
+
+        if (totalRentInput && totalMonthsInput && rentInput) {
+            totalRentInput.addEventListener('input', autoComputeRent);
+            totalMonthsInput.addEventListener('input', autoComputeRent);
+        }
+
         openBtn.onclick = (e) => { e.preventDefault(); openModal(); }; 
         closeBtn.onclick = cancelBtn.onclick = () => closeModal(); 
         modal.onclick = (e) => { if(e.target===modal) closeModal(); }; 
