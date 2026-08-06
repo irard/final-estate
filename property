@@ -601,6 +601,16 @@ add_action('wp_footer', function() { ?>
                 const colPct = p.col_pct ?? (p.expected > 0 ? Math.round((p.collected / p.expected) * 100) : 0); 
                 const activeClass = (window._propertiesActiveId && window._propertiesActiveId == p.id) ? 'active' : ''; 
  
+                let statusText = 'Unpaid';
+                let statusColor = '#dc2626'; // red
+                if (colPct >= 100) {
+                    statusText = 'Paid';
+                    statusColor = '#059669'; // green
+                } else if (colPct > 0) {
+                    statusText = 'Partial';
+                    statusColor = '#d97706'; // yellow/orange
+                }
+
                 return ` 
                 <div class="properties-dashboard-card ${activeClass}" role="button" tabindex="0" data-prop-id="${p.id}"> 
                     <div class="properties-dashboard-header"><span class="properties-dashboard-badge">${p.type}</span></div> 
@@ -609,7 +619,7 @@ add_action('wp_footer', function() { ?>
                     <div class="properties-dashboard-occ"><span>Occupancy</span><span>${p.occupied} / ${p.units}</span></div> 
                     <div class="properties-dashboard-bar-bg"><div class="properties-dashboard-bar-fill" style="width: ${occPct}%"></div></div> 
                     <div class="properties-dashboard-stats"> 
-                        <div class="properties-dashboard-stat-item"><small>TOTAL CONTRACT AMOUNT</small><span>AED ${p.expected.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span></div>
+                        <div class="properties-dashboard-stat-item"><small>TOTAL CONTRACT AMOUNT</small><span>AED ${p.expected.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} <span style="font-size: 12px; color: ${statusColor}; font-weight: 600; margin-left: 8px;">(${statusText})</span></span></div>
                     </div> 
                     <div class="properties-dashboard-actions"> 
                         <button class="dashboard-btn edit-btn" data-id="${p.id}">✏️ Edit</button> 
@@ -754,6 +764,16 @@ add_action('wp_footer', function() { ?>
             const isAvailable = prop.occupied < prop.units; 
             const colPct = prop.col_pct ?? (prop.expected > 0 ? Math.round((prop.collected / prop.expected) * 100) : 0); 
  
+            let statusText = 'Unpaid';
+            let statusColor = '#dc2626'; // red
+            if (colPct >= 100) {
+                statusText = 'Paid';
+                statusColor = '#059669'; // green
+            } else if (colPct > 0) {
+                statusText = 'Partial';
+                statusColor = '#d97706'; // yellow/orange
+            }
+
             const tenantsHtml = tenants.length 
                 ? tenants.map(t => ` 
                     <div style="padding:12px;background:#f9fafb;border-radius:8px;margin-bottom:10px;border:1px solid #e5e7eb;"> 
@@ -791,7 +811,7 @@ add_action('wp_footer', function() { ?>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;"> 
                     <div style="background:#f9fafb;padding:12px;border-radius:8px;border:1px solid #e5e7eb;"> 
                         <small style="color:#6b7280;text-transform:uppercase;font-size:10px;">TOTAL CONTRACT AMOUNT</small>
-                        <div style="font-size:16px;font-weight:700;">${fmtMoney(prop.expected)}</div> 
+                        <div style="font-size:16px;font-weight:700;">${fmtMoney(prop.expected)} <span style="font-size: 13px; color: ${statusColor}; font-weight: 600; margin-left: 6px;">(${statusText})</span></div>
                     </div> 
                 </div> 
  
