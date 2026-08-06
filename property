@@ -345,7 +345,14 @@ function ef_handle_get_properties_dashboard() {
             $billable_count++;
             $rent_val = get_field('monthly_rent', $t->ID) ?: get_post_meta($t->ID, 'monthly_rent', true); 
             $monthly_rent = ef_clean_amount($rent_val);
-            $expected += $monthly_rent; 
+
+            $contract_val = get_field('total_contract_amount', $t->ID) ?: get_post_meta($t->ID, 'total_contract_amount', true);
+            if (!$contract_val) {
+                $contract_val = $monthly_rent;
+            } else {
+                $contract_val = ef_clean_amount($contract_val);
+            }
+            $expected += $contract_val;
  
             $t_paid_total = 0;
             $t_payments = isset($payments_by_tenant[$t->ID]) ? $payments_by_tenant[$t->ID] : []; 
@@ -602,8 +609,7 @@ add_action('wp_footer', function() { ?>
                     <div class="properties-dashboard-occ"><span>Occupancy</span><span>${p.occupied} / ${p.units}</span></div> 
                     <div class="properties-dashboard-bar-bg"><div class="properties-dashboard-bar-fill" style="width: ${occPct}%"></div></div> 
                     <div class="properties-dashboard-stats"> 
-                        <div class="properties-dashboard-stat-item"><small>Expected</small><span>AED ${p.expected.toLocaleString()}</span></div> 
-                        <div class="properties-dashboard-stat-item"><small>Collected</small><span class="properties-dashboard-collected">AED ${p.collected.toLocaleString()} (${colPct}%)</span></div> 
+                        <div class="properties-dashboard-stat-item"><small>TOTAL CONTRACT AMOUNT</small><span>AED ${p.expected.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span></div>
                     </div> 
                     <div class="properties-dashboard-actions"> 
                         <button class="dashboard-btn edit-btn" data-id="${p.id}">✏️ Edit</button> 
@@ -784,12 +790,8 @@ add_action('wp_footer', function() { ?>
  
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;"> 
                     <div style="background:#f9fafb;padding:12px;border-radius:8px;border:1px solid #e5e7eb;"> 
-                        <small style="color:#6b7280;text-transform:uppercase;font-size:10px;">Expected</small> 
+                        <small style="color:#6b7280;text-transform:uppercase;font-size:10px;">TOTAL CONTRACT AMOUNT</small>
                         <div style="font-size:16px;font-weight:700;">${fmtMoney(prop.expected)}</div> 
-                    </div> 
-                    <div style="background:#f9fafb;padding:12px;border-radius:8px;border:1px solid #e5e7eb;"> 
-                        <small style="color:#6b7280;text-transform:uppercase;font-size:10px;">Collected</small> 
-                        <div style="font-size:16px;font-weight:700;color:#0a8a4f;">${fmtMoney(prop.collected)} (${colPct}%)</div> 
                     </div> 
                 </div> 
  
