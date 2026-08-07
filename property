@@ -340,10 +340,7 @@ function ef_handle_get_properties_dashboard() {
         $collected = $p_pay_total;
 
         foreach ($p_tenants as $t) { 
-            if (function_exists("ef_is_tenant_billable") && !ef_is_tenant_billable($t->ID, $current_month, $current_year)) continue; 
-            
-            $billable_count++;
-            $rent_val = get_field('monthly_rent', $t->ID) ?: get_post_meta($t->ID, 'monthly_rent', true); 
+            $rent_val = get_field('monthly_rent', $t->ID) ?: get_post_meta($t->ID, 'monthly_rent', true);
             $monthly_rent = ef_clean_amount($rent_val);
 
             $contract_val = get_field('total_contract_amount', $t->ID) ?: get_post_meta($t->ID, 'total_contract_amount', true) ?: get_field('total_rent_cost', $t->ID) ?: get_post_meta($t->ID, 'total_rent_cost', true);
@@ -353,6 +350,10 @@ function ef_handle_get_properties_dashboard() {
                 $contract_val = ef_clean_amount($contract_val);
             }
             $expected += $contract_val;
+
+            if (function_exists("ef_is_tenant_billable") && !ef_is_tenant_billable($t->ID, $current_month, $current_year)) continue;
+
+            $billable_count++;
  
             $t_paid_total = 0;
             $t_payments = isset($payments_by_tenant[$t->ID]) ? $payments_by_tenant[$t->ID] : []; 
