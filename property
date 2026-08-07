@@ -327,7 +327,18 @@ function ef_handle_get_properties_dashboard() {
             $units = intval(get_post_meta($p->ID, 'number_unit', true)) ?: intval(get_post_meta($p->ID, 'property_units', true)) ?: 0; 
         } 
  
-        $expected = 0; 
+        $expected = ef_clean_amount(get_field('property_rent', $p->ID) ?: get_post_meta($p->ID, 'property_rent', true) ?: get_field('total_contract_amount', $p->ID) ?: get_post_meta($p->ID, 'total_contract_amount', true) ?: get_field('total_rent_cost', $p->ID) ?: get_post_meta($p->ID, 'total_rent_cost', true));
+
+        if ($expected <= 0) {
+            foreach ($p_tenants as $t) {
+                $rent_val = get_field('total_contract_amount', $t->ID) ?: get_post_meta($t->ID, 'total_contract_amount', true) ?: get_field('total_rent_cost', $t->ID) ?: get_post_meta($t->ID, 'total_rent_cost', true);
+                if (!$rent_val) {
+                    $rent_val = get_field('monthly_rent', $t->ID) ?: get_post_meta($t->ID, 'monthly_rent', true);
+                }
+                $expected += ef_clean_amount($rent_val);
+            }
+        }
+
         $collected = 0; 
         $billable_count = 0;
         $progress_sum = 0;
@@ -342,14 +353,6 @@ function ef_handle_get_properties_dashboard() {
         foreach ($p_tenants as $t) { 
             $rent_val = get_field('monthly_rent', $t->ID) ?: get_post_meta($t->ID, 'monthly_rent', true);
             $monthly_rent = ef_clean_amount($rent_val);
-
-            $contract_val = get_field('total_contract_amount', $t->ID) ?: get_post_meta($t->ID, 'total_contract_amount', true) ?: get_field('total_rent_cost', $t->ID) ?: get_post_meta($t->ID, 'total_rent_cost', true);
-            if (!$contract_val) {
-                $contract_val = $monthly_rent;
-            } else {
-                $contract_val = ef_clean_amount($contract_val);
-            }
-            $expected += $contract_val;
 
             if (function_exists("ef_is_tenant_billable") && !ef_is_tenant_billable($t->ID, $current_month, $current_year)) continue;
 
