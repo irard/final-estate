@@ -276,10 +276,18 @@ $tenant_list_logic = function() {
                     </div> 
                 <?php endwhile; wp_reset_postdata(); endif; ?> 
             </div>
-            <div class="properties-dashboard-nav">
-                <button id="prev-page" class="prop-nav-btn" <?php echo ($paged <= 1) ? 'disabled' : ''; ?> onclick="window.location.href='<?php echo esc_url(add_query_arg('paged', $paged - 1)); ?>'">Previous</button>
-                <span id="page-info">Page <?php echo $paged; ?> of <?php echo $total_pages; ?></span>
-                <button id="next-page" class="prop-nav-btn" <?php echo ($paged >= $total_pages) ? 'disabled' : ''; ?> onclick="window.location.href='<?php echo esc_url(add_query_arg('paged', $paged + 1)); ?>'">Next</button>
+            <div class="properties-dashboard-nav" style="display: flex; gap: 6px; align-items: center; justify-content: center; flex-wrap: wrap; margin-top: 15px;">
+                <button class="prop-nav-btn" <?php echo ($paged <= 1) ? 'disabled' : ''; ?> onclick="window.location.href='<?php echo esc_url(add_query_arg('paged', $paged - 1)); ?>'">Previous</button>
+                <?php if ($total_pages > 1): ?>
+                    <button class="prop-nav-btn" <?php echo ($paged <= 1) ? 'disabled' : ''; ?> onclick="window.location.href='<?php echo esc_url(add_query_arg('paged', 1)); ?>'">First</button>
+                    <?php for ($i = 1; $i <= $total_pages; $i++): ?>
+                        <button class="prop-nav-btn" style="<?php echo ($i === $paged) ? 'background-color: #2ebfa5; color: #fff; border-color: #2ebfa5; font-weight: bold;' : 'background: #fff; color: #1e293b; border: 1px solid #e2e8f0;'; ?> min-width: 32px; padding: 4px 8px; border-radius: 6px;" onclick="window.location.href='<?php echo esc_url(add_query_arg('paged', $i)); ?>'"><?php echo $i; ?></button>
+                    <?php endfor; ?>
+                    <button class="prop-nav-btn" <?php echo ($paged >= $total_pages) ? 'disabled' : ''; ?> onclick="window.location.href='<?php echo esc_url(add_query_arg('paged', $total_pages)); ?>'">Last</button>
+                <?php else: ?>
+                    <button class="prop-nav-btn" style="background-color: #2ebfa5; color: #fff; border-color: #2ebfa5; font-weight: bold; min-width: 32px; padding: 4px 8px; border-radius: 6px;" disabled>1</button>
+                <?php endif; ?>
+                <button class="prop-nav-btn" <?php echo ($paged >= $total_pages) ? 'disabled' : ''; ?> onclick="window.location.href='<?php echo esc_url(add_query_arg('paged', $paged + 1)); ?>'">Next</button>
             </div>
         </div> 
     </div> 
@@ -882,9 +890,13 @@ function eftm_handle_ajax_tenant_breakdown() {
         </div> 
         <?php endif; ?> 
     </div> 
+    <?php
+    $total_contract_val = floatval($total_rent_cost ?: (12 * $monthly_rent));
+    $total_contract_formatted = (floor($total_contract_val) == $total_contract_val) ? number_format($total_contract_val) : number_format($total_contract_val, 2);
+    ?>
     <div class="ef-meta-grid-3col"> 
-        <div class="ef-meta-info-card"><div class="ef-meta-card-label">Monthly rent</div><div class="ef-meta-card-value ef-text-green">AED <?php echo number_format($monthly_rent, 2); ?></div></div> 
-        <div class="ef-meta-info-card"><div class="ef-meta-card-label">Due day</div><div class="ef-meta-card-value"><?php echo esc_html($due_day_display); ?> <span style="font-size: 13px; font-weight:400; color: #64748b;">of month</span></div></div> 
+        <div class="ef-meta-info-card"><div class="ef-meta-card-label">TOTAL CONTRACT AMOUNT</div><div class="ef-meta-card-value ef-text-green">AED <?php echo $total_contract_formatted; ?></div></div>
+        <div class="ef-meta-info-card"><div class="ef-meta-card-label">MONTHLY RENT</div><div class="ef-meta-card-value">AED <?php echo number_format($monthly_rent, 2); ?></div></div>
         <div class="ef-meta-info-card"><div class="ef-meta-card-label">Payments</div><div class="ef-meta-card-value"><?php echo $fully_paid_months_count; ?></div></div> 
     </div> 
     <div class="ef-section-title-sub">Contact & Contract Details</div> 
