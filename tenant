@@ -62,6 +62,8 @@ if (!function_exists('ef_get_payment_tenant_id')) {
 
 if (!function_exists('ef_get_payment_period')) {
     function ef_get_payment_period($p_id) {
+        $cs = get_field('cheque_start_date', $p_id) ?: get_post_meta($p_id, 'cheque_start_date', true);
+        if ($cs) return date('Y-m', strtotime($cs));
         $p = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true);
         if ($p) return substr($p, 0, 7);
         $d = get_field('date_of_payment', $p_id) ?: get_post_meta($p_id, 'date_of_payment', true);
@@ -896,8 +898,22 @@ function eftm_handle_ajax_tenant_breakdown() {
                 }
             }
 
+            $cheque_start = get_field('cheque_start_date', $pay_id) ?: get_post_meta($pay_id, 'cheque_start_date', true) ?: '';
+            $cheque_end = get_field('cheque_end_date', $pay_id) ?: get_post_meta($pay_id, 'cheque_end_date', true) ?: '';
+
+            $period_display = '';
+            if ($cheque_start && $cheque_end) {
+                if ($cheque_start === $cheque_end) {
+                    $period_display = $cheque_start;
+                } else {
+                    $period_display = $cheque_start . ' to ' . $cheque_end;
+                }
+            } else {
+                $period_display = $period;
+            }
+
             $payment_history[] = [ 
-                'id' => $pay_id, 'period' => $period, 'date' => date('n/j/Y', $ts), 
+                'id' => $pay_id, 'period' => $period_display, 'date' => date('n/j/Y', $ts),
                 'method' => (get_field('mode_of_payment', $pay_id) ?: get_post_meta($pay_id, 'mode_of_payment', true)) ?: 'Cash', 
                 'amount' => floatval(get_field('amount_paid', $pay_id) ?: get_post_meta($pay_id, 'amount_paid', true)),
                 'cheque' => get_field('transaction_cheque_number', $pay_id) ?: get_post_meta($pay_id, 'transaction_cheque_number', true),

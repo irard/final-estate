@@ -92,6 +92,8 @@ if (!function_exists('ef_get_payment_property_id')) {
 
 if (!function_exists('ef_get_payment_period')) {
     function ef_get_payment_period($p_id) {
+        $cs = get_field('cheque_start_date', $p_id) ?: get_post_meta($p_id, 'cheque_start_date', true);
+        if ($cs) return date('Y-m', strtotime($cs));
         $p = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true);
         if ($p) return substr((string)$p, 0, 7);
         $d = get_field('date_of_payment', $p_id) ?: get_post_meta($p_id, 'date_of_payment', true);
