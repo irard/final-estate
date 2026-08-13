@@ -740,12 +740,12 @@ ob_start();
             <tr>     
                 <th>Tenant</th>     
                 <th>Property</th>     
-                <th>Period</th>     
+                <th>Start Date</th>
+                <th>End Date</th>
                 <th>Method</th>     
                 <th>Ref/Cheque No.</th>
                 <th>Date</th>     
                 <th>Amount</th>     
-                <th>Status</th>
                 <th style="text-align: right;">Actions</th>     
             </tr>     
         </thead>     
@@ -805,12 +805,12 @@ function efProcessLedgerQueryMatrix() {
             rowHtml.innerHTML = `     
                 <td class="ef-cell-bold-tenant">${efEscapeOutputChar(entry.tenant)}</td>     
                 <td style="color: #475569;">${efEscapeOutputChar(entry.property)}</td>     
-                <td><span class="ef-badge-pill-period">${efEscapeOutputChar(entry.period_display || entry.period)}</span></td>
+                <td style="color: #475569;">${efEscapeOutputChar(entry.cheque_start_date || entry.raw_date)}</td>
+                <td style="color: #475569;">${efEscapeOutputChar(entry.cheque_end_date || entry.raw_date)}</td>
                 <td style="color: #475569;">${efEscapeOutputChar(entry.method)}</td>     
                 <td style="color: #475569;">${efEscapeOutputChar(entry.transaction_cheque_number)}</td>
                 <td style="color: #475569;">${efEscapeOutputChar(entry.date)}</td>     
                 <td class="ef-cell-accent-currency-green">AED ${Number(entry.amount).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>     
-                <td><div class="ef-payment-status-badge ${statusClass}">${efEscapeOutputChar(entry.status)}</div></td>
                 <td style="text-align: right;">     
                      <button class="ef-btn-receipt" title="Download PDF" 
                         data-ref="${entry.receipt_voucher || ('REC-' + String(entry.id).padStart(6, '0'))}" 
