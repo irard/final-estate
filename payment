@@ -342,106 +342,22 @@ function ef_callback_ajax_create_payment() {
         $next_voucher_int = intval($last_voucher) + 1;
     }
 
-    if ($monthly_rent <= 0) {
-        $receipt_voucher = str_pad($next_voucher_int, 3, '0', STR_PAD_LEFT);
-        $new_id = ef_internal_create_payment_record($tenant_id, $property_id, $tenant_name, $total_amount, $method, $transaction_cheque_number, $date, $period_ui, $receipt_voucher);
-        if ($new_id) wp_send_json_success(['payment_id' => $new_id]);
-        else wp_send_json_error();
-    }
+    $receipt_voucher = str_pad($next_voucher_int, 3, '0', STR_PAD_LEFT);
+    $period_key = date('Y-m', strtotime($period_ui));
 
-    // Waterfall allocation logic
-    $amount_remaining = $total_amount;
-    $current_date_ts = $period_ui ? strtotime($period_ui . '-01') : ($tenant_start ? strtotime($tenant_start) : time());
-    $current_date = date('Y-m-01', $current_date_ts);
-
-    // Fetch existing payments once to calculate monthly balances
-    $existing_payments = get_posts([
-        'post_type' => 'payment',
-        'post_status' => ['publish', 'future', 'pending', 'draft', 'private'],
-        'numberposts' => -1,
-        'meta_query' => [
-            'relation' => 'OR',
-            ['key' => 'associated_tenant', 'value' => $tenant_id, 'compare' => '=' ],
-            ['key' => 'select_tenant', 'value' => $tenant_id, 'compare' => '=' ]
-        ]
-    ]);
-
-    $monthly_paid = [];
-    foreach ($existing_payments as $p) {
-        $p_period = (function_exists('get_field') ? get_field('payment_period', $p->ID) : null) ?: get_post_meta($p->ID, 'payment_period', true) ?: get_the_date('Y-m', $p->ID);
-        $p_period = substr((string)$p_period, 0, 7);
-        $amt = ef_clean_amount((function_exists('get_field') ? get_field('amount_paid', $p->ID) : null) ?: get_post_meta($p->ID, 'amount_paid', true));
-        if (!isset($monthly_paid[$p_period])) $monthly_paid[$p_period] = 0;
-        $monthly_paid[$p_period] += $amt;
-    }
-
-    // BLOCKER: Simulation to ensure payment doesn't surpass contract end
-    $sim_amount = $amount_remaining;
-    $sim_date = $current_date;
-    $sim_limit = 120;
-    while ($sim_amount >= 0.01 && $sim_limit > 0) {
-        $y = date('Y', strtotime($sim_date));
-        $m = date('m', strtotime($sim_date));
-        $period_key = "$y-$m";
-        if ($tenant_end && $sim_date > date('Y-m-01', strtotime($tenant_end))) {
+    if ($tenant_end) {
+        $period_start_date = $period_key . '-01';
+        $contract_end_month_start = date('Y-m-01', strtotime($tenant_end));
+        if ($period_start_date > $contract_end_month_start) {
             wp_send_json_error(['message' => "Payment cannot be accepted as it surpasses the tenant's contract end date ($tenant_end)."]);
         }
-        if (ef_is_tenant_billable($tenant_id, $m, $y)) {
-            $paid = isset($monthly_paid[$period_key]) ? $monthly_paid[$period_key] : 0;
-            $balance = max(0, $monthly_rent - $paid);
-            if ($balance > 0) {
-                $allocation = min($sim_amount, $balance);
-                $sim_amount -= $allocation;
-            }
-        }
-        $sim_date = date('Y-m-01', strtotime("+1 month", strtotime($sim_date)));
-        $sim_limit--;
-    }
-    if ($sim_amount >= 0.01) {
-        if ($tenant_end && $sim_date > date('Y-m-01', strtotime($tenant_end))) {
-             wp_send_json_error(['message' => "Payment cannot be accepted as it surpasses the tenant's contract end date ($tenant_end)."]);
-        }
     }
 
-    $created_ids = [];
-    $safety_limit = 120; // 10 years limit
-    while ($amount_remaining >= 0.01 && $safety_limit > 0) {
-        $y = date('Y', strtotime($current_date));
-        $m = date('m', strtotime($current_date));
-        $period_key = "$y-$m";
-
-        if (ef_is_tenant_billable($tenant_id, $m, $y)) {
-            $paid = isset($monthly_paid[$period_key]) ? $monthly_paid[$period_key] : 0;
-            $balance = max(0, $monthly_rent - $paid);
-
-            if ($balance > 0) {
-                $allocation = min($amount_remaining, $balance);
-                $receipt_voucher = str_pad($next_voucher_int++, 3, '0', STR_PAD_LEFT);
-                $new_id = ef_internal_create_payment_record($tenant_id, $property_id, $tenant_name, $allocation, $method, $transaction_cheque_number, $date, $period_key, $receipt_voucher);
-                if ($new_id) $created_ids[] = $new_id;
-                $amount_remaining -= $allocation;
-            }
-        }
-        $current_date = date('Y-m-01', strtotime("+1 month", strtotime($current_date)));
-        $safety_limit--;
-    }
-
-    // If there is still a remainder (e.g. advance payment beyond paid-up months)
-    if ($amount_remaining >= 0.01) {
-        $receipt_voucher = str_pad($next_voucher_int++, 3, '0', STR_PAD_LEFT);
-        $period_to_use = date('Y-m', strtotime($current_date));
-        $new_id = ef_internal_create_payment_record($tenant_id, $property_id, $tenant_name, $amount_remaining, $method, $transaction_cheque_number, $date, $period_to_use, $receipt_voucher);
-        if ($new_id) $created_ids[] = $new_id;
-    }
-
-    if (!empty($created_ids)) {
-        wp_send_json_success(['payment_id' => end($created_ids)]);
+    $new_id = ef_internal_create_payment_record($tenant_id, $property_id, $tenant_name, $total_amount, $method, $transaction_cheque_number, $date, $period_key, $receipt_voucher);
+    if ($new_id) {
+        wp_send_json_success(['payment_id' => $new_id]);
     } else {
-        // Fallback: If no allocation happened, create one record for UI period
-        $receipt_voucher = str_pad($next_voucher_int++, 3, '0', STR_PAD_LEFT);
-        $new_id = ef_internal_create_payment_record($tenant_id, $property_id, $tenant_name, $total_amount, $method, $transaction_cheque_number, $date, $period_ui, $receipt_voucher);
-        if ($new_id) wp_send_json_success(['payment_id' => $new_id]);
-        else wp_send_json_error();
+        wp_send_json_error(['message' => 'Failed to create payment record.']);
     }
 }   
  
