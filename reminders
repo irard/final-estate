@@ -52,6 +52,91 @@ if (!function_exists('ef_is_tenant_billable')) {
         return true;
     }
 }
+
+if (!function_exists('ef_get_tenant_total_contract_amount')) {
+    function ef_get_tenant_total_contract_amount($t_id) {
+        $val = get_field('total_rent_cost', $t_id) ?: get_post_meta($t_id, 'total_rent_cost', true);
+        if (!$val) {
+            $val = get_field('total_contract_amount', $t_id) ?: get_post_meta($t_id, 'total_contract_amount', true);
+        }
+        if ($val) {
+            return ef_clean_amount($val);
+        }
+        // Fallback to 12 * monthly rent
+        $monthly_rent = ef_clean_amount(get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true));
+        return $monthly_rent * 12;
+    }
+}
+
+if (!function_exists('ef_get_tenant_total_payments_amount')) {
+    function ef_get_tenant_total_payments_amount($t_id) {
+        $payments = get_posts(array(
+            'post_type'      => 'payment',
+            'post_status'    => ['publish', 'future'],
+            'posts_per_page' => -1,
+            'meta_query'     => array(
+                'relation' => 'OR',
+                array('key' => 'associated_tenant', 'value' => $t_id, 'compare' => '=' ),
+                array('key' => 'select_tenant', 'value' => $t_id, 'compare' => '=' )
+            )
+        ));
+        $total_paid = 0.00;
+        foreach ($payments as $p) {
+            $amount = get_field('amount_paid', $p->ID) ?: get_post_meta($p->ID, 'amount_paid', true);
+            if ($amount) {
+                $total_paid += ef_clean_amount($amount);
+            }
+        }
+        return $total_paid;
+    }
+}
+
+if (!function_exists('ef_get_tenant_outstanding_balance')) {
+    function ef_get_tenant_outstanding_balance($t_id) {
+        $contract = ef_get_tenant_total_contract_amount($t_id);
+        $paid = ef_get_tenant_total_payments_amount($t_id);
+        return max(0.00, $contract - $paid);
+    }
+}
+
+if (!function_exists('ef_get_tenant_last_payment_end_date')) {
+    function ef_get_tenant_last_payment_end_date($t_id) {
+        $payments = get_posts(array(
+            'post_type'      => 'payment',
+            'post_status'    => ['publish', 'future'],
+            'posts_per_page' => -1,
+            'meta_query'     => array(
+                'relation' => 'OR',
+                array('key' => 'associated_tenant', 'value' => $t_id, 'compare' => '=' ),
+                array('key' => 'select_tenant', 'value' => $t_id, 'compare' => '=' )
+            )
+        ));
+        $max_end_date = '';
+        foreach ($payments as $p) {
+            $end_date = get_field('cheque_end_date', $p->ID) ?: get_post_meta($p->ID, 'cheque_end_date', true);
+            if (!$end_date) {
+                // Fallback to date_of_payment
+                $end_date = get_field('date_of_payment', $p->ID) ?: get_post_meta($p->ID, 'date_of_payment', true);
+            }
+            if ($end_date) {
+                $end_date_formatted = date('Y-m-d', strtotime($end_date));
+                if (empty($max_end_date) || $end_date_formatted > $max_end_date) {
+                    $max_end_date = $end_date_formatted;
+                }
+            }
+        }
+        if (!$max_end_date) {
+            // Fallback to contract start date
+            $start_date = get_field('tenant_start', $t_id) ?: get_post_meta($t_id, 'tenant_start', true);
+            if ($start_date) {
+                $max_end_date = date('Y-m-d', strtotime($start_date));
+            } else {
+                $max_end_date = date('Y-m-d'); // Default to today
+            }
+        }
+        return $max_end_date;
+    }
+}
  
 add_shortcode('expected_monthly_income', function() {    
     $t_query = new WP_Query(array(    
@@ -162,22 +247,21 @@ add_shortcode('count_tenant_overdue', function() {
     $overdue_count = 0;    
     
     $period = ef_get_dashboard_period();
-    // Requirements: "overdue dont the due on current month"
-    // So for the current selected period, we check the month BEFORE it.
     $current_period_date = new DateTimeImmutable($period['y'] . '-' . $period['m'] . '-01');
-    $overdue_period_date = $current_period_date->modify('first day of last month');
-    $check_month = $overdue_period_date->format('m');
-    $check_year = $overdue_period_date->format('Y');
+    $current_month_start = $current_period_date->format('Y-m-d');
 
     if ($t_query->have_posts()) {    
         while ($t_query->have_posts()) {    
             $t_query->the_post();    
             $t_id = get_the_ID();    
             
-            if (!ef_is_tenant_billable($t_id, $check_month, $check_year)) continue;
-  
-            $status = ef_get_tenant_monthly_status($t_id, $check_month, $check_year);    
-            if (!$status['is_fully_paid']) $overdue_count++;    
+            $outstanding = ef_get_tenant_outstanding_balance($t_id);
+            if ($outstanding <= 0.001) continue;
+
+            $end_date_str = ef_get_tenant_last_payment_end_date($t_id);
+            if ($end_date_str < $current_month_start) {
+                $overdue_count++;
+            }
         }    
         wp_reset_postdata();    
     }    
@@ -199,15 +283,18 @@ add_shortcode('count_tenant_due_soon', function() {
         while ($t_query->have_posts()) {    
             $t_query->the_post();    
             $t_id = get_the_ID();    
-            $next_due = ef_get_tenant_next_due_date($t_id, $today->format('Y-m-d H:i:s'));  
+
+            $outstanding = ef_get_tenant_outstanding_balance($t_id);
+            if ($outstanding <= 0.001) continue;
+
+            $end_date_str = ef_get_tenant_last_payment_end_date($t_id);
+            $next_due = new DateTimeImmutable($end_date_str);
               
             $diff = $today_zero->diff($next_due);  
             $days_remained = (int)$diff->format('%r%a');  
   
             if ($days_remained >= 0 && $days_remained <= 5) {    
-                if (!ef_is_tenant_billable($t_id, $next_due->format('m'), $next_due->format('Y'))) continue;
-                $status = ef_get_tenant_monthly_status($t_id, $next_due->format('m'), $next_due->format('Y'));    
-                if (!$status['is_fully_paid']) $due_soon_count++;    
+                $due_soon_count++;
             }    
         }    
         wp_reset_postdata();    
@@ -325,31 +412,32 @@ add_shortcode('overdue_list_card', function() {
     $items_html = ''; $count = 0;    
     
     $period = ef_get_dashboard_period();
+    $current_period_date = new DateTimeImmutable($period['y'] . '-' . $period['m'] . '-01');
+    $current_month_start = $current_period_date->format('Y-m-d');
+
     $days_in_month_now = (int)date('t', strtotime($period['y'] . '-' . $period['m'] . '-01'));
     $day_to_use = str_pad(min((int)date('d'), $days_in_month_now), 2, '0', STR_PAD_LEFT);
     $today = new DateTimeImmutable($period['y'] . '-' . $period['m'] . '-' . $day_to_use);
     $today_zero = $today->setTime(0, 0, 0);  
-
-    $overdue_period_date = (new DateTimeImmutable($period['y'] . '-' . $period['m'] . '-01'))->modify('first day of last month');
-    $check_month = $overdue_period_date->format('m');
-    $check_year = $overdue_period_date->format('Y');
     
     if ($t_query->have_posts()) {    
         while ($t_query->have_posts()) {    
             $t_query->the_post();    
             $t_id = get_the_ID();    
-            $due_day = ef_get_tenant_due_day($t_id);    
-              
-            $days_in_month = (int)$overdue_period_date->format('t');  
-            $due_date = $overdue_period_date->setDate((int)$check_year, (int)$check_month, min($due_day, $days_in_month))->setTime(0, 0, 0);  
-    
-            if (!ef_is_tenant_billable($t_id, $check_month, $check_year)) continue;
-            $status = ef_get_tenant_monthly_status($t_id, $check_month, $check_year);    
-            if (!$status['is_fully_paid']) {    
-                $count++;    
+
+            $outstanding = ef_get_tenant_outstanding_balance($t_id);
+            if ($outstanding <= 0.001) continue;
+
+            $end_date_str = ef_get_tenant_last_payment_end_date($t_id);
+            if ($end_date_str < $current_month_start) {
+                $count++;
+
+                $due_date = new DateTimeImmutable($end_date_str);
                 $diff = $due_date->diff($today_zero);  
-                $days_late = (int)$diff->format('%a');  
+                $days_late = (int)$diff->format('%r%a');
+                if ($days_late < 0) $days_late = 0;
                 $late_label = ($days_late == 1) ? 'day' : 'days';    
+
                 $property = ef_get_property_display_name($t_id);    
                 $tenant_name = get_the_title($t_id);    
                 $items_html .= "    
@@ -359,7 +447,7 @@ add_shortcode('overdue_list_card', function() {
                         <div class='ef-reminder-item-sub'>" . esc_html($property) . "</div>    
                     </div>    
                     <div style='text-align: right;'>    
-                        <div class='ef-reminder-item-amount overdue'>AED " . number_format($status['balance'], 2) . "</div>    
+                        <div class='ef-reminder-item-amount overdue'>AED " . number_format($outstanding, 2) . "</div>
                         <div class='ef-reminder-item-badge ef-badge-overdue'>" . esc_html("{$days_late} {$late_label} late") . "</div>    
                     </div>    
                 </div>";    
@@ -385,36 +473,37 @@ add_shortcode('duesoon_list_card', function() {
         while ($t_query->have_posts()) {    
             $t_query->the_post();    
             $t_id = get_the_ID();    
-            $next_due = ef_get_tenant_next_due_date($t_id, $today->format('Y-m-d H:i:s'));  
+
+            $outstanding = ef_get_tenant_outstanding_balance($t_id);
+            if ($outstanding <= 0.001) continue;
+
+            $end_date_str = ef_get_tenant_last_payment_end_date($t_id);
+            $next_due = new DateTimeImmutable($end_date_str);
               
             $diff = $today_zero->diff($next_due);  
             $days_remained = (int)$diff->format('%r%a');  
     
             if ($days_remained >= 0 && $days_remained <= 5) {    
-                if (!ef_is_tenant_billable($t_id, $next_due->format('m'), $next_due->format('Y'))) continue;
-                $status = ef_get_tenant_monthly_status($t_id, $next_due->format('m'), $next_due->format('Y'));    
-                if (!$status['is_fully_paid']) {    
-                    $count++;    
-                    if ($days_remained === 0) {    
-                        $badge_text = "Due Today";    
-                    } else {    
-                        $day_label = ($days_remained === 1) ? 'day' : 'days';    
-                        $badge_text = "in {$days_remained} {$day_label}";    
-                    }    
-                    $property = ef_get_property_display_name($t_id);    
-                    $tenant_name = get_the_title($t_id);    
-                    $items_html .= "    
-                    <div class='ef-reminder-item'>    
-                        <div>    
-                            <div class='ef-reminder-item-name'>" . esc_html($tenant_name) . "</div>    
-                            <div class='ef-reminder-item-sub'>" . esc_html($property) . "</div>    
-                        </div>    
-                        <div style='text-align: right;'>    
-                            <div class='ef-reminder-item-amount overdue'>AED " . number_format($status['balance'], 2) . "</div>    
-                            <div class='ef-reminder-item-badge ef-badge-overdue'>" . esc_html($badge_text) . "</div>    
-                        </div>    
-                    </div>";    
+                $count++;
+                if ($days_remained === 0) {
+                    $badge_text = "Due Today";
+                } else {
+                    $day_label = ($days_remained === 1) ? 'day' : 'days';
+                    $badge_text = "in {$days_remained} {$day_label}";
                 }    
+                $property = ef_get_property_display_name($t_id);
+                $tenant_name = get_the_title($t_id);
+                $items_html .= "
+                <div class='ef-reminder-item'>
+                    <div>
+                        <div class='ef-reminder-item-name'>" . esc_html($tenant_name) . "</div>
+                        <div class='ef-reminder-item-sub'>" . esc_html($property) . "</div>
+                    </div>
+                    <div style='text-align: right;'>
+                        <div class='ef-reminder-item-amount overdue'>AED " . number_format($outstanding, 2) . "</div>
+                        <div class='ef-reminder-item-badge ef-badge-overdue'>" . esc_html($badge_text) . "</div>
+                    </div>
+                </div>";
             }    
         }    
         wp_reset_postdata();    
@@ -437,31 +526,32 @@ add_shortcode('upcoming_list_card', function() {
         while ($t_query->have_posts()) {    
             $t_query->the_post();    
             $t_id = get_the_ID();    
-            $next_due = ef_get_tenant_next_due_date($t_id, $today->format('Y-m-d H:i:s'));  
+
+            $outstanding = ef_get_tenant_outstanding_balance($t_id);
+            if ($outstanding <= 0.001) continue;
+
+            $end_date_str = ef_get_tenant_last_payment_end_date($t_id);
+            $next_due = new DateTimeImmutable($end_date_str);
               
             $diff = $today_zero->diff($next_due);  
             $days_remained = (int)$diff->format('%r%a');  
     
             if ($days_remained > 5) {    
-                if (!ef_is_tenant_billable($t_id, $next_due->format('m'), $next_due->format('Y'))) continue;
-                $status = ef_get_tenant_monthly_status($t_id, $next_due->format('m'), $next_due->format('Y'));    
-                if (!$status['is_fully_paid']) {    
-                    $count++;    
-                    $day_label = ($days_remained === 1) ? 'day' : 'days';    
-                    $property = ef_get_property_display_name($t_id);    
-                    $tenant_name = get_the_title($t_id);    
-                    $items_html .= "    
-                    <div class='ef-reminder-item'>    
-                        <div>    
-                            <div class='ef-reminder-item-name'>" . esc_html($tenant_name) . "</div>    
-                            <div class='ef-reminder-item-sub'>" . esc_html($property) . "</div>    
-                        </div>    
-                        <div style='text-align: right;'>    
-                            <div class='ef-reminder-item-amount'>AED " . number_format($status['balance'], 2) . "</div>    
-                            <div class='ef-reminder-item-badge'>" . esc_html("in {$days_remained} {$day_label}") . "</div>    
-                        </div>    
-                    </div>";    
-                }    
+                $count++;
+                $day_label = ($days_remained === 1) ? 'day' : 'days';
+                $property = ef_get_property_display_name($t_id);
+                $tenant_name = get_the_title($t_id);
+                $items_html .= "
+                <div class='ef-reminder-item'>
+                    <div>
+                        <div class='ef-reminder-item-name'>" . esc_html($tenant_name) . "</div>
+                        <div class='ef-reminder-item-sub'>" . esc_html($property) . "</div>
+                    </div>
+                    <div style='text-align: right;'>
+                        <div class='ef-reminder-item-amount'>AED " . number_format($outstanding, 2) . "</div>
+                        <div class='ef-reminder-item-badge'>" . esc_html("in {$days_remained} {$day_label}") . "</div>
+                    </div>
+                </div>";
             }    
         }    
         wp_reset_postdata();    
@@ -518,65 +608,26 @@ add_shortcode('outstanding_tenants', function() {
         return ''; 
     } 
  
-    $period = ef_get_dashboard_period();
-    $current_period = $period['period'];   
-       
     $tenants = get_posts([   
         'post_type'      => 'ef_tenant',   
         'post_status'    => 'publish',   
         'posts_per_page' => -1,   
     ]);   
    
-    $payments_by_tenant = [];   
     $outstanding_items = []; 
  
     if (!empty($tenants)) { 
-        $p_query = new WP_Query([   
-            'post_type'      => 'payment',   
-            'post_status'    => ['publish', 'future'],
-            'posts_per_page' => -1,   
-        ]);   
-   
-        if ($p_query->have_posts()) {   
-            while ($p_query->have_posts()) {   
-                $p_query->the_post();   
-                $pay_id = get_the_ID();   
-                $p_period = get_field('payment_period', $pay_id) ?: get_post_meta($pay_id, 'payment_period', true) ?: get_the_date('Y-m', $pay_id);
-                if (strpos($p_period, $current_period) === 0) {
-                    $tid = get_field('associated_tenant', $pay_id) ?: get_post_meta($pay_id, 'associated_tenant', true);   
-                    if (!$tid) $tid = get_field('select_tenant', $pay_id) ?: get_post_meta($pay_id, 'select_tenant', true);
-                    $amount = ef_clean_amount(get_field('amount_paid', $pay_id) ?: get_post_meta($pay_id, 'amount_paid', true));   
-                       
-                    if ($tid) {   
-                        if (!isset($payments_by_tenant[$tid])) {   
-                            $payments_by_tenant[$tid] = 0;   
-                        }   
-                        $payments_by_tenant[$tid] += $amount;   
-                    }
-                }   
-            }   
-            wp_reset_postdata();   
-        }   
-   
-        $m = $period['m']; $y = $period['y'];
         foreach ($tenants as $tenant) {   
             $tid = $tenant->ID;   
-            if (ef_is_tenant_billable($tid, $m, $y)) {
-                $rent = ef_clean_amount(get_field('monthly_rent', $tid) ?: get_post_meta($tid, 'monthly_rent', true));   
-                   
-                if ($rent <= 0) continue;   
-    
-                $paid = isset($payments_by_tenant[$tid]) ? $payments_by_tenant[$tid] : 0; 
-   
-                if ($paid < ($rent - 0.001)) {   
-                    $due_day = get_field('rent_due_day', $tid) ?: get_post_meta($tid, 'rent_due_day', true);   
-                    $outstanding_items[] = [   
-                        'name'    => get_the_title($tid),   
-                        'due_day' => $due_day ?: '01',   
-                        'amount'  => $rent - $paid   
-                    ];   
-                }
-            }   
+            $outstanding = ef_get_tenant_outstanding_balance($tid);
+            if ($outstanding <= 0.001) continue;
+
+            $due_day = get_field('rent_due_day', $tid) ?: get_post_meta($tid, 'rent_due_day', true);
+            $outstanding_items[] = [
+                'name'    => get_the_title($tid),
+                'due_day' => $due_day ?: '01',
+                'amount'  => $outstanding
+            ];
         }   
    
         usort($outstanding_items, function($a, $b) {   
