@@ -233,8 +233,6 @@ add_shortcode('monthly_breakdown', function() {
                     <tr> 
                         <th>Month</th> 
                         <th class="ef-col-right">Revenue Collected</th> 
-                        <th class="ef-col-right">Expected Rent</th> 
-                        <th class="ef-col-right">Remaining Gap</th> 
                         <th class="ef-col-right">Collection Rate</th> 
                     </tr> 
                 </thead> 
@@ -243,10 +241,6 @@ add_shortcode('monthly_breakdown', function() {
                     <tr> 
                         <td class="ef-txt-bold" style="color: #0f172a;"><?php echo $data['label']; ?></td> 
                         <td class="ef-col-right ef-txt-bold ef-brand-success">AED <?php echo number_format($data['revenue'], 2); ?></td> 
-                        <td class="ef-col-right ef-brand-muted">AED <?php echo number_format($data['expected'], 2); ?></td> 
-                        <td class="ef-col-right <?php echo ($data['gap'] > 0) ? 'ef-brand-danger ef-txt-bold' : 'ef-brand-muted'; ?>"> 
-                            AED <?php echo number_format($data['gap'], 2); ?> 
-                        </td> 
                         <td class="ef-col-right ef-txt-bold" style="color: #0f172a;"><?php echo $data['rate']; ?></td> 
                     </tr> 
                     <?php endforeach; ?> 
@@ -299,17 +293,6 @@ add_shortcode('monthly_breakdown', function() {
     }); 
     </script> 
     
-    <div class="ef-breakdown-wrapper" style="margin-top: 24px;">
-        <div class="ef-breakdown-header" style="flex-direction: row; justify-content: space-between; align-items: center;">
-            <h3 class="ef-breakdown-title">Annual Collection Rate</h3>
-            <div class="ef-live-badge" style="background: #e6fffa; color: #234e52; border: 1px solid #b2f5ea; padding: 4px 12px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600;">Yearly</div>
-        </div>
-        <div style="font-size: 32px; font-weight: 800; color: #00a86b; margin-top: 12px;">
-            <?php echo do_shortcode('[collected_rate_final]'); ?>
-        </div>
-        <div style="font-size: 14px; color: #64748b; margin-top: 4px;">Overall collection performance based on fully paid tenant-months across all properties.</div>
-    </div>
- 
     <?php 
     return ob_get_clean(); 
 });
@@ -397,8 +380,6 @@ add_shortcode('ef_monthly_breakdown', function() {
                 <tr style="background: #f1f3f5; border-bottom: 1px solid #dee2e6; text-align: left;">
                     <th style="padding: 12px;">Month</th>
                     <th style="padding: 12px; text-align: right;">Revenue</th>
-                    <th style="padding: 12px; text-align: right; color: #6c757d;">Expected</th>
-                    <th style="padding: 12px; text-align: right; color: #b21f1f;">Gap</th>
                     <th style="padding: 12px; text-align: right;">Rate</th>
                 </tr>
             </thead>
@@ -407,8 +388,6 @@ add_shortcode('ef_monthly_breakdown', function() {
                 <tr style="border-bottom: 1px solid #f1f3f5;">
                     <td style="padding: 12px; font-weight: 500;"><?php echo $data['label']; ?></td>
                     <td style="padding: 12px; text-align: right; color: #2b8a3e; font-weight: bold;">$<?php echo number_format($data['revenue'], 2); ?></td>
-                    <td style="padding: 12px; text-align: right; color: #6c757d;">$<?php echo number_format($data['expected'], 2); ?></td>
-                    <td style="padding: 12px; text-align: right; color: #c92a2a;">$<?php echo number_format($data['gap'], 2); ?></td>
                     <td style="padding: 12px; text-align: right;"><?php echo $data['rate']; ?></td>
                 </tr>
                 <?php endforeach; ?>
@@ -536,15 +515,13 @@ function ef_handle_report_export_download() {
         fputcsv($output, array('ESTATEFLOW ANNUAL SUMMARY (' . $year . ')'));
         fputcsv($output, array('Metric Name', 'Calculated Value'));
         fputcsv($output, array('Total Yearly Revenue Collected', '$' . number_format($total_yearly_revenue, 2)));
-        fputcsv($output, array('Total Yearly Expected Revenue', '$' . number_format($total_yearly_expected, 2)));
-        fputcsv($output, array('Total Outstanding Yearly Gap', '$' . number_format($total_yearly_gap, 2)));
         fputcsv($output, array('Yearly Collection Rate Percentage', $total_yearly_rate . '%'));
         fputcsv($output, array()); 
 
         fputcsv($output, array('MONTH-BY-MONTH DETAILED REVENUE TABLE'));
-        fputcsv($output, array('Month Period', 'Monthly Revenue ($)', 'Expected Monthly Revenue ($)', 'Outstanding Gap ($)', 'Percentage Collected'));
+        fputcsv($output, array('Month Period', 'Monthly Revenue ($)', 'Percentage Collected'));
         foreach ($report_rows as $row) {
-            fputcsv($output, array($row['month'], $row['revenue'], $row['expected'], $row['gap'], $row['rate']));
+            fputcsv($output, array($row['month'], $row['revenue'], $row['rate']));
         }
         fclose($output);
         exit;
@@ -581,19 +558,11 @@ function ef_handle_report_export_download() {
             <h4 style="color:#1e293b; font-family:helvetica; font-size:11pt; text-transform:uppercase; font-weight:bold; letter-spacing:0.5px; margin-bottom:10px;">Executive Summary Key Performance Indicators</h4>
             <table cellspacing="0" cellpadding="12" style="width:100%; font-family:helvetica; margin-bottom:25px;">
                 <tr>
-                    <td style="background-color:#f1f5f9; border:1px solid #cbd5e1; text-align:center; width:25%; border-radius:4px;">
+                    <td style="background-color:#f1f5f9; border:1px solid #cbd5e1; text-align:center; width:50%; border-radius:4px;">
                         <span style="font-size:8pt; font-weight:bold; color:#475569;">TOTAL REVENUE</span><br><br>
                         <strong style="font-size:14pt; color:#0f766e;">$' . number_format($total_yearly_revenue, 2) . '</strong>
                     </td>
-                    <td style="background-color:#f1f5f9; border:1px solid #cbd5e1; text-align:center; width:25%; border-radius:4px;">
-                        <span style="font-size:8pt; font-weight:bold; color:#475569;">EXPECTED GROSS</span><br><br>
-                        <strong style="font-size:14pt; color:#1e40af;">$' . number_format($total_yearly_expected, 2) . '</strong>
-                    </td>
-                    <td style="background-color:#f1f5f9; border:1px solid #cbd5e1; text-align:center; width:25%; border-radius:4px;">
-                        <span style="font-size:8pt; font-weight:bold; color:#475569;">OUTSTANDING GAP</span><br><br>
-                        <strong style="font-size:14pt; color:#991b1b;">$' . number_format($total_yearly_gap, 2) . '</strong>
-                    </td>
-                    <td style="background-color:#1e293b; border:1px solid #0f172a; text-align:center; width:25%; border-radius:4px;">
+                    <td style="background-color:#1e293b; border:1px solid #0f172a; text-align:center; width:50%; border-radius:4px;">
                         <span style="font-size:8pt; font-weight:bold; color:#94a3b8;">COLLECTION RATE</span><br><br>
                         <strong style="font-size:14pt; color:#ffffff;">' . $total_yearly_rate . '%</strong>
                     </td>
@@ -605,11 +574,9 @@ function ef_handle_report_export_download() {
             <table cellpadding="10" cellspacing="0" style="width:100%; font-family:helvetica; font-size:10pt; border:1px solid #cbd5e1;">
                 <thead>
                     <tr style="background-color:#1e293b; color:#ffffff; font-weight:bold;">
-                        <th width="24%" style="font-weight:bold;">Reporting Month</th>
-                        <th width="19%" align="right" style="font-weight:bold;">Revenue Collected</th>
-                        <th width="19%" align="right" style="font-weight:bold;">Target Expected</th>
-                        <th width="19%" align="right" style="font-weight:bold;">Outstanding Gap</th>
-                        <th width="19%" align="center" style="font-weight:bold;">Collection Rate</th>
+                        <th width="40%" style="font-weight:bold;">Reporting Month</th>
+                        <th width="30%" align="right" style="font-weight:bold;">Revenue Collected</th>
+                        <th width="30%" align="center" style="font-weight:bold;">Collection Rate</th>
                     </tr>
                 </thead>
                 <tbody>';
@@ -618,8 +585,6 @@ function ef_handle_report_export_download() {
                 $html .= '<tr style="border-bottom:1px solid #e2e8f0;">
                     <td style="color:#0f172a; font-weight:bold;">' . $row['month'] . '</td>
                     <td align="right" style="color:#0f766e; font-weight:bold;">$' . number_format($row['revenue'], 2) . '</td>
-                    <td align="right" style="color:#475569;">$' . number_format($row['expected'], 2) . '</td>
-                    <td align="right" style="color:#b91c1c; font-weight:bold;">$' . number_format($row['gap'], 2) . '</td>
                     <td align="center" style="color:#1e293b; font-weight:bold;">' . $row['rate'] . '</td>
                 </tr>';
             }
@@ -627,8 +592,6 @@ function ef_handle_report_export_download() {
                 <tr style="background-color:#f8fafc; font-weight:bold; border-top:2px solid #1e293b;">
                     <td style="color:#0f172a; font-weight:bold;">Total Summary</td>
                     <td align="right" style="color:#0f766e; font-weight:bold;">$' . number_format($total_yearly_revenue, 2) . '</td>
-                    <td align="right" style="color:#475569; font-weight:bold;">$' . number_format($total_yearly_expected, 2) . '</td>
-                    <td align="right" style="color:#b91c1c; font-weight:bold;">$' . number_format($total_yearly_gap, 2) . '</td>
                     <td align="center" style="color:#ffffff; background-color:#1e293b; font-weight:bold;">' . $total_yearly_rate . '%</td>
                 </tr>
             </tbody></table>
@@ -673,8 +636,6 @@ function ef_handle_report_export_download() {
         $stream .= "/FB 11 Tf 50 705 Td (EXECUTIVE SUMMARY METRICS) Tj\n";
         $stream .= "/FR 10 Tf\n";
         $stream .= "0 -25 Td (Total Yearly Revenue Collected:) Tj /FB 10 Tf 200 0 Td (\$" . number_format($total_yearly_revenue, 2) . ") Tj\n";
-        $stream .= "/FR 10 Tf -200 -18 Td (Total Yearly Target Expected:) Tj /FB 10 Tf 200 0 Td (\$" . number_format($total_yearly_expected, 2) . ") Tj\n";
-        $stream .= "/FR 10 Tf -200 -18 Td (Total Outstanding Fiscal Gap:) Tj /FB 10 Tf 200 0 Td (\$" . number_format($total_yearly_gap, 2) . ") Tj\n";
         $stream .= "/FR 10 Tf -200 -18 Td (Global Annual Collection Rate:) Tj /FB 10 Tf 200 0 Td (" . $total_yearly_rate . "%) Tj\n";
         $stream .= "ET\n";
 
@@ -685,10 +646,8 @@ function ef_handle_report_export_download() {
 
         $stream .= "/FB 9 Tf\n";
         $stream .= "0 -30 Td (Reporting Month) Tj\n";
-        $stream .= "140 0 Td (Revenue) Tj\n";
-        $stream .= "110 0 Td (Expected) Tj\n";
-        $stream .= "110 0 Td (Outstanding Gap) Tj\n";
-        $stream .= "100 0 Td (Rate) Tj\n";
+        $stream .= "250 0 Td (Revenue) Tj\n";
+        $stream .= "150 0 Td (Rate) Tj\n";
         $stream .= "ET\n";
 
         $stream .= "1 w 50 552 m 545 552 l S\n";
@@ -698,19 +657,15 @@ function ef_handle_report_export_download() {
 
         foreach ($report_rows as $row) {
             $stream .= "(" . str_pad($row['month'], 25, " ") . ") Tj\n";
-            $stream .= "140 0 Td (\$" . str_pad(number_format($row['revenue'], 2), 15, " ", STR_PAD_LEFT) . ") Tj\n";
-            $stream .= "110 0 Td (\$" . str_pad(number_format($row['expected'], 2), 15, " ", STR_PAD_LEFT) . ") Tj\n";
-            $stream .= "110 0 Td (\$" . str_pad(number_format($row['gap'], 2), 15, " ", STR_PAD_LEFT) . ") Tj\n";
-            $stream .= "100 0 Td (" . str_pad($row['rate'], 8, " ", STR_PAD_LEFT) . ") Tj\n";
-            $stream .= "-460 -18 Td\n"; 
+            $stream .= "250 0 Td (\$" . str_pad(number_format($row['revenue'], 2), 15, " ", STR_PAD_LEFT) . ") Tj\n";
+            $stream .= "150 0 Td (" . str_pad($row['rate'], 8, " ", STR_PAD_LEFT) . ") Tj\n";
+            $stream .= "-400 -18 Td\n";
         }
 
         $stream .= "ET\n0.5 w 50 314 m 545 314 l S\nBT\n/FB 9 Tf 50 300 Td";
         $stream .= "(Total Summary) Tj\n";
-        $stream .= "140 0 Td (\$" . str_pad(number_format($total_yearly_revenue, 2), 15, " ", STR_PAD_LEFT) . ") Tj\n";
-        $stream .= "110 0 Td (\$" . str_pad(number_format($total_yearly_expected, 2), 15, " ", STR_PAD_LEFT) . ") Tj\n";
-        $stream .= "110 0 Td (\$" . str_pad(number_format($total_yearly_gap, 2), 15, " ", STR_PAD_LEFT) . ") Tj\n";
-        $stream .= "100 0 Td (" . str_pad($total_yearly_rate . "%", 8, " ", STR_PAD_LEFT) . ") Tj\n";
+        $stream .= "250 0 Td (\$" . str_pad(number_format($total_yearly_revenue, 2), 15, " ", STR_PAD_LEFT) . ") Tj\n";
+        $stream .= "150 0 Td (" . str_pad($total_yearly_rate . "%", 8, " ", STR_PAD_LEFT) . ") Tj\n";
 
         $stream .= "ET\n";
 
