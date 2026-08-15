@@ -480,10 +480,12 @@ add_shortcode('properties_page_grid', function() {
         <div id="properties-dashboard-grid" class="properties-dashboard-grid"> 
             <div class="properties-page-empty-state"><p>Loading properties...</p></div> 
         </div> 
-        <div class="properties-dashboard-nav"> 
-            <button id="prev-page" class="prop-nav-btn" disabled>Previous</button> 
+        <div class="properties-dashboard-nav" style="display: flex; gap: 6px; align-items: center; justify-content: center; flex-wrap: wrap; margin-top: 15px;">
+            <button id="first-page" class="prop-nav-btn" disabled>&laquo;</button>
+            <button id="prev-page" class="prop-nav-btn" disabled>&lt;</button>
             <span id="page-info">Page 1 of 1</span> 
-            <button id="next-page" class="prop-nav-btn" disabled>Next</button> 
+            <button id="next-page" class="prop-nav-btn" disabled>&gt;</button>
+            <button id="last-page" class="prop-nav-btn" disabled>&raquo;</button>
         </div> 
     </div> 
     <?php return ob_get_clean(); 
@@ -580,8 +582,10 @@ add_action('wp_footer', function() { ?>
  
         let curPage = 1, allData = []; 
         const pageInfo = document.getElementById('page-info'); 
+        const firstBtn = document.getElementById('first-page');
         const prevBtn = document.getElementById('prev-page'); 
         const nextBtn = document.getElementById('next-page'); 
+        const lastBtn = document.getElementById('last-page');
  
         const setActiveById = (id) => { 
             if (!grid) return; 
@@ -675,8 +679,10 @@ add_action('wp_footer', function() { ?>
             }); 
  
             if(pageInfo) pageInfo.textContent = `Page ${curPage} of ${totalPages}`; 
+            if(firstBtn) firstBtn.disabled = curPage === 1;
             if(prevBtn) prevBtn.disabled = curPage === 1; 
             if(nextBtn) nextBtn.disabled = curPage >= totalPages; 
+            if(lastBtn) lastBtn.disabled = curPage >= totalPages;
         }; 
  
                 const dashboardData = new FormData(); 
@@ -713,8 +719,10 @@ add_action('wp_footer', function() { ?>
                     } 
                 }); 
  
+        if(firstBtn) firstBtn.onclick = () => { if (curPage>1) { curPage = 1; render(); } };
         if(prevBtn) prevBtn.onclick = () => { if (curPage>1) { curPage--; render(); } }; 
-        if(nextBtn) nextBtn.onclick = () => { curPage++; render(); }; 
+        if(nextBtn) nextBtn.onclick = () => { const totalPages = Math.ceil(allData.length / 5) || 1; if (curPage < totalPages) { curPage++; render(); } };
+        if(lastBtn) lastBtn.onclick = () => { const totalPages = Math.ceil(allData.length / 5) || 1; if (curPage < totalPages) { curPage = totalPages; render(); } };
  
         const detailsContainer = document.getElementById('properties-page-details'); 
         const sidebar = document.getElementById('properties-sidebar'); 

@@ -298,17 +298,17 @@ $tenant_list_logic = function() {
                 <?php endwhile; wp_reset_postdata(); endif; ?> 
             </div>
             <div class="properties-dashboard-nav" style="display: flex; gap: 6px; align-items: center; justify-content: center; flex-wrap: wrap; margin-top: 15px;">
+                <button class="prop-nav-btn" <?php echo ($paged <= 1) ? 'disabled' : ''; ?> onclick="window.location.href='<?php echo esc_url(add_query_arg('paged', 1)); ?>'">&laquo;</button>
                 <button class="prop-nav-btn" <?php echo ($paged <= 1) ? 'disabled' : ''; ?> onclick="window.location.href='<?php echo esc_url(add_query_arg('paged', $paged - 1)); ?>'">&lt;</button>
                 <?php if ($total_pages > 1): ?>
-                    <button class="prop-nav-btn" <?php echo ($paged <= 1) ? 'disabled' : ''; ?> onclick="window.location.href='<?php echo esc_url(add_query_arg('paged', 1)); ?>'">First</button>
                     <?php for ($i = 1; $i <= $total_pages; $i++): ?>
                         <button class="prop-nav-btn" style="<?php echo ($i === $paged) ? 'background-color: #2ebfa5; color: #fff; border-color: #2ebfa5; font-weight: bold;' : 'background: #fff; color: #1e293b; border: 1px solid #e2e8f0;'; ?> min-width: 32px; padding: 4px 8px; border-radius: 6px;" onclick="window.location.href='<?php echo esc_url(add_query_arg('paged', $i)); ?>'"><?php echo $i; ?></button>
                     <?php endfor; ?>
-                    <button class="prop-nav-btn" <?php echo ($paged >= $total_pages) ? 'disabled' : ''; ?> onclick="window.location.href='<?php echo esc_url(add_query_arg('paged', $total_pages)); ?>'">Last</button>
                 <?php else: ?>
                     <button class="prop-nav-btn" style="background-color: #2ebfa5; color: #fff; border-color: #2ebfa5; font-weight: bold; min-width: 32px; padding: 4px 8px; border-radius: 6px;" disabled>1</button>
                 <?php endif; ?>
                 <button class="prop-nav-btn" <?php echo ($paged >= $total_pages) ? 'disabled' : ''; ?> onclick="window.location.href='<?php echo esc_url(add_query_arg('paged', $paged + 1)); ?>'">&gt;</button>
+                <button class="prop-nav-btn" <?php echo ($paged >= $total_pages) ? 'disabled' : ''; ?> onclick="window.location.href='<?php echo esc_url(add_query_arg('paged', $total_pages)); ?>'">&raquo;</button>
             </div>
         </div> 
     </div> 
@@ -994,10 +994,12 @@ function eftm_handle_ajax_tenant_breakdown() {
             </div> 
         <?php endforeach; ?>
         
-        <div class="ef-ledger-pagination" style="display: flex; justify-content: center; align-items: center; gap: 16px; margin-top: 20px;">
+        <div class="ef-ledger-pagination" style="display: flex; justify-content: center; align-items: center; gap: 8px; margin-top: 20px;">
+            <button class="prop-nav-btn" <?php echo ($paged <= 1) ? 'disabled' : ''; ?> onclick="efLoadTenantLedgerPage(<?php echo $tenant_id; ?>, 1)">&laquo;</button>
             <button class="prop-nav-btn" <?php echo ($paged <= 1) ? 'disabled' : ''; ?> onclick="efLoadTenantLedgerPage(<?php echo $tenant_id; ?>, <?php echo $paged - 1; ?>)">&lt;</button>
             <span style="font-size: 13px; color: #64748b; font-weight: 500;">Page <?php echo $paged; ?> of <?php echo $total_pages; ?></span>
             <button class="prop-nav-btn" <?php echo ($paged >= $total_pages) ? 'disabled' : ''; ?> onclick="efLoadTenantLedgerPage(<?php echo $tenant_id; ?>, <?php echo $paged + 1; ?>)">&gt;</button>
+            <button class="prop-nav-btn" <?php echo ($paged >= $total_pages) ? 'disabled' : ''; ?> onclick="efLoadTenantLedgerPage(<?php echo $tenant_id; ?>, <?php echo $total_pages; ?>)">&raquo;</button>
         </div>
 
         <?php else : ?> 

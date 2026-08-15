@@ -376,9 +376,11 @@ if (!function_exists('ef_render_reminder_card')) {
             </div>    
     
             <div class='ef-reminder-pagination' style='" . ($count <= 5 ? 'display:none;' : '') . "'>    
-                <button id='ef-{$id_prefix}-prev' class='ef-reminder-pag-btn'>Previous</button>    
+                <button id='ef-{$id_prefix}-first' class='ef-reminder-pag-btn'>&laquo;</button>
+                <button id='ef-{$id_prefix}-prev' class='ef-reminder-pag-btn'>&lt;</button>
                 <span id='ef-{$id_prefix}-page-info' class='ef-reminder-pag-info'>Page 1 of 1</span>    
-                <button id='ef-{$id_prefix}-next' class='ef-reminder-pag-btn'>Next</button>    
+                <button id='ef-{$id_prefix}-next' class='ef-reminder-pag-btn'>&gt;</button>
+                <button id='ef-{$id_prefix}-last' class='ef-reminder-pag-btn'>&raquo;</button>
             </div>    
         </div>    
     
@@ -393,8 +395,10 @@ if (!function_exists('ef_render_reminder_card')) {
             const totalPages = Math.ceil(items.length / itemsPerPage);    
             if (totalPages <= 1) return;    
     
+            const firstBtn = document.getElementById('ef-{$id_prefix}-first');
             const prevBtn = document.getElementById('ef-{$id_prefix}-prev');    
             const nextBtn = document.getElementById('ef-{$id_prefix}-next');    
+            const lastBtn = document.getElementById('ef-{$id_prefix}-last');
             const pageInfo = document.getElementById('ef-{$id_prefix}-page-info');    
     
             function showPage(page) {    
@@ -406,12 +410,20 @@ if (!function_exists('ef_render_reminder_card')) {
                 });    
     
                 pageInfo.textContent = 'Page ' + page + ' of ' + totalPages;    
+                if (firstBtn) { firstBtn.disabled = (page === 1); firstBtn.style.opacity = (page === 1) ? '0.5' : '1'; }
                 prevBtn.disabled = (page === 1);    
                 nextBtn.disabled = (page === totalPages);    
+                if (lastBtn) { lastBtn.disabled = (page === totalPages); lastBtn.style.opacity = (page === totalPages) ? '0.5' : '1'; }
                 prevBtn.style.opacity = (page === 1) ? '0.5' : '1';    
                 nextBtn.style.opacity = (page === totalPages) ? '0.5' : '1';    
             }    
     
+            if (firstBtn) {
+                firstBtn.addEventListener('click', function() {
+                    if(currentPage > 1) { currentPage = 1; showPage(currentPage); }
+                });
+            }
+
             prevBtn.addEventListener('click', function() {    
                 if(currentPage > 1) { currentPage--; showPage(currentPage); }    
             });    
@@ -419,6 +431,12 @@ if (!function_exists('ef_render_reminder_card')) {
             nextBtn.addEventListener('click', function() {    
                 if(currentPage < totalPages) { currentPage++; showPage(currentPage); }    
             });    
+
+            if (lastBtn) {
+                lastBtn.addEventListener('click', function() {
+                    if(currentPage < totalPages) { currentPage = totalPages; showPage(currentPage); }
+                });
+            }
     
             showPage(currentPage);    
         })();    
