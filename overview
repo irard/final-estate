@@ -39,7 +39,7 @@ if (!function_exists('ef_is_tenant_billable')) {
 if (!function_exists('ef_get_dashboard_period')) {
     function ef_get_dashboard_period() {
         $m = isset($_GET['ef_month']) ? str_pad(intval($_GET['ef_month']), 2, '0', STR_PAD_LEFT) : date('m');
-        $y = isset($_GET['ef_year']) ? intval($_GET['ef_year']) : date('Y');
+        $y = isset($_GET['ef_year']) ? intval($_GET['ef_year']) : (isset($_GET['report_year']) ? intval($_GET['report_year']) : date('Y'));
         return ['m' => $m, 'y' => $y, 'period' => "$y-$m"];
     }
 }
@@ -364,45 +364,7 @@ add_shortcode('ef_card_yearly_revenue', function() {
 }); 
  
 add_shortcode('ef_dashboard_filter', function() {
-    $period = ef_get_dashboard_period();
-    $current_year = intval(date('Y'));
-    $years = range($current_year - 5, $current_year + 10);
-
-    ob_start(); ?>
-    <div class="ef-dashboard-filter-container" style="margin-bottom: 20px;">
-        <select id="efDashboardYear" class="ef-filter-select" style="padding: 10px 16px; border: 1px solid #cbd5e1; border-radius: 8px; outline: none; width: 500px; max-width: 100%; font-size: 14px; font-weight: 500; color: #1e293b; background: #ffffff;">
-            <?php foreach ($years as $y): ?>
-                <option value="<?php echo $y; ?>" <?php selected($period['y'], $y); ?>><?php echo $y; ?></option>
-            <?php endforeach; ?>
-        </select>
-    </div>
-
-    <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        const yearSelect = document.getElementById('efDashboardYear');
-        if (!yearSelect) return;
-
-        const urlParams = new URLSearchParams(window.location.search);
-        if (!urlParams.has('ef_year')) {
-            const savedYear = localStorage.getItem('ef_dashboard_year');
-            if (savedYear) {
-                const url = new URL(window.location.href);
-                url.searchParams.set('ef_year', savedYear);
-                window.location.href = url.toString();
-            }
-        }
-
-        yearSelect.addEventListener('change', function() {
-            const y = this.value;
-            localStorage.setItem('ef_dashboard_year', y);
-            const url = new URL(window.location.href);
-            url.searchParams.set('ef_year', y);
-            window.location.href = url.toString();
-        });
-    });
-    </script>
-    <?php
-    return ob_get_clean();
+    return '';
 });
 
 add_shortcode('ef_dashboard_overview', function() { 
@@ -504,6 +466,31 @@ if ( ! defined( 'ABSPATH' ) ) exit;
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> 
      
  
+    <?php
+    $years_range = range(intval(date('Y')) - 5, intval(date('Y')) + 10);
+    ?>
+    <div style="margin-bottom: 16px;">
+        <select id="efMonthlyChartTopYearSelect" style="width: 500px; max-width: 100%; padding: 10px 14px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; font-weight: 500; color: #0f172a; background: #ffffff; outline: none; box-sizing: border-box;">
+            <?php foreach ($years_range as $y): ?>
+                <option value="<?php echo $y; ?>" <?php selected($selected_year, $y); ?>><?php echo $y; ?></option>
+            <?php endforeach; ?>
+        </select>
+    </div>
+
+    <script>
+    document.addEventListener("DOMContentLoaded", function() {
+        const sel = document.getElementById("efMonthlyChartTopYearSelect");
+        if (sel) {
+            sel.addEventListener("change", function() {
+                localStorage.setItem("ef_dashboard_year", this.value);
+                const url = new URL(window.location.href);
+                url.searchParams.set("ef_year", this.value);
+                window.location.href = url.toString();
+            });
+        }
+    });
+    </script>
+
     <div class="ef-dashboard-card"> 
         <div class="ef-card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
             <div class="ef-card-title" style="display: flex; align-items: baseline; gap: 8px;">
