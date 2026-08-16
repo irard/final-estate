@@ -129,7 +129,7 @@ if (!function_exists('ef_get_tenant_monthly_status')) {
         $tenant_paid_this_month = 0.00;    
         foreach ($payments as $p) {    
             $p_id = $p->ID;
-            $period = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true) ?: get_the_date('Y-m', $p_id);
+            $period = ef_get_payment_period($p_id);
             if (strpos($period, $period_match) === 0) {
                 $amount = get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true);    
                 if ($amount) {    
@@ -412,7 +412,7 @@ function ef_callback_ajax_create_payment() {
     }
 
     $receipt_voucher = str_pad($next_voucher_int, 3, '0', STR_PAD_LEFT);
-    $period_key = substr($cheque_start_date, 0, 7); // YYYY-MM
+    $period_key = substr($cheque_end_date ?: ($cheque_start_date ?: $date), 0, 7); // YYYY-MM
 
     if ($tenant_end && $cheque_end_date && $cheque_end_date > $tenant_end) {
         wp_send_json_error(['message' => "Payment cannot be accepted as it surpasses the tenant's contract end date ($tenant_end)."]);
@@ -446,7 +446,7 @@ function ef_callback_ajax_update_payment() {
         wp_send_json_error(['message' => 'Operational parameters data validation failure.']);   
     }   
 
-    $period = substr($cheque_start_date, 0, 7); // YYYY-MM
+    $period = substr($cheque_end_date ?: ($cheque_start_date ?: $date), 0, 7); // YYYY-MM
    
     $tenant_name = get_the_title($tenant_id);   
     $period_ts = strtotime($period . '-01');

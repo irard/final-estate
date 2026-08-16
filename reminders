@@ -230,7 +230,7 @@ if (!function_exists('ef_get_tenant_monthly_status')) {
         $tenant_paid_this_month = 0.00;    
         foreach ($payments as $p) {    
             $p_id = $p->ID;
-            $period = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true) ?: get_the_date('Y-m', $p_id);
+            $period = ef_get_payment_period($p_id);
             if (strpos($period, $period_match) === 0) {
                 $amount = get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true);    
                 if ($amount) {    

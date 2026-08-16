@@ -318,7 +318,7 @@ $tenant_list_logic = function() {
                             while($p_query->have_posts()){
                                 $p_query->the_post(); 
                                 $p_id = get_the_ID();
-                                $p_period = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true) ?: get_the_date('Y-m', $p_id);
+                                $p_period = ef_get_payment_period($p_id);
                                 if (strpos($p_period, "$current_year-$current_month") === 0) {
                                     $paid_this_month += floatval(get_field('amount_paid',$p_id) ?: get_post_meta($p_id, 'amount_paid', true));
                                 }
@@ -1274,7 +1274,7 @@ add_shortcode('ef_master_tenant_directory', function() {
                     while ($p_query->have_posts()) {
                         $p_query->the_post();
                         $pay_id = get_the_ID();
-                        $p_period = get_field('payment_period', $pay_id) ?: get_post_meta($pay_id, 'payment_period', true) ?: get_the_date('Y-m', $pay_id);
+                        $p_period = ef_get_payment_period($pay_id);
                         if (strpos($p_period, "$current_year-$current_month") === 0) {
                             $total_paid += floatval(get_field('amount_paid', $pay_id) ?: get_post_meta($pay_id, 'amount_paid', true));
                         }
