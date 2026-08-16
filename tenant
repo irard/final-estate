@@ -60,14 +60,62 @@ if (!function_exists('ef_get_payment_tenant_id')) {
     }
 }
 
+if (!function_exists('ef_parse_any_date_to_ym')) {
+    function ef_parse_any_date_to_ym($date_str) {
+        if (!$date_str) return false;
+        $str = trim((string)$date_str);
+        if (preg_match('/^\d{8}$/', $str)) {
+            return substr($str, 0, 4) . '-' . substr($str, 4, 2);
+        }
+        if (strpos($str, '/') !== false) {
+            $parts = explode('/', $str);
+            if (count($parts) === 3) {
+                if (strlen($parts[0]) === 4) {
+                    $y = $parts[0]; $m = $parts[1];
+                } elseif (strlen($parts[2]) === 4) {
+                    $y = $parts[2];
+                    $m1 = intval($parts[0]); $m2 = intval($parts[1]);
+                    if ($m1 > 12) {
+                        $m = $parts[1];
+                    } elseif ($m2 > 12) {
+                        $m = $parts[0];
+                    } else {
+                        $m = $parts[0];
+                    }
+                } else {
+                    $y = date('Y'); $m = $parts[0];
+                }
+                return $y . '-' . str_pad($m, 2, '0', STR_PAD_LEFT);
+            }
+        }
+        if (preg_match('/^(\d{4})[-.\/](\d{1,2})/', $str, $matches)) {
+            return $matches[1] . '-' . str_pad($matches[2], 2, '0', STR_PAD_LEFT);
+        }
+        $ts = strtotime($str);
+        if ($ts) return date('Y-m', $ts);
+        return false;
+    }
+}
+
 if (!function_exists('ef_get_payment_period')) {
     function ef_get_payment_period($p_id) {
+        $ce = get_field('cheque_end_date', $p_id) ?: get_post_meta($p_id, 'cheque_end_date', true) ?: get_field('end_date', $p_id) ?: get_post_meta($p_id, 'end_date', true);
+        if ($ce) {
+            $ym = ef_parse_any_date_to_ym($ce);
+            if ($ym) return $ym;
+        }
         $cs = get_field('cheque_start_date', $p_id) ?: get_post_meta($p_id, 'cheque_start_date', true);
-        if ($cs) return date('Y-m', strtotime($cs));
+        if ($cs) {
+            $ym = ef_parse_any_date_to_ym($cs);
+            if ($ym) return $ym;
+        }
         $p = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true);
-        if ($p) return substr($p, 0, 7);
+        if ($p) return substr((string)$p, 0, 7);
         $d = get_field('date_of_payment', $p_id) ?: get_post_meta($p_id, 'date_of_payment', true);
-        if ($d) return date('Y-m', strtotime($d));
+        if ($d) {
+            $ym = ef_parse_any_date_to_ym($d);
+            if ($ym) return $ym;
+        }
         return get_the_date('Y-m', $p_id);
     }
 }
@@ -239,9 +287,7 @@ add_shortcode('tenant_header', function() {
 
 $tenant_list_logic = function() { 
     $payment_post_type = 'payment'; $tenant_meta_key = 'associated_tenant'; 
-    $paged = max(1, get_query_var('paged'), (isset($_GET['paged']) ? intval($_GET['paged']) : 1));
-    $q = new WP_Query(['post_type'=>'ef_tenant', 'post_status'=>'publish', 'posts_per_page'=>5, 'paged' => $paged, 'order'=>'ASC']); 
-    $total_pages = $q->max_num_pages;
+    $q = new WP_Query(['post_type'=>'ef_tenant', 'post_status'=>'publish', 'posts_per_page'=>-1, 'order'=>'ASC']); 
     ob_start(); ?> 
     <div class="ef-dashboard-sidebar-independent"> 
         <input type="text" class="ef-search-box" placeholder="Search tenants..." id="efTenantSearch"> 
@@ -297,18 +343,12 @@ $tenant_list_logic = function() {
                     </div> 
                 <?php endwhile; wp_reset_postdata(); endif; ?> 
             </div>
-            <div class="properties-dashboard-nav" style="display: flex; gap: 6px; align-items: center; justify-content: center; flex-wrap: wrap; margin-top: 15px;">
-                <button class="prop-nav-btn" <?php echo ($paged <= 1) ? 'disabled' : ''; ?> onclick="window.location.href='<?php echo esc_url(add_query_arg('paged', $paged - 1)); ?>'">&lt;</button>
-                <?php if ($total_pages > 1): ?>
-                    <button class="prop-nav-btn" <?php echo ($paged <= 1) ? 'disabled' : ''; ?> onclick="window.location.href='<?php echo esc_url(add_query_arg('paged', 1)); ?>'">First</button>
-                    <?php for ($i = 1; $i <= $total_pages; $i++): ?>
-                        <button class="prop-nav-btn" style="<?php echo ($i === $paged) ? 'background-color: #2ebfa5; color: #fff; border-color: #2ebfa5; font-weight: bold;' : 'background: #fff; color: #1e293b; border: 1px solid #e2e8f0;'; ?> min-width: 32px; padding: 4px 8px; border-radius: 6px;" onclick="window.location.href='<?php echo esc_url(add_query_arg('paged', $i)); ?>'"><?php echo $i; ?></button>
-                    <?php endfor; ?>
-                    <button class="prop-nav-btn" <?php echo ($paged >= $total_pages) ? 'disabled' : ''; ?> onclick="window.location.href='<?php echo esc_url(add_query_arg('paged', $total_pages)); ?>'">Last</button>
-                <?php else: ?>
-                    <button class="prop-nav-btn" style="background-color: #2ebfa5; color: #fff; border-color: #2ebfa5; font-weight: bold; min-width: 32px; padding: 4px 8px; border-radius: 6px;" disabled>1</button>
-                <?php endif; ?>
-                <button class="prop-nav-btn" <?php echo ($paged >= $total_pages) ? 'disabled' : ''; ?> onclick="window.location.href='<?php echo esc_url(add_query_arg('paged', $paged + 1)); ?>'">&gt;</button>
+            <div class="properties-dashboard-nav" id="efTenantNavWrapper" style="display: flex; gap: 6px; align-items: center; justify-content: center; flex-wrap: wrap; margin-top: 15px;">
+                <button class="prop-nav-btn" id="ef-tenant-first">&laquo;</button>
+                <button class="prop-nav-btn" id="ef-tenant-prev">&lt;</button>
+                <span id="ef-tenant-page-info" style="font-size: 13px; color: #64748b; font-weight: 500;">Page 1 of 1</span>
+                <button class="prop-nav-btn" id="ef-tenant-next">&gt;</button>
+                <button class="prop-nav-btn" id="ef-tenant-last">&raquo;</button>
             </div>
         </div> 
     </div> 
@@ -316,14 +356,79 @@ $tenant_list_logic = function() {
     function efDispatchGlobalView(tid){ 
         window.dispatchEvent(new CustomEvent('ef_load_tenant',{detail:{id:tid}})); 
         document.querySelectorAll('.ef-tenant-card-item').forEach(c=>c.classList.remove('ef-active-tenant')); 
-        document.getElementById('tenant-row-'+tid).classList.add('ef-active-tenant'); 
+        const row = document.getElementById('tenant-row-'+tid);
+        if (row) row.classList.add('ef-active-tenant'); 
     } 
-    document.getElementById('efTenantSearch').oninput=function(){ 
-        let f=this.value.toLowerCase(); 
-        document.querySelectorAll('.ef-tenant-card-item').forEach(c=>{ 
-            c.style.display=c.querySelector('.ef-tenant-name').textContent.toLowerCase().includes(f)?'flex':'none'; 
-        }); 
-    }; 
+
+    let efTenantCurrentPage = 1;
+    const efTenantItemsPerPage = 5;
+
+    function efRenderTenantListPagination() {
+        const queryStr = (document.getElementById('efTenantSearch')?.value || '').toLowerCase().trim();
+        const allCards = Array.from(document.querySelectorAll('.ef-tenant-card-item'));
+        
+        const matchingCards = allCards.filter(card => {
+            if (!queryStr) return true;
+            return card.textContent.toLowerCase().includes(queryStr);
+        });
+
+        const totalMatches = matchingCards.length;
+        const totalPages = Math.ceil(totalMatches / efTenantItemsPerPage) || 1;
+
+        if (efTenantCurrentPage > totalPages) {
+            efTenantCurrentPage = totalPages;
+        }
+
+        const startIndex = (efTenantCurrentPage - 1) * efTenantItemsPerPage;
+        const endIndex = startIndex + efTenantItemsPerPage;
+
+        allCards.forEach(card => card.style.display = 'none');
+
+        matchingCards.slice(startIndex, endIndex).forEach(card => {
+            card.style.display = 'flex';
+        });
+
+        const pageInfo = document.getElementById('ef-tenant-page-info');
+        const firstBtn = document.getElementById('ef-tenant-first');
+        const prevBtn = document.getElementById('ef-tenant-prev');
+        const nextBtn = document.getElementById('ef-tenant-next');
+        const lastBtn = document.getElementById('ef-tenant-last');
+
+        if (pageInfo) pageInfo.textContent = `Page ${efTenantCurrentPage} of ${totalPages}`;
+        if (firstBtn) {
+            firstBtn.disabled = efTenantCurrentPage <= 1;
+            firstBtn.onclick = () => { if (efTenantCurrentPage > 1) { efTenantCurrentPage = 1; efRenderTenantListPagination(); } };
+        }
+        if (prevBtn) {
+            prevBtn.disabled = efTenantCurrentPage <= 1;
+            prevBtn.onclick = () => { if (efTenantCurrentPage > 1) { efTenantCurrentPage--; efRenderTenantListPagination(); } };
+        }
+        if (nextBtn) {
+            nextBtn.disabled = efTenantCurrentPage >= totalPages;
+            nextBtn.onclick = () => { if (efTenantCurrentPage < totalPages) { efTenantCurrentPage++; efRenderTenantListPagination(); } };
+        }
+        if (lastBtn) {
+            lastBtn.disabled = efTenantCurrentPage >= totalPages;
+            lastBtn.onclick = () => { if (efTenantCurrentPage < totalPages) { efTenantCurrentPage = totalPages; efRenderTenantListPagination(); } };
+        }
+    }
+
+    function efInitTenantSearch() {
+        const searchInput = document.getElementById('efTenantSearch');
+        if (searchInput) {
+            searchInput.oninput = function() {
+                efTenantCurrentPage = 1;
+                efRenderTenantListPagination();
+            };
+        }
+        efRenderTenantListPagination();
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', efInitTenantSearch);
+    } else {
+        efInitTenantSearch();
+    }
     </script> 
     <?php return ob_get_clean(); 
 };
@@ -994,10 +1099,12 @@ function eftm_handle_ajax_tenant_breakdown() {
             </div> 
         <?php endforeach; ?>
         
-        <div class="ef-ledger-pagination" style="display: flex; justify-content: center; align-items: center; gap: 16px; margin-top: 20px;">
+        <div class="ef-ledger-pagination" style="display: flex; justify-content: center; align-items: center; gap: 8px; margin-top: 20px;">
+            <button class="prop-nav-btn" <?php echo ($paged <= 1) ? 'disabled' : ''; ?> onclick="efLoadTenantLedgerPage(<?php echo $tenant_id; ?>, 1)">&laquo;</button>
             <button class="prop-nav-btn" <?php echo ($paged <= 1) ? 'disabled' : ''; ?> onclick="efLoadTenantLedgerPage(<?php echo $tenant_id; ?>, <?php echo $paged - 1; ?>)">&lt;</button>
             <span style="font-size: 13px; color: #64748b; font-weight: 500;">Page <?php echo $paged; ?> of <?php echo $total_pages; ?></span>
             <button class="prop-nav-btn" <?php echo ($paged >= $total_pages) ? 'disabled' : ''; ?> onclick="efLoadTenantLedgerPage(<?php echo $tenant_id; ?>, <?php echo $paged + 1; ?>)">&gt;</button>
+            <button class="prop-nav-btn" <?php echo ($paged >= $total_pages) ? 'disabled' : ''; ?> onclick="efLoadTenantLedgerPage(<?php echo $tenant_id; ?>, <?php echo $total_pages; ?>)">&raquo;</button>
         </div>
 
         <?php else : ?> 
@@ -1225,11 +1332,8 @@ echo '<a href="' . esc_url(home_url('/tenants/') . '?tenant_id=' . get_the_ID())
         var filter = input.value.toUpperCase();
         var rows = document.getElementsByClassName("tenant-row");
         for (var i = 0; i < rows.length; i++) {
-            var nameTd = rows[i].getElementsByClassName("tenant-name")[0];
-            if (nameTd) {
-                var txtValue = nameTd.textContent || nameTd.innerText;
-                rows[i].style.display = txtValue.toUpperCase().indexOf(filter) > -1 ? "" : "none";
-            }
+            var txtValue = rows[i].textContent || rows[i].innerText;
+            rows[i].style.display = txtValue.toUpperCase().indexOf(filter) > -1 ? "" : "none";
         }
     }
 
