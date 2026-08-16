@@ -52,12 +52,62 @@ if (!function_exists('ef_get_dashboard_period')) {
     }
 }
 
+if (!function_exists('ef_parse_any_date_to_ym')) {
+    function ef_parse_any_date_to_ym($date_str) {
+        if (!$date_str) return false;
+        $str = trim((string)$date_str);
+        if (preg_match('/^\d{8}$/', $str)) {
+            return substr($str, 0, 4) . '-' . substr($str, 4, 2);
+        }
+        if (strpos($str, '/') !== false) {
+            $parts = explode('/', $str);
+            if (count($parts) === 3) {
+                if (strlen($parts[0]) === 4) {
+                    $y = $parts[0]; $m = $parts[1];
+                } elseif (strlen($parts[2]) === 4) {
+                    $y = $parts[2];
+                    $m1 = intval($parts[0]); $m2 = intval($parts[1]);
+                    if ($m1 > 12) {
+                        $m = $parts[1];
+                    } elseif ($m2 > 12) {
+                        $m = $parts[0];
+                    } else {
+                        $m = $parts[0];
+                    }
+                } else {
+                    $y = date('Y'); $m = $parts[0];
+                }
+                return $y . '-' . str_pad($m, 2, '0', STR_PAD_LEFT);
+            }
+        }
+        if (preg_match('/^(\d{4})[-.\/](\d{1,2})/', $str, $matches)) {
+            return $matches[1] . '-' . str_pad($matches[2], 2, '0', STR_PAD_LEFT);
+        }
+        $ts = strtotime($str);
+        if ($ts) return date('Y-m', $ts);
+        return false;
+    }
+}
+
 if (!function_exists('ef_get_payment_period')) {
     function ef_get_payment_period($p_id) {
+        $ce = get_field('cheque_end_date', $p_id) ?: get_post_meta($p_id, 'cheque_end_date', true) ?: get_field('end_date', $p_id) ?: get_post_meta($p_id, 'end_date', true);
+        if ($ce) {
+            $ym = ef_parse_any_date_to_ym($ce);
+            if ($ym) return $ym;
+        }
+        $cs = get_field('cheque_start_date', $p_id) ?: get_post_meta($p_id, 'cheque_start_date', true);
+        if ($cs) {
+            $ym = ef_parse_any_date_to_ym($cs);
+            if ($ym) return $ym;
+        }
         $p = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true);
-        if ($p) return substr($p, 0, 7);
+        if ($p) return substr((string)$p, 0, 7);
         $d = get_field('date_of_payment', $p_id) ?: get_post_meta($p_id, 'date_of_payment', true);
-        if ($d) return date('Y-m', strtotime($d));
+        if ($d) {
+            $ym = ef_parse_any_date_to_ym($d);
+            if ($ym) return $ym;
+        }
         return get_the_date('Y-m', $p_id);
     }
 }
@@ -162,14 +212,25 @@ add_shortcode('ef_log_payment_btn', function() {
                 </div>   
             </div>   
    
-            <div class="ef-input-flex-row-2col">   
+            <div class="ef-input-flex-row-2col" style="margin-bottom: 12px;">   
                 <div class="ef-modal-input-field-group" style="margin-bottom:0;">   
-                    <label>Period (YYYY-MM)</label>   
-                    <input type="text" id="ef_log_period" value="<?php echo date('Y-m-d'); ?>" placeholder="YYYY-MM-DD" class="ef-modal-element-input">   
+                    <label>Start Date</label>   
+                    <input type="date" id="ef_log_start_date" value="<?php echo date('Y-m-d'); ?>" class="ef-modal-element-input">   
                 </div>   
                 <div class="ef-modal-input-field-group" style="margin-bottom:0;">   
-                    <label>Date</label>   
+                    <label>End Date</label>   
+                    <input type="date" id="ef_log_end_date" value="<?php echo date('Y-m-d'); ?>" class="ef-modal-element-input">   
+                </div>   
+            </div>   
+   
+            <div class="ef-input-flex-row-2col">   
+                <div class="ef-modal-input-field-group" style="margin-bottom:0;">   
+                    <label>Received Cheque Date</label>   
                     <input type="date" id="ef_log_date" value="<?php echo date('Y-m-d'); ?>" class="ef-modal-element-input">   
+                </div>   
+                <div class="ef-modal-input-field-group" style="margin-bottom:0; visibility: hidden;">   
+                    <label>Spacer</label>   
+                    <input type="text" class="ef-modal-element-input">   
                 </div>   
             </div>   
    
@@ -209,7 +270,9 @@ add_shortcode('ef_log_payment_btn', function() {
                     const year = now.getFullYear();
                     const month = String(now.getMonth() + 1).padStart(2, '0');
                     const day = String(due).padStart(2, '0');
-                    document.getElementById('ef_log_period').value = `${year}-${month}-${day}`;
+                    const val = `${year}-${month}-${day}`;
+                    document.getElementById('ef_log_start_date').value = val;
+                    document.getElementById('ef_log_end_date').value = val;
                 }
             };
         }
@@ -224,7 +287,8 @@ add_shortcode('ef_log_payment_btn', function() {
         document.getElementById('ef_log_amount').placeholder = 'Enter Amount';
         document.getElementById('ef_log_method').value = 'Bank Transfer'; 
         document.getElementById('ef_log_transaction_cheque_number').value = '';
-        document.getElementById('ef_log_period').value = '<?php echo date('Y-m-d'); ?>'; 
+        document.getElementById('ef_log_start_date').value = '<?php echo date('Y-m-d'); ?>'; 
+        document.getElementById('ef_log_end_date').value = '<?php echo date('Y-m-d'); ?>'; 
         document.getElementById('ef_log_date').value = '<?php echo date('Y-m-d'); ?>'; 
         document.getElementById('efLogPaymentGlobalModal').style.display = 'flex'; 
     } 
@@ -236,10 +300,11 @@ add_shortcode('ef_log_payment_btn', function() {
         const method = document.getElementById('ef_log_method').value;   
         const transaction_cheque_number = document.getElementById('ef_log_transaction_cheque_number').value;
         const date = document.getElementById('ef_log_date').value;   
-        const period = document.getElementById('ef_log_period').value;   
+        const cheque_start_date = document.getElementById('ef_log_start_date').value;   
+        const cheque_end_date = document.getElementById('ef_log_end_date').value;   
    
-        if(!tenant || !amount || !date || !period) {   
-            alert('Please select a tenant and enter all payment parameters (including period).');   
+        if(!tenant || !amount || !date || !cheque_start_date || !cheque_end_date) {   
+            alert('Please select a tenant and enter all payment parameters (including Start and End Dates).');   
             return;   
         }   
    
@@ -252,7 +317,8 @@ add_shortcode('ef_log_payment_btn', function() {
         fd.append('method', method);   
         fd.append('transaction_cheque_number', transaction_cheque_number);
         fd.append('date', date);   
-        fd.append('period', period);   
+        fd.append('cheque_start_date', cheque_start_date);   
+        fd.append('cheque_end_date', cheque_end_date);   
    
         fetch('<?php echo admin_url('admin-ajax.php'); ?>', { method: 'POST', body: fd })   
         .then(res => res.json())   
@@ -275,7 +341,7 @@ add_shortcode('ef_log_payment_btn', function() {
     return ob_get_clean();   
 });   
    
-function ef_internal_create_payment_record($tenant_id, $property_id, $tenant_name, $amount, $method, $ref, $date, $period, $voucher) {
+function ef_internal_create_payment_record($tenant_id, $property_id, $tenant_name, $amount, $method, $ref, $date, $period, $voucher, $cheque_start_date = '', $cheque_end_date = '') {
     $period_ts = strtotime($period . '-01');
     $post_title  = $tenant_name . ' - ' . ($period_ts ? date('M Y', $period_ts) : date('M Y', strtotime($date)));   
     $new_id = wp_insert_post([   
@@ -292,7 +358,9 @@ function ef_internal_create_payment_record($tenant_id, $property_id, $tenant_nam
             'mode_of_payment'   => $method,
             'transaction_cheque_number' => $ref,
             'receipt_voucher'   => $voucher,
-            'payment_period'    => $period
+            'payment_period'    => $period,
+            'cheque_start_date' => $cheque_start_date,
+            'cheque_end_date'   => $cheque_end_date
         ];
         foreach ($meta as $k => $v) {
             if (function_exists('update_field')) update_field($k, $v, $new_id);
@@ -315,9 +383,10 @@ function ef_callback_ajax_create_payment() {
     $method     = isset($_POST['method']) ? sanitize_text_field($_POST['method']) : 'Bank Transfer';   
     $transaction_cheque_number = isset($_POST['transaction_cheque_number']) ? sanitize_text_field($_POST['transaction_cheque_number']) : '';
     $date       = isset($_POST['date']) ? sanitize_text_field($_POST['date']) : '';   
-    $period_ui  = isset($_POST['period']) ? sanitize_text_field($_POST['period']) : ''; // YYYY-MM
+    $cheque_start_date = isset($_POST['cheque_start_date']) ? sanitize_text_field($_POST['cheque_start_date']) : '';
+    $cheque_end_date   = isset($_POST['cheque_end_date']) ? sanitize_text_field($_POST['cheque_end_date']) : '';
    
-    if (!$tenant_id || $total_amount <= 0 || !$date || !$period_ui) {   
+    if (!$tenant_id || $total_amount <= 0 || !$date || !$cheque_start_date || !$cheque_end_date) {   
         wp_send_json_error(['message' => 'Operational parameters data validation failure.']);   
     }   
 
@@ -343,17 +412,13 @@ function ef_callback_ajax_create_payment() {
     }
 
     $receipt_voucher = str_pad($next_voucher_int, 3, '0', STR_PAD_LEFT);
-    $period_key = date('Y-m', strtotime($period_ui));
+    $period_key = substr($cheque_start_date, 0, 7); // YYYY-MM
 
-    if ($tenant_end) {
-        $period_start_date = $period_key . '-01';
-        $contract_end_month_start = date('Y-m-01', strtotime($tenant_end));
-        if ($period_start_date > $contract_end_month_start) {
-            wp_send_json_error(['message' => "Payment cannot be accepted as it surpasses the tenant's contract end date ($tenant_end)."]);
-        }
+    if ($tenant_end && $cheque_end_date && $cheque_end_date > $tenant_end) {
+        wp_send_json_error(['message' => "Payment cannot be accepted as it surpasses the tenant's contract end date ($tenant_end)."]);
     }
 
-    $new_id = ef_internal_create_payment_record($tenant_id, $property_id, $tenant_name, $total_amount, $method, $transaction_cheque_number, $date, $period_key, $receipt_voucher);
+    $new_id = ef_internal_create_payment_record($tenant_id, $property_id, $tenant_name, $total_amount, $method, $transaction_cheque_number, $date, $period_key, $receipt_voucher, $cheque_start_date, $cheque_end_date);
     if ($new_id) {
         wp_send_json_success(['payment_id' => $new_id]);
     } else {
@@ -374,15 +439,18 @@ function ef_callback_ajax_update_payment() {
     $method     = isset($_POST['method']) ? sanitize_text_field($_POST['method']) : 'Bank Transfer';   
     $transaction_cheque_number = isset($_POST['transaction_cheque_number']) ? sanitize_text_field($_POST['transaction_cheque_number']) : '';
     $date       = isset($_POST['date']) ? sanitize_text_field($_POST['date']) : '';   
-    $period     = isset($_POST['period']) ? sanitize_text_field($_POST['period']) : ''; // YYYY-MM
+    $cheque_start_date = isset($_POST['cheque_start_date']) ? sanitize_text_field($_POST['cheque_start_date']) : '';
+    $cheque_end_date   = isset($_POST['cheque_end_date']) ? sanitize_text_field($_POST['cheque_end_date']) : '';
    
-    if (!$payment_id || !$tenant_id || !$amount || !$date || !$period) {   
+    if (!$payment_id || !$tenant_id || !$amount || !$date || !$cheque_start_date || !$cheque_end_date) {   
         wp_send_json_error(['message' => 'Operational parameters data validation failure.']);   
     }   
 
+    $period = substr($cheque_start_date, 0, 7); // YYYY-MM
    
     $tenant_name = get_the_title($tenant_id);   
-    $post_title  = $tenant_name . ' - ' . date('M Y', strtotime($date));   
+    $period_ts = strtotime($period . '-01');
+    $post_title  = $tenant_name . ' - ' . ($period_ts ? date('M Y', $period_ts) : date('M Y', strtotime($date)));   
    
     $updated_payment_id = wp_update_post([ 
         'ID'          => $payment_id, 
@@ -399,7 +467,9 @@ function ef_callback_ajax_update_payment() {
             'date_of_payment'   => $date,
             'mode_of_payment'   => $method,
             'transaction_cheque_number' => $transaction_cheque_number,
-            'payment_period'    => $period
+            'payment_period'    => $period,
+            'cheque_start_date' => $cheque_start_date,
+            'cheque_end_date'   => $cheque_end_date
         ];
         foreach ($meta as $k => $v) {
             if (function_exists('update_field')) update_field($k, $v, $payment_id);
@@ -577,6 +647,20 @@ if ($query->have_posts()) {
             }
         }
 
+        $cheque_start = get_field('cheque_start_date', $payment_id) ?: get_post_meta($payment_id, 'cheque_start_date', true) ?: '';
+        $cheque_end   = get_field('cheque_end_date', $payment_id) ?: get_post_meta($payment_id, 'cheque_end_date', true) ?: '';
+        
+        $period_display = '';
+        if ($cheque_start && $cheque_end) {
+            if ($cheque_start === $cheque_end) {
+                $period_display = $cheque_start;
+            } else {
+                $period_display = $cheque_start . ' to ' . $cheque_end;
+            }
+        } else {
+            $period_display = $period_val;
+        }
+
         $payments_dataset[] = [     
             'id'        => $payment_id,     
             'tenant'    => $tenant_name, 
@@ -589,7 +673,10 @@ if ($query->have_posts()) {
             'date'      => $date_format, 
             'raw_date'  => $iso_date, 
             'amount'    => $amount_val,
-            'status'    => $status_label
+            'status'    => $status_label,
+            'cheque_start_date' => $cheque_start,
+            'cheque_end_date'   => $cheque_end,
+            'period_display'    => $period_display
         ];     
     }     
     wp_reset_postdata();     
@@ -703,12 +790,12 @@ ob_start();
             <tr>     
                 <th>Tenant</th>     
                 <th>Property</th>     
-                <th>Period</th>     
+                <th>Start Date</th>     
+                <th>End Date</th>     
                 <th>Method</th>     
                 <th>Ref/Cheque No.</th>
                 <th>Date</th>     
                 <th>Amount</th>     
-                <th>Status</th>
                 <th style="text-align: right;">Actions</th>     
             </tr>     
         </thead>     
@@ -721,14 +808,28 @@ ob_start();
     <div id="efLedgerDataEmptyState" class="ef-ledger-empty-state-notice" style="display:none;">     
         No verified ledger transaction records match your parameters.     
     </div>     
+
+    <div class="ef-ledger-pagination" id="efLedgerPaginationControls" style="display: flex; justify-content: center; align-items: center; gap: 8px; margin-top: 20px;">
+        <button id="ef-ledger-first-btn" class="prop-nav-btn">&laquo;</button>
+        <button id="ef-ledger-prev-btn" class="prop-nav-btn">&lt;</button>
+        <span id="ef-ledger-page-info" style="font-size: 13px; color: #64748b; font-weight: 500;">Page 1 of 1</span>
+        <button id="ef-ledger-next-btn" class="prop-nav-btn">&gt;</button>
+        <button id="ef-ledger-last-btn" class="prop-nav-btn">&raquo;</button>
+    </div>
 </div>     
    
 <script>     
 const efLedgerSourcePayload = <?php echo $json_payload; ?>;     
-   
-const efGlobalLogoBase64 = "https://estateflow.digital/wp-content/uploads/2026/06/cropped-estate.png"     
-   
-function efProcessLedgerQueryMatrix() {     
+const efGlobalLogoBase64 = "https://estateflow.digital/wp-content/uploads/2026/06/cropped-estate.png";
+
+let efLedgerCurrentPage = 1;
+const efLedgerItemsPerPage = 50;
+
+function efProcessLedgerQueryMatrix(resetPage = true) {     
+    if (resetPage) {
+        efLedgerCurrentPage = 1;
+    }
+
     const queryStr = document.getElementById('efLedgerInputSearch').value.toLowerCase();     
     const selTenant = document.getElementById('efLedgerSelectTenant').value;     
     const selMethod = document.getElementById('efLedgerSelectMethod').value;     
@@ -738,10 +839,9 @@ function efProcessLedgerQueryMatrix() {
     const fallbackEl = document.getElementById('efLedgerDataEmptyState');     
    
     outputBody.innerHTML = '';     
-    let matchCount = 0;     
     let revenueAccumulator = 0;     
-   
-    efLedgerSourcePayload.forEach(entry => {     
+    
+    const matchingEntries = efLedgerSourcePayload.filter(entry => {
         const matchSearch = !queryStr ||      
                             entry.tenant.toLowerCase().includes(queryStr) ||      
                             entry.property.toLowerCase().includes(queryStr) ||      
@@ -751,60 +851,102 @@ function efProcessLedgerQueryMatrix() {
         const matchTenant = !selTenant || entry.tenant === selTenant;     
         const matchMethod = !selMethod || entry.method === selMethod;     
         const matchPeriod = !selPeriod || entry.period === selPeriod;     
-   
-        if (matchSearch && matchTenant && matchMethod && matchPeriod) {     
-            matchCount++;     
-            revenueAccumulator += entry.amount;     
-   
-            const rowHtml = document.createElement('tr');     
-            if (entry.tenant === 'Out of contract') {
-                rowHtml.style.backgroundColor = '#ff9393';
-            } else if (entry.status === 'Partial') {
-                rowHtml.style.backgroundColor = 'rgb(253 248 195)';
-            }
-            
-            const statusClass = entry.status === 'Paid' ? 'status-paid' : 'status-partial';
 
-            rowHtml.innerHTML = `     
-                <td class="ef-cell-bold-tenant">${efEscapeOutputChar(entry.tenant)}</td>     
-                <td style="color: #475569;">${efEscapeOutputChar(entry.property)}</td>     
-                <td><span class="ef-badge-pill-period">${efEscapeOutputChar(entry.period)}</span></td>     
-                <td style="color: #475569;">${efEscapeOutputChar(entry.method)}</td>     
-                <td style="color: #475569;">${efEscapeOutputChar(entry.transaction_cheque_number)}</td>
-                <td style="color: #475569;">${efEscapeOutputChar(entry.date)}</td>     
-                <td class="ef-cell-accent-currency-green">AED ${Number(entry.amount).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>     
-                <td><div class="ef-payment-status-badge ${statusClass}">${efEscapeOutputChar(entry.status)}</div></td>
-                <td style="text-align: right;">     
-                     <button class="ef-btn-receipt" title="Download PDF" 
-                        data-ref="${entry.receipt_voucher || ('REC-' + String(entry.id).padStart(6, '0'))}" 
-                        data-tenant="${efEscapeOutputChar(entry.tenant)}" 
-                        data-prop="${efEscapeOutputChar(entry.property)}" 
-                        data-date="${entry.date}" 
-                        data-period="${entry.period}" 
-                        data-method="${entry.method}" 
-                        data-cheque="${entry.transaction_cheque_number || ''}" 
-                        data-amount="${Number(entry.amount).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}">     
-                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-top:-2px;">
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-        <polyline points="7 10 12 15 17 10"></polyline>
-        <line x1="12" y1="15" x2="12" y2="3"></line>
-    </svg>     
-                    </button>  
-     
-                    <button class="ef-btn-row-action" title="Edit" onclick='efEditTransaction(${entry.id})'> 
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="display:inline-block; vertical-align:middle; margin-top:-2px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg> 
-                    </button> 
-                    <button class="ef-btn-row-action delete" title="Delete" onclick='efDeleteTransaction(${entry.id})'> 
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="display:inline-block; vertical-align:middle; margin-top:-2px;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg> 
-                    </button> 
-                </td>     
-            `;     
-            outputBody.appendChild(rowHtml);     
-        }     
+        if (matchSearch && matchTenant && matchMethod && matchPeriod) {
+            revenueAccumulator += entry.amount;
+            return true;
+        }
+        return false;
+    });
+
+    const totalMatches = matchingEntries.length;
+    const totalPages = Math.ceil(totalMatches / efLedgerItemsPerPage) || 1;
+
+    if (efLedgerCurrentPage > totalPages) {
+        efLedgerCurrentPage = totalPages;
+    }
+
+    const startIndex = (efLedgerCurrentPage - 1) * efLedgerItemsPerPage;
+    const endIndex = startIndex + efLedgerItemsPerPage;
+    const pagedEntries = matchingEntries.slice(startIndex, endIndex);
+
+    pagedEntries.forEach(entry => {     
+        const rowHtml = document.createElement('tr');     
+        if (entry.tenant === 'Out of contract') {
+            rowHtml.style.backgroundColor = '#ff9393';
+        } else if (entry.status === 'Partial') {
+            rowHtml.style.backgroundColor = 'rgb(253 248 195)';
+        }
+        
+        rowHtml.innerHTML = `     
+            <td class="ef-cell-bold-tenant">${efEscapeOutputChar(entry.tenant)}</td>     
+            <td style="color: #475569;">${efEscapeOutputChar(entry.property)}</td>     
+            <td style="color: #475569;">${efEscapeOutputChar(entry.cheque_start_date || entry.raw_date)}</td>     
+            <td style="color: #475569;">${efEscapeOutputChar(entry.cheque_end_date || entry.raw_date)}</td>     
+            <td style="color: #475569;">${efEscapeOutputChar(entry.method)}</td>     
+            <td style="color: #475569;">${efEscapeOutputChar(entry.transaction_cheque_number)}</td>
+            <td style="color: #475569;">${efEscapeOutputChar(entry.date)}</td>     
+            <td class="ef-cell-accent-currency-green">AED ${Number(entry.amount).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>     
+            <td style="text-align: right;">     
+                 <button class="ef-btn-receipt" title="Download PDF" 
+                    data-ref="${entry.receipt_voucher || ('REC-' + String(entry.id).padStart(6, '0'))}" 
+                    data-tenant="${efEscapeOutputChar(entry.tenant)}" 
+                    data-prop="${efEscapeOutputChar(entry.property)}" 
+                    data-date="${entry.date}" 
+                    data-period="${entry.period_display || entry.period}" 
+                    data-method="${entry.method}" 
+                    data-cheque="${entry.transaction_cheque_number || ''}" 
+                    data-amount="${Number(entry.amount).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}">     
+                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-top:-2px;">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+    <polyline points="7 10 12 15 17 10"></polyline>
+    <line x1="12" y1="15" x2="12" y2="3"></line>
+</svg>     
+                </button>  
+ 
+                <button class="ef-btn-row-action" title="Edit" onclick='efEditTransaction(${entry.id})'> 
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="display:inline-block; vertical-align:middle; margin-top:-2px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg> 
+                </button> 
+                <button class="ef-btn-row-action delete" title="Delete" onclick='efDeleteTransaction(${entry.id})'> 
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="display:inline-block; vertical-align:middle; margin-top:-2px;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg> 
+                </button> 
+            </td>     
+        `;     
+        outputBody.appendChild(rowHtml);     
     });     
    
-    document.getElementById('efLedgerCounterDisplay').innerHTML = `${matchCount} results • <span>AED ${revenueAccumulator.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>`;     
-    fallbackEl.style.display = (matchCount === 0) ? 'block' : 'none';     
+    document.getElementById('efLedgerCounterDisplay').innerHTML = `${totalMatches} results • <span>AED ${revenueAccumulator.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>`;     
+    fallbackEl.style.display = (totalMatches === 0) ? 'block' : 'none';     
+    
+    // Update pagination UI controls
+    const paginationControls = document.getElementById('efLedgerPaginationControls');
+    if (paginationControls) {
+        paginationControls.style.display = (totalPages <= 1 && totalMatches === 0) ? 'none' : 'flex';
+        const pageInfo = document.getElementById('ef-ledger-page-info');
+        const firstBtn = document.getElementById('ef-ledger-first-btn');
+        const prevBtn  = document.getElementById('ef-ledger-prev-btn');
+        const nextBtn  = document.getElementById('ef-ledger-next-btn');
+        const lastBtn  = document.getElementById('ef-ledger-last-btn');
+
+        if (pageInfo) pageInfo.textContent = `Page ${efLedgerCurrentPage} of ${totalPages}`;
+        if (firstBtn) {
+            firstBtn.disabled = efLedgerCurrentPage <= 1;
+            firstBtn.onclick = () => { if (efLedgerCurrentPage > 1) { efLedgerCurrentPage = 1; efProcessLedgerQueryMatrix(false); } };
+        }
+        if (prevBtn) {
+            prevBtn.disabled = efLedgerCurrentPage <= 1;
+            prevBtn.onclick = () => { if (efLedgerCurrentPage > 1) { efLedgerCurrentPage--; efProcessLedgerQueryMatrix(false); } };
+        }
+        if (nextBtn) {
+            nextBtn.disabled = efLedgerCurrentPage >= totalPages;
+            nextBtn.onclick = () => { if (efLedgerCurrentPage < totalPages) { efLedgerCurrentPage++; efProcessLedgerQueryMatrix(false); } };
+        }
+        if (lastBtn) {
+            lastBtn.disabled = efLedgerCurrentPage >= totalPages;
+            lastBtn.onclick = () => { if (efLedgerCurrentPage < totalPages) { efLedgerCurrentPage = totalPages; efProcessLedgerQueryMatrix(false); } };
+        }
+    }
+
     if (window.attachReceiptEvents) window.attachReceiptEvents();
 }     
    
@@ -830,7 +972,8 @@ function efEditTransaction(id) {
     document.getElementById('ef_log_amount').value = entry.amount; 
     document.getElementById('ef_log_method').value = entry.method; 
     document.getElementById('ef_log_transaction_cheque_number').value = entry.transaction_cheque_number || '';
-    document.getElementById('ef_log_period').value = entry.period; 
+    document.getElementById('ef_log_start_date').value = entry.cheque_start_date || entry.raw_date; 
+    document.getElementById('ef_log_end_date').value = entry.cheque_end_date || entry.raw_date; 
     document.getElementById('ef_log_date').value = entry.raw_date; 
  
     document.getElementById('efLogPaymentGlobalModal').style.display = 'flex'; 
