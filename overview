@@ -834,7 +834,7 @@ add_shortcode('ef_recent_payments_widget', function() {
                  
                 $raw_date = get_field('date_of_payment', $pay_id); 
                 $display_date = $raw_date ? date('j/n/Y', strtotime($raw_date)) : get_the_date('j/n/Y'); 
-                $period = $raw_date ? date('Y-m', strtotime($raw_date)) : get_the_date('Y-m'); 
+                $period = ef_get_payment_period($pay_id);
             ?> 
                 <div class="ef-recent-row"> 
                     <div class="ef-recent-avatar-box"> 
