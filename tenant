@@ -60,14 +60,62 @@ if (!function_exists('ef_get_payment_tenant_id')) {
     }
 }
 
+if (!function_exists('ef_parse_any_date_to_ym')) {
+    function ef_parse_any_date_to_ym($date_str) {
+        if (!$date_str) return false;
+        $str = trim((string)$date_str);
+        if (preg_match('/^\d{8}$/', $str)) {
+            return substr($str, 0, 4) . '-' . substr($str, 4, 2);
+        }
+        if (strpos($str, '/') !== false) {
+            $parts = explode('/', $str);
+            if (count($parts) === 3) {
+                if (strlen($parts[0]) === 4) {
+                    $y = $parts[0]; $m = $parts[1];
+                } elseif (strlen($parts[2]) === 4) {
+                    $y = $parts[2];
+                    $m1 = intval($parts[0]); $m2 = intval($parts[1]);
+                    if ($m1 > 12) {
+                        $m = $parts[1];
+                    } elseif ($m2 > 12) {
+                        $m = $parts[0];
+                    } else {
+                        $m = $parts[0];
+                    }
+                } else {
+                    $y = date('Y'); $m = $parts[0];
+                }
+                return $y . '-' . str_pad($m, 2, '0', STR_PAD_LEFT);
+            }
+        }
+        if (preg_match('/^(\d{4})[-.\/](\d{1,2})/', $str, $matches)) {
+            return $matches[1] . '-' . str_pad($matches[2], 2, '0', STR_PAD_LEFT);
+        }
+        $ts = strtotime($str);
+        if ($ts) return date('Y-m', $ts);
+        return false;
+    }
+}
+
 if (!function_exists('ef_get_payment_period')) {
     function ef_get_payment_period($p_id) {
+        $ce = get_field('cheque_end_date', $p_id) ?: get_post_meta($p_id, 'cheque_end_date', true) ?: get_field('end_date', $p_id) ?: get_post_meta($p_id, 'end_date', true);
+        if ($ce) {
+            $ym = ef_parse_any_date_to_ym($ce);
+            if ($ym) return $ym;
+        }
         $cs = get_field('cheque_start_date', $p_id) ?: get_post_meta($p_id, 'cheque_start_date', true);
-        if ($cs) return date('Y-m', strtotime($cs));
+        if ($cs) {
+            $ym = ef_parse_any_date_to_ym($cs);
+            if ($ym) return $ym;
+        }
         $p = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true);
-        if ($p) return substr($p, 0, 7);
+        if ($p) return substr((string)$p, 0, 7);
         $d = get_field('date_of_payment', $p_id) ?: get_post_meta($p_id, 'date_of_payment', true);
-        if ($d) return date('Y-m', strtotime($d));
+        if ($d) {
+            $ym = ef_parse_any_date_to_ym($d);
+            if ($ym) return $ym;
+        }
         return get_the_date('Y-m', $p_id);
     }
 }
