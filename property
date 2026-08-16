@@ -90,22 +90,61 @@ if (!function_exists('ef_get_payment_property_id')) {
     }
 }
 
+if (!function_exists('ef_parse_any_date_to_ym')) {
+    function ef_parse_any_date_to_ym($date_str) {
+        if (!$date_str) return false;
+        $str = trim((string)$date_str);
+        if (preg_match('/^\d{8}$/', $str)) {
+            return substr($str, 0, 4) . '-' . substr($str, 4, 2);
+        }
+        if (strpos($str, '/') !== false) {
+            $parts = explode('/', $str);
+            if (count($parts) === 3) {
+                if (strlen($parts[0]) === 4) {
+                    $y = $parts[0]; $m = $parts[1];
+                } elseif (strlen($parts[2]) === 4) {
+                    $y = $parts[2];
+                    $m1 = intval($parts[0]); $m2 = intval($parts[1]);
+                    if ($m1 > 12) {
+                        $m = $parts[1];
+                    } elseif ($m2 > 12) {
+                        $m = $parts[0];
+                    } else {
+                        $m = $parts[0];
+                    }
+                } else {
+                    $y = date('Y'); $m = $parts[0];
+                }
+                return $y . '-' . str_pad($m, 2, '0', STR_PAD_LEFT);
+            }
+        }
+        if (preg_match('/^(\d{4})[-.\/](\d{1,2})/', $str, $matches)) {
+            return $matches[1] . '-' . str_pad($matches[2], 2, '0', STR_PAD_LEFT);
+        }
+        $ts = strtotime($str);
+        if ($ts) return date('Y-m', $ts);
+        return false;
+    }
+}
+
 if (!function_exists('ef_get_payment_period')) {
     function ef_get_payment_period($p_id) {
+        $ce = get_field('cheque_end_date', $p_id) ?: get_post_meta($p_id, 'cheque_end_date', true) ?: get_field('end_date', $p_id) ?: get_post_meta($p_id, 'end_date', true);
+        if ($ce) {
+            $ym = ef_parse_any_date_to_ym($ce);
+            if ($ym) return $ym;
+        }
+        $cs = get_field('cheque_start_date', $p_id) ?: get_post_meta($p_id, 'cheque_start_date', true);
+        if ($cs) {
+            $ym = ef_parse_any_date_to_ym($cs);
+            if ($ym) return $ym;
+        }
         $p = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true);
         if ($p) return substr((string)$p, 0, 7);
         $d = get_field('date_of_payment', $p_id) ?: get_post_meta($p_id, 'date_of_payment', true);
         if ($d) {
-            $d = (string)$d;
-            if (strpos($d, '/') !== false) {
-                $parts = explode('/', $d);
-                if (count($parts) === 3) {
-                    if (strlen($parts[2]) === 4) return "$parts[2]-" . str_pad($parts[1], 2, '0', STR_PAD_LEFT);
-                    if (strlen($parts[0]) === 4) return "$parts[0]-" . str_pad($parts[1], 2, '0', STR_PAD_LEFT);
-                }
-            }
-            $ts = strtotime($d);
-            if ($ts) return date('Y-m', $ts);
+            $ym = ef_parse_any_date_to_ym($d);
+            if ($ym) return $ym;
         }
         return get_the_date('Y-m', $p_id);
     }
@@ -480,10 +519,12 @@ add_shortcode('properties_page_grid', function() {
         <div id="properties-dashboard-grid" class="properties-dashboard-grid"> 
             <div class="properties-page-empty-state"><p>Loading properties...</p></div> 
         </div> 
-        <div class="properties-dashboard-nav"> 
-            <button id="prev-page" class="prop-nav-btn" disabled>Previous</button> 
+        <div class="properties-dashboard-nav" style="display: flex; gap: 6px; align-items: center; justify-content: center; flex-wrap: wrap; margin-top: 15px;"> 
+            <button id="first-page" class="prop-nav-btn" disabled>&laquo;</button>
+            <button id="prev-page" class="prop-nav-btn" disabled>&lt;</button> 
             <span id="page-info">Page 1 of 1</span> 
-            <button id="next-page" class="prop-nav-btn" disabled>Next</button> 
+            <button id="next-page" class="prop-nav-btn" disabled>&gt;</button> 
+            <button id="last-page" class="prop-nav-btn" disabled>&raquo;</button>
         </div> 
     </div> 
     <?php return ob_get_clean(); 
@@ -580,8 +621,10 @@ add_action('wp_footer', function() { ?>
  
         let curPage = 1, allData = []; 
         const pageInfo = document.getElementById('page-info'); 
+        const firstBtn = document.getElementById('first-page');
         const prevBtn = document.getElementById('prev-page'); 
         const nextBtn = document.getElementById('next-page'); 
+        const lastBtn = document.getElementById('last-page');
  
         const setActiveById = (id) => { 
             if (!grid) return; 
@@ -675,8 +718,10 @@ add_action('wp_footer', function() { ?>
             }); 
  
             if(pageInfo) pageInfo.textContent = `Page ${curPage} of ${totalPages}`; 
+            if(firstBtn) firstBtn.disabled = curPage === 1;
             if(prevBtn) prevBtn.disabled = curPage === 1; 
             if(nextBtn) nextBtn.disabled = curPage >= totalPages; 
+            if(lastBtn) lastBtn.disabled = curPage >= totalPages;
         }; 
  
                 const dashboardData = new FormData(); 
@@ -713,8 +758,10 @@ add_action('wp_footer', function() { ?>
                     } 
                 }); 
  
+        if(firstBtn) firstBtn.onclick = () => { if (curPage>1) { curPage = 1; render(); } };
         if(prevBtn) prevBtn.onclick = () => { if (curPage>1) { curPage--; render(); } }; 
-        if(nextBtn) nextBtn.onclick = () => { curPage++; render(); }; 
+        if(nextBtn) nextBtn.onclick = () => { const totalPages = Math.ceil(allData.length / 5) || 1; if (curPage < totalPages) { curPage++; render(); } }; 
+        if(lastBtn) lastBtn.onclick = () => { const totalPages = Math.ceil(allData.length / 5) || 1; if (curPage < totalPages) { curPage = totalPages; render(); } };
  
         const detailsContainer = document.getElementById('properties-page-details'); 
         const sidebar = document.getElementById('properties-sidebar'); 
