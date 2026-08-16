@@ -1,4 +1,64 @@
 if (!defined('ABSPATH')) exit;
+if (!function_exists('ef_parse_any_date_to_ym')) {
+    function ef_parse_any_date_to_ym($date_str) {
+        if (!$date_str) return false;
+        $str = trim((string)$date_str);
+        if (preg_match('/^\d{8}$/', $str)) {
+            return substr($str, 0, 4) . '-' . substr($str, 4, 2);
+        }
+        if (strpos($str, '/') !== false) {
+            $parts = explode('/', $str);
+            if (count($parts) === 3) {
+                if (strlen($parts[0]) === 4) {
+                    $y = $parts[0]; $m = $parts[1];
+                } elseif (strlen($parts[2]) === 4) {
+                    $y = $parts[2];
+                    $m1 = intval($parts[0]); $m2 = intval($parts[1]);
+                    if ($m1 > 12) {
+                        $m = $parts[1];
+                    } elseif ($m2 > 12) {
+                        $m = $parts[0];
+                    } else {
+                        $m = $parts[0];
+                    }
+                } else {
+                    $y = date('Y'); $m = $parts[0];
+                }
+                return $y . '-' . str_pad($m, 2, '0', STR_PAD_LEFT);
+            }
+        }
+        if (preg_match('/^(\d{4})[-.\/](\d{1,2})/', $str, $matches)) {
+            return $matches[1] . '-' . str_pad($matches[2], 2, '0', STR_PAD_LEFT);
+        }
+        $ts = strtotime($str);
+        if ($ts) return date('Y-m', $ts);
+        return false;
+    }
+}
+
+if (!function_exists('ef_get_payment_report_period')) {
+    function ef_get_payment_report_period($p_id) {
+        $ce = get_field('cheque_end_date', $p_id) ?: get_post_meta($p_id, 'cheque_end_date', true) ?: get_field('end_date', $p_id) ?: get_post_meta($p_id, 'end_date', true);
+        if ($ce) {
+            $ym = ef_parse_any_date_to_ym($ce);
+            if ($ym) return $ym;
+        }
+        $cs = get_field('cheque_start_date', $p_id) ?: get_post_meta($p_id, 'cheque_start_date', true);
+        if ($cs) {
+            $ym = ef_parse_any_date_to_ym($cs);
+            if ($ym) return $ym;
+        }
+        $p = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true);
+        if ($p) return substr((string)$p, 0, 7);
+        $d = get_field('date_of_payment', $p_id) ?: get_post_meta($p_id, 'date_of_payment', true);
+        if ($d) {
+            $ym = ef_parse_any_date_to_ym($d);
+            if ($ym) return $ym;
+        }
+        return get_the_date('Y-m', $p_id);
+    }
+}
+
 if (!function_exists('ef_get_tenant_due_day')) {
     function ef_get_tenant_due_day($t_id) {
         $d = get_field('rent_due_day', $t_id) ?: get_field('due_day', $t_id) ?: get_post_meta($t_id, 'rent_due_day', true) ?: get_post_meta($t_id, 'due_day', true);
@@ -184,7 +244,7 @@ add_shortcode('monthly_breakdown', function() {
             while ($p_query->have_posts()) { 
                 $p_query->the_post(); 
                 $pay_id = get_the_ID();
-                $period = get_field('payment_period', $pay_id) ?: get_post_meta($pay_id, 'payment_period', true) ?: get_the_date('Y-m', $pay_id);
+                $period = ef_get_payment_report_period($pay_id);
                 if (strpos($period, $period_match) === 0) {
                     $pay_val = get_field('amount_paid', $pay_id) ?: get_post_meta($pay_id, 'amount_paid', true); 
                     if ($pay_val) { 
@@ -233,9 +293,6 @@ add_shortcode('monthly_breakdown', function() {
                     <tr> 
                         <th>Month</th> 
                         <th class="ef-col-right">Revenue Collected</th> 
-                        <th class="ef-col-right">Expected Rent</th> 
-                        <th class="ef-col-right">Remaining Gap</th> 
-                        <th class="ef-col-right">Collection Rate</th> 
                     </tr> 
                 </thead> 
                 <tbody> 
@@ -243,11 +300,6 @@ add_shortcode('monthly_breakdown', function() {
                     <tr> 
                         <td class="ef-txt-bold" style="color: #0f172a;"><?php echo $data['label']; ?></td> 
                         <td class="ef-col-right ef-txt-bold ef-brand-success">AED <?php echo number_format($data['revenue'], 2); ?></td> 
-                        <td class="ef-col-right ef-brand-muted">AED <?php echo number_format($data['expected'], 2); ?></td> 
-                        <td class="ef-col-right <?php echo ($data['gap'] > 0) ? 'ef-brand-danger ef-txt-bold' : 'ef-brand-muted'; ?>"> 
-                            AED <?php echo number_format($data['gap'], 2); ?> 
-                        </td> 
-                        <td class="ef-col-right ef-txt-bold" style="color: #0f172a;"><?php echo $data['rate']; ?></td> 
                     </tr> 
                     <?php endforeach; ?> 
                 </tbody> 
@@ -299,17 +351,6 @@ add_shortcode('monthly_breakdown', function() {
     }); 
     </script> 
     
-    <div class="ef-breakdown-wrapper" style="margin-top: 24px;">
-        <div class="ef-breakdown-header" style="flex-direction: row; justify-content: space-between; align-items: center;">
-            <h3 class="ef-breakdown-title">Annual Collection Rate</h3>
-            <div class="ef-live-badge" style="background: #e6fffa; color: #234e52; border: 1px solid #b2f5ea; padding: 4px 12px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600;">Yearly</div>
-        </div>
-        <div style="font-size: 32px; font-weight: 800; color: #00a86b; margin-top: 12px;">
-            <?php echo do_shortcode('[collected_rate_final]'); ?>
-        </div>
-        <div style="font-size: 14px; color: #64748b; margin-top: 4px;">Overall collection performance based on fully paid tenant-months across all properties.</div>
-    </div>
- 
     <?php 
     return ob_get_clean(); 
 });
@@ -354,7 +395,7 @@ add_shortcode('ef_monthly_breakdown', function() {
             while ($p_query->have_posts()) {
                 $p_query->the_post();
                 $p_id = get_the_ID();
-                $period = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true) ?: get_the_date('Y-m', $p_id);
+                $period = ef_get_payment_report_period($p_id);
                 if (strpos($period, $period_match) === 0) {
                     $pay_val = get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true);
                     if ($pay_val) { $revenue_collected += floatval($pay_val); }
@@ -397,9 +438,6 @@ add_shortcode('ef_monthly_breakdown', function() {
                 <tr style="background: #f1f3f5; border-bottom: 1px solid #dee2e6; text-align: left;">
                     <th style="padding: 12px;">Month</th>
                     <th style="padding: 12px; text-align: right;">Revenue</th>
-                    <th style="padding: 12px; text-align: right; color: #6c757d;">Expected</th>
-                    <th style="padding: 12px; text-align: right; color: #b21f1f;">Gap</th>
-                    <th style="padding: 12px; text-align: right;">Rate</th>
                 </tr>
             </thead>
             <tbody>
@@ -407,9 +445,6 @@ add_shortcode('ef_monthly_breakdown', function() {
                 <tr style="border-bottom: 1px solid #f1f3f5;">
                     <td style="padding: 12px; font-weight: 500;"><?php echo $data['label']; ?></td>
                     <td style="padding: 12px; text-align: right; color: #2b8a3e; font-weight: bold;">$<?php echo number_format($data['revenue'], 2); ?></td>
-                    <td style="padding: 12px; text-align: right; color: #6c757d;">$<?php echo number_format($data['expected'], 2); ?></td>
-                    <td style="padding: 12px; text-align: right; color: #c92a2a;">$<?php echo number_format($data['gap'], 2); ?></td>
-                    <td style="padding: 12px; text-align: right;"><?php echo $data['rate']; ?></td>
                 </tr>
                 <?php endforeach; ?>
             </tbody>
@@ -495,7 +530,7 @@ function ef_handle_report_export_download() {
             while ($p_query->have_posts()) {
                 $p_query->the_post();
                 $p_id = get_the_ID();
-                $period = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true) ?: get_the_date('Y-m', $p_id);
+                $period = ef_get_payment_report_period($p_id);
                 if (strpos($period, $period_match) === 0) {
                     $pay_val = get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true);
                     if ($pay_val) { $collected_monthly += floatval($pay_val); }
@@ -536,15 +571,12 @@ function ef_handle_report_export_download() {
         fputcsv($output, array('ESTATEFLOW ANNUAL SUMMARY (' . $year . ')'));
         fputcsv($output, array('Metric Name', 'Calculated Value'));
         fputcsv($output, array('Total Yearly Revenue Collected', '$' . number_format($total_yearly_revenue, 2)));
-        fputcsv($output, array('Total Yearly Expected Revenue', '$' . number_format($total_yearly_expected, 2)));
-        fputcsv($output, array('Total Outstanding Yearly Gap', '$' . number_format($total_yearly_gap, 2)));
-        fputcsv($output, array('Yearly Collection Rate Percentage', $total_yearly_rate . '%'));
         fputcsv($output, array()); 
 
         fputcsv($output, array('MONTH-BY-MONTH DETAILED REVENUE TABLE'));
-        fputcsv($output, array('Month Period', 'Monthly Revenue ($)', 'Expected Monthly Revenue ($)', 'Outstanding Gap ($)', 'Percentage Collected'));
+        fputcsv($output, array('Month Period', 'Monthly Revenue ($)'));
         foreach ($report_rows as $row) {
-            fputcsv($output, array($row['month'], $row['revenue'], $row['expected'], $row['gap'], $row['rate']));
+            fputcsv($output, array($row['month'], $row['revenue']));
         }
         fclose($output);
         exit;
@@ -581,21 +613,9 @@ function ef_handle_report_export_download() {
             <h4 style="color:#1e293b; font-family:helvetica; font-size:11pt; text-transform:uppercase; font-weight:bold; letter-spacing:0.5px; margin-bottom:10px;">Executive Summary Key Performance Indicators</h4>
             <table cellspacing="0" cellpadding="12" style="width:100%; font-family:helvetica; margin-bottom:25px;">
                 <tr>
-                    <td style="background-color:#f1f5f9; border:1px solid #cbd5e1; text-align:center; width:25%; border-radius:4px;">
+                    <td style="background-color:#f1f5f9; border:1px solid #cbd5e1; text-align:center; width:100%; border-radius:4px;">
                         <span style="font-size:8pt; font-weight:bold; color:#475569;">TOTAL REVENUE</span><br><br>
                         <strong style="font-size:14pt; color:#0f766e;">$' . number_format($total_yearly_revenue, 2) . '</strong>
-                    </td>
-                    <td style="background-color:#f1f5f9; border:1px solid #cbd5e1; text-align:center; width:25%; border-radius:4px;">
-                        <span style="font-size:8pt; font-weight:bold; color:#475569;">EXPECTED GROSS</span><br><br>
-                        <strong style="font-size:14pt; color:#1e40af;">$' . number_format($total_yearly_expected, 2) . '</strong>
-                    </td>
-                    <td style="background-color:#f1f5f9; border:1px solid #cbd5e1; text-align:center; width:25%; border-radius:4px;">
-                        <span style="font-size:8pt; font-weight:bold; color:#475569;">OUTSTANDING GAP</span><br><br>
-                        <strong style="font-size:14pt; color:#991b1b;">$' . number_format($total_yearly_gap, 2) . '</strong>
-                    </td>
-                    <td style="background-color:#1e293b; border:1px solid #0f172a; text-align:center; width:25%; border-radius:4px;">
-                        <span style="font-size:8pt; font-weight:bold; color:#94a3b8;">COLLECTION RATE</span><br><br>
-                        <strong style="font-size:14pt; color:#ffffff;">' . $total_yearly_rate . '%</strong>
                     </td>
                 </tr>
             </table>
@@ -605,11 +625,8 @@ function ef_handle_report_export_download() {
             <table cellpadding="10" cellspacing="0" style="width:100%; font-family:helvetica; font-size:10pt; border:1px solid #cbd5e1;">
                 <thead>
                     <tr style="background-color:#1e293b; color:#ffffff; font-weight:bold;">
-                        <th width="24%" style="font-weight:bold;">Reporting Month</th>
-                        <th width="19%" align="right" style="font-weight:bold;">Revenue Collected</th>
-                        <th width="19%" align="right" style="font-weight:bold;">Target Expected</th>
-                        <th width="19%" align="right" style="font-weight:bold;">Outstanding Gap</th>
-                        <th width="19%" align="center" style="font-weight:bold;">Collection Rate</th>
+                        <th width="60%" style="font-weight:bold;">Reporting Month</th>
+                        <th width="40%" align="right" style="font-weight:bold;">Revenue Collected</th>
                     </tr>
                 </thead>
                 <tbody>';
@@ -618,18 +635,12 @@ function ef_handle_report_export_download() {
                 $html .= '<tr style="border-bottom:1px solid #e2e8f0;">
                     <td style="color:#0f172a; font-weight:bold;">' . $row['month'] . '</td>
                     <td align="right" style="color:#0f766e; font-weight:bold;">$' . number_format($row['revenue'], 2) . '</td>
-                    <td align="right" style="color:#475569;">$' . number_format($row['expected'], 2) . '</td>
-                    <td align="right" style="color:#b91c1c; font-weight:bold;">$' . number_format($row['gap'], 2) . '</td>
-                    <td align="center" style="color:#1e293b; font-weight:bold;">' . $row['rate'] . '</td>
                 </tr>';
             }
             $html .= '
                 <tr style="background-color:#f8fafc; font-weight:bold; border-top:2px solid #1e293b;">
                     <td style="color:#0f172a; font-weight:bold;">Total Summary</td>
                     <td align="right" style="color:#0f766e; font-weight:bold;">$' . number_format($total_yearly_revenue, 2) . '</td>
-                    <td align="right" style="color:#475569; font-weight:bold;">$' . number_format($total_yearly_expected, 2) . '</td>
-                    <td align="right" style="color:#b91c1c; font-weight:bold;">$' . number_format($total_yearly_gap, 2) . '</td>
-                    <td align="center" style="color:#ffffff; background-color:#1e293b; font-weight:bold;">' . $total_yearly_rate . '%</td>
                 </tr>
             </tbody></table>
 
@@ -673,9 +684,6 @@ function ef_handle_report_export_download() {
         $stream .= "/FB 11 Tf 50 705 Td (EXECUTIVE SUMMARY METRICS) Tj\n";
         $stream .= "/FR 10 Tf\n";
         $stream .= "0 -25 Td (Total Yearly Revenue Collected:) Tj /FB 10 Tf 200 0 Td (\$" . number_format($total_yearly_revenue, 2) . ") Tj\n";
-        $stream .= "/FR 10 Tf -200 -18 Td (Total Yearly Target Expected:) Tj /FB 10 Tf 200 0 Td (\$" . number_format($total_yearly_expected, 2) . ") Tj\n";
-        $stream .= "/FR 10 Tf -200 -18 Td (Total Outstanding Fiscal Gap:) Tj /FB 10 Tf 200 0 Td (\$" . number_format($total_yearly_gap, 2) . ") Tj\n";
-        $stream .= "/FR 10 Tf -200 -18 Td (Global Annual Collection Rate:) Tj /FB 10 Tf 200 0 Td (" . $total_yearly_rate . "%) Tj\n";
         $stream .= "ET\n";
 
         $stream .= "0.5 w 50 610 m 545 610 l S\n";
@@ -685,10 +693,7 @@ function ef_handle_report_export_download() {
 
         $stream .= "/FB 9 Tf\n";
         $stream .= "0 -30 Td (Reporting Month) Tj\n";
-        $stream .= "140 0 Td (Revenue) Tj\n";
-        $stream .= "110 0 Td (Expected) Tj\n";
-        $stream .= "110 0 Td (Outstanding Gap) Tj\n";
-        $stream .= "100 0 Td (Rate) Tj\n";
+        $stream .= "300 0 Td (Revenue) Tj\n";
         $stream .= "ET\n";
 
         $stream .= "1 w 50 552 m 545 552 l S\n";
@@ -698,19 +703,13 @@ function ef_handle_report_export_download() {
 
         foreach ($report_rows as $row) {
             $stream .= "(" . str_pad($row['month'], 25, " ") . ") Tj\n";
-            $stream .= "140 0 Td (\$" . str_pad(number_format($row['revenue'], 2), 15, " ", STR_PAD_LEFT) . ") Tj\n";
-            $stream .= "110 0 Td (\$" . str_pad(number_format($row['expected'], 2), 15, " ", STR_PAD_LEFT) . ") Tj\n";
-            $stream .= "110 0 Td (\$" . str_pad(number_format($row['gap'], 2), 15, " ", STR_PAD_LEFT) . ") Tj\n";
-            $stream .= "100 0 Td (" . str_pad($row['rate'], 8, " ", STR_PAD_LEFT) . ") Tj\n";
-            $stream .= "-460 -18 Td\n"; 
+            $stream .= "300 0 Td (\$" . str_pad(number_format($row['revenue'], 2), 15, " ", STR_PAD_LEFT) . ") Tj\n";
+            $stream .= "-300 -18 Td\n"; 
         }
 
         $stream .= "ET\n0.5 w 50 314 m 545 314 l S\nBT\n/FB 9 Tf 50 300 Td";
         $stream .= "(Total Summary) Tj\n";
-        $stream .= "140 0 Td (\$" . str_pad(number_format($total_yearly_revenue, 2), 15, " ", STR_PAD_LEFT) . ") Tj\n";
-        $stream .= "110 0 Td (\$" . str_pad(number_format($total_yearly_expected, 2), 15, " ", STR_PAD_LEFT) . ") Tj\n";
-        $stream .= "110 0 Td (\$" . str_pad(number_format($total_yearly_gap, 2), 15, " ", STR_PAD_LEFT) . ") Tj\n";
-        $stream .= "100 0 Td (" . str_pad($total_yearly_rate . "%", 8, " ", STR_PAD_LEFT) . ") Tj\n";
+        $stream .= "300 0 Td (\$" . str_pad(number_format($total_yearly_revenue, 2), 15, " ", STR_PAD_LEFT) . ") Tj\n";
 
         $stream .= "ET\n";
 
@@ -744,7 +743,7 @@ if (!function_exists('ef_get_tenant_monthly_status')) {
         $tenant_paid_this_month = 0.00;    
         foreach ($payments as $p) {    
             $p_id = $p->ID;
-            $period = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true) ?: get_the_date('Y-m', $p_id);
+            $period = ef_get_payment_report_period($p_id);
             if (strpos($period, $period_match) === 0) {
                 $amount = get_field('amount_paid', $p_id) ?: get_post_meta($p_id, 'amount_paid', true);    
                 if ($amount) {    
