@@ -365,61 +365,37 @@ add_shortcode('ef_card_yearly_revenue', function() {
  
 add_shortcode('ef_dashboard_filter', function() {
     $period = ef_get_dashboard_period();
-    $months = [
-        '01' => 'January', '02' => 'February', '03' => 'March', '04' => 'April',
-        '05' => 'May', '06' => 'June', '07' => 'July', '08' => 'August',
-        '09' => 'September', '10' => 'October', '11' => 'November', '12' => 'December'
-    ];
     $current_year = intval(date('Y'));
-    $years = range($current_year - 5, $current_year + 5);
+    $years = range($current_year - 5, $current_year + 10);
 
     ob_start(); ?>
-    <div class="ef-dashboard-filter-container" style="display: flex; gap: 10px; margin-bottom: 20px; align-items: center; background: #fff; padding: 15px; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-        <div style="font-weight: 600; color: #1e293b; margin-right: 10px;">Filter Dashboard:</div>
-        <select id="efDashboardMonth" class="ef-filter-select" style="padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 8px; outline: none; min-width: 140px;">
-            <?php foreach ($months as $val => $name): ?>
-                <option value="<?php echo $val; ?>" <?php selected($period['m'], $val); ?>><?php echo $name; ?></option>
-            <?php endforeach; ?>
-        </select>
-        <select id="efDashboardYear" class="ef-filter-select" style="padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 8px; outline: none; min-width: 100px;">
+    <div class="ef-dashboard-filter-container" style="margin-bottom: 20px;">
+        <select id="efDashboardYear" class="ef-filter-select" style="padding: 10px 16px; border: 1px solid #cbd5e1; border-radius: 8px; outline: none; width: 500px; max-width: 100%; font-size: 14px; font-weight: 500; color: #1e293b; background: #ffffff;">
             <?php foreach ($years as $y): ?>
                 <option value="<?php echo $y; ?>" <?php selected($period['y'], $y); ?>><?php echo $y; ?></option>
             <?php endforeach; ?>
         </select>
-        <button id="efApplyFilter" style="background: #2ebfa5; color: #fff; border: none; padding: 8px 16px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: opacity 0.2s;">Apply</button>
     </div>
 
     <script>
     document.addEventListener('DOMContentLoaded', function() {
-        const monthSelect = document.getElementById('efDashboardMonth');
         const yearSelect = document.getElementById('efDashboardYear');
-        const applyBtn = document.getElementById('efApplyFilter');
+        if (!yearSelect) return;
 
-        // Check if we should apply from localStorage (Persistence)
         const urlParams = new URLSearchParams(window.location.search);
-        const hasParams = urlParams.has('ef_month') && urlParams.has('ef_year');
-        
-        if (!hasParams) {
-            const savedMonth = localStorage.getItem('ef_dashboard_month');
+        if (!urlParams.has('ef_year')) {
             const savedYear = localStorage.getItem('ef_dashboard_year');
-            if (savedMonth && savedYear) {
+            if (savedYear) {
                 const url = new URL(window.location.href);
-                url.searchParams.set('ef_month', savedMonth);
                 url.searchParams.set('ef_year', savedYear);
                 window.location.href = url.toString();
             }
         }
 
-        applyBtn.addEventListener('click', function() {
-            const m = monthSelect.value;
-            const y = yearSelect.value;
-            
-            // Save to localStorage
-            localStorage.setItem('ef_dashboard_month', m);
+        yearSelect.addEventListener('change', function() {
+            const y = this.value;
             localStorage.setItem('ef_dashboard_year', y);
-            
             const url = new URL(window.location.href);
-            url.searchParams.set('ef_month', m);
             url.searchParams.set('ef_year', y);
             window.location.href = url.toString();
         });
@@ -530,42 +506,17 @@ if ( ! defined( 'ABSPATH' ) ) exit;
  
     <div class="ef-dashboard-card"> 
         <div class="ef-card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-            <div class="ef-card-title"> 
-                <h3 style="margin: 0;">Monthly revenue</h3>
-                <div class="ef-card-subtitle"><?php echo $subtitle; ?></div> 
+            <div class="ef-card-title" style="display: flex; align-items: baseline; gap: 8px;">
+                <h3 style="margin: 0; font-size: 18px; font-weight: 700; color: #0f172a;">Monthly revenue</h3>
+                <span style="font-size: 13px; font-weight: 600; color: #64748b;">Year <?php echo $selected_year; ?></span>
             </div> 
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <select id="efMonthlyChartYear" class="ef-control-dropdown" style="padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; font-weight: 500; background: #fff;">
-                    <?php
-                    $start_y = 1980;
-                    $end_y = intval(date('Y')) + 10;
-                    for ($y = $end_y; $y >= $start_y; $y--) {
-                        printf('<option value="%1$d" %2$s>%1$d</option>', $y, selected($selected_year, $y, false));
-                    }
-                    ?>
-                </select>
-                <div class="ef-live-badge">Live</div>
-            </div>
+            <div class="ef-live-badge">Live</div>
         </div> 
  
         <div class="ef-chart-container"> 
             <canvas id="efRevenueChart"></canvas> 
         </div> 
     </div> 
-
-    <script>
-    document.addEventListener("DOMContentLoaded", function() {
-        const yearSelect = document.getElementById('efMonthlyChartYear');
-        if (yearSelect) {
-            yearSelect.addEventListener('change', function() {
-                localStorage.setItem('ef_dashboard_year', this.value);
-                const url = new URL(window.location.href);
-                url.searchParams.set('ef_year', this.value);
-                window.location.href = url.toString();
-            });
-        }
-    });
-    </script>
  
     <script> 
     document.addEventListener("DOMContentLoaded", function() { 
@@ -673,40 +624,15 @@ add_shortcode('monthly_bar_chart', function() {
     ob_start(); 
     ?> 
     <div class="ef-chart-card" style="background: #E8FFEB; padding: 24px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.03); max-width: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 20px 0;"> 
-        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px;">
-            <div>
-                <h4 style="margin: 0 0 4px 0; color: #2c4a1a; font-size: 16px; font-weight: 600;">Monthly Revenue Stream</h4>
-                <p style="margin: 0; color: #557045; font-size: 13px;">Current collection performance metrics overview — <?php echo $selected_year; ?></p>
-            </div>
-            <select id="efBarChartYear" class="ef-control-dropdown" style="padding: 6px 10px; border: 1px solid #c2dbb1; border-radius: 6px; font-size: 13px; font-weight: 500; background: #ffffff; color: #2c4a1a;">
-                <?php
-                $start_y = 1980;
-                $end_y = intval(date('Y')) + 10;
-                for ($y = $end_y; $y >= $start_y; $y--) {
-                    printf('<option value="%1$d" %2$s>%1$d</option>', $y, selected($selected_year, $y, false));
-                }
-                ?>
-            </select>
+        <div style="margin-bottom: 20px;">
+            <h4 style="margin: 0 0 4px 0; color: #2c4a1a; font-size: 16px; font-weight: 600;">Monthly Revenue Stream</h4>
+            <p style="margin: 0; color: #557045; font-size: 13px;">Current collection performance metrics overview — <?php echo $selected_year; ?></p>
         </div>
          
         <div style="position: relative; height: 250px; width: 100%;"> 
             <canvas id="efDashboardRevenueChart"></canvas> 
         </div> 
     </div> 
-
-    <script>
-    document.addEventListener("DOMContentLoaded", function() {
-        const barYearSelect = document.getElementById('efBarChartYear');
-        if (barYearSelect) {
-            barYearSelect.addEventListener('change', function() {
-                localStorage.setItem('ef_dashboard_year', this.value);
-                const url = new URL(window.location.href);
-                url.searchParams.set('ef_year', this.value);
-                window.location.href = url.toString();
-            });
-        }
-    });
-    </script>
  
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> 
     <script> 
