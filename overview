@@ -122,12 +122,36 @@ if (!function_exists('ef_get_tenant_outstanding_balance')) {
 
 if (!function_exists('ef_get_payment_period')) {
     function ef_get_payment_period($p_id) {
+        $ce = get_field('cheque_end_date', $p_id) ?: get_post_meta($p_id, 'cheque_end_date', true) ?: get_field('end_date', $p_id) ?: get_post_meta($p_id, 'end_date', true);
+        if ($ce) {
+            $ts = strtotime($ce);
+            if (!$ts && strpos($ce, '/') !== false) {
+                $parts = explode('/', $ce);
+                if (count($parts) === 3) {
+                    if (strlen($parts[0]) === 4) {
+                        $ts = strtotime("{$parts[0]}-{$parts[1]}-{$parts[2]}");
+                    } else {
+                        $ts = strtotime("{$parts[2]}-{$parts[0]}-{$parts[1]}");
+                    }
+                }
+            }
+            if ($ts) return date('Y-m', $ts);
+            if (preg_match('/^(\d{4})[-.\/](\d{1,2})/', $ce, $m)) {
+                return $m[1] . '-' . str_pad($m[2], 2, '0', STR_PAD_LEFT);
+            }
+        }
         $cs = get_field('cheque_start_date', $p_id) ?: get_post_meta($p_id, 'cheque_start_date', true);
-        if ($cs) return date('Y-m', strtotime($cs));
+        if ($cs) {
+            $ts = strtotime($cs);
+            if ($ts) return date('Y-m', $ts);
+        }
         $p = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true);
         if ($p) return substr($p, 0, 7);
         $d = get_field('date_of_payment', $p_id) ?: get_post_meta($p_id, 'date_of_payment', true);
-        if ($d) return date('Y-m', strtotime($d));
+        if ($d) {
+            $ts = strtotime($d);
+            if ($ts) return date('Y-m', $ts);
+        }
         return get_the_date('Y-m', $p_id);
     }
 }
