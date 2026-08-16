@@ -44,21 +44,81 @@ if (!function_exists('ef_get_dashboard_period')) {
     }
 }
 
-if (!function_exists('ef_get_payment_tenant_id')) {
-    function ef_get_payment_tenant_id($p_id) {
-        $t = get_field('associated_tenant', $p_id) ?: get_post_meta($p_id, 'associated_tenant', true);
-        if (!$t) {
-            $t = get_field('select_tenant', $p_id) ?: get_post_meta($p_id, 'select_tenant', true);
-        }
-        if (!$t) return 0;
-        if (is_array($t)) {
-            $item = $t[0];
-            return is_object($item) ? $item->ID : (is_array($item) ? ($item['ID'] ?? 0) : intval($item));
-        }
-        if (is_object($t)) return $t->ID;
-        return intval($t);
+if (!function_exists('ef_clean_amount')) {
+    function ef_clean_amount($val) {
+        if (!$val) return 0.00;
+        $v = str_replace(['AED', ' ', ','], '', (string)$val);
+        return floatval($v);
     }
 }
+
+if (!function_exists('ef_get_id_from_any')) {
+    function ef_get_id_from_any($val) {
+        if (!$val) return 0;
+        if (is_numeric($val)) return intval($val);
+        if (is_object($val) && isset($val->ID)) return intval($val->ID);
+        if (is_array($val)) {
+            $first = reset($val);
+            if (is_numeric($first)) return intval($first);
+            if (is_object($first) && isset($first->ID)) return intval($first->ID);
+            if (isset($val['ID'])) return intval($val['ID']);
+        }
+        return 0;
+    }
+}
+
+if (!function_exists('ef_get_payment_tenant_id')) {
+    function ef_get_payment_tenant_id($p_id) {
+        $t = get_field('associated_tenant', $p_id) ?: get_field('select_tenant', $p_id) ?: get_post_meta($p_id, 'associated_tenant', true) ?: get_post_meta($p_id, 'select_tenant', true);
+        return ef_get_id_from_any($t);
+    }
+}
+
+if (!function_exists('ef_get_tenant_total_contract_amount')) {
+    function ef_get_tenant_total_contract_amount($t_id) {
+        $val = get_field('total_rent_cost', $t_id) ?: get_post_meta($t_id, 'total_rent_cost', true);
+        if (!$val) {
+            $val = get_field('total_contract_amount', $t_id) ?: get_post_meta($t_id, 'total_contract_amount', true);
+        }
+        if ($val) {
+            return ef_clean_amount($val);
+        }
+        $monthly_rent = ef_clean_amount(get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true));
+        return $monthly_rent * 12;
+    }
+}
+
+if (!function_exists('ef_get_tenant_total_payments_amount')) {
+    function ef_get_tenant_total_payments_amount($t_id) {
+        $payments = get_posts(array(
+            'post_type'      => 'payment',
+            'post_status'    => ['publish', 'future'],
+            'posts_per_page' => -1
+        ));
+        $total_paid = 0.00;
+        $target_tid = intval($t_id);
+        foreach ($payments as $p) {
+            $pid = $p->ID;
+            $pay_tid = ef_get_payment_tenant_id($pid);
+            if ($pay_tid === $target_tid) {
+                $amount = get_field('amount_paid', $pid) ?: get_post_meta($pid, 'amount_paid', true);
+                if ($amount) {
+                    $total_paid += ef_clean_amount($amount);
+                }
+            }
+        }
+        return $total_paid;
+    }
+}
+
+if (!function_exists('ef_get_tenant_outstanding_balance')) {
+    function ef_get_tenant_outstanding_balance($t_id) {
+        $contract = ef_get_tenant_total_contract_amount($t_id);
+        $paid = ef_get_tenant_total_payments_amount($t_id);
+        return max(0.00, $contract - $paid);
+    }
+}
+
 
 if (!function_exists('ef_get_payment_period')) {
     function ef_get_payment_period($p_id) {
@@ -140,25 +200,17 @@ add_shortcode('ef_total_payments', function() {
 });  
   
 add_shortcode('ef_total_outstanding', function() {  
-    $period_data = ef_get_dashboard_period();
-    $m = $period_data['m']; $y = $period_data['y'];
     $t_query = new WP_Query(array('post_type' => 'ef_tenant', 'post_status' => 'publish', 'posts_per_page' => -1));  
-    $rent_expected = 0.00;  
+    $total_outstanding = 0.00;
     if ($t_query->have_posts()) {  
         while ($t_query->have_posts()) {  
             $t_query->the_post();  
             $t_id = get_the_ID();
-            if (ef_is_tenant_billable($t_id, $m, $y)) {
-                $rent_val = get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true);  
-                if ($rent_val) { $rent_expected += floatval(str_replace(',', '', $rent_val)); }  
-            }
+            $total_outstanding += ef_get_tenant_outstanding_balance($t_id);
         }  
         wp_reset_postdata();  
     }  
-    $collected_str = str_replace(['AED', ' ', ','], '', do_shortcode('[ef_total_payments]')); 
-    $rent_collected = floatval($collected_str);  
-    $final_outstanding = $rent_expected - $rent_collected;  
-    return number_format(max(0, $final_outstanding), 2);  
+    return number_format($total_outstanding, 2);
 });  
   
 add_shortcode('ef_yearly_revenue', function() {  
@@ -292,17 +344,14 @@ add_shortcode('ef_card_active_tenants', function() {
 }); 
  
 add_shortcode('ef_card_outstanding_total', function() { 
-    $period_data = ef_get_dashboard_period();
-    $m = $period_data['m']; $y = $period_data['y'];
     $tenants = new WP_Query(['post_type' => 'ef_tenant', 'post_status' => 'publish', 'posts_per_page' => -1]); 
     $due_count = 0; 
     if ($tenants->have_posts()) { 
         while ($tenants->have_posts()) { 
             $tenants->the_post(); 
             $t_id = get_the_ID(); 
-            if (ef_is_tenant_billable($t_id, $m, $y)) {
-                $status = ef_get_tenant_monthly_status($t_id, $m, $y);
-                if (!$status['is_fully_paid']) { $due_count++; } 
+            if (ef_get_tenant_outstanding_balance($t_id) > 0.001) {
+                $due_count++;
             }
         } 
         wp_reset_postdata(); 
@@ -681,10 +730,6 @@ add_shortcode('monthly_bar_chart', function() {
 }); 
  
 add_shortcode('ef_outstanding_tenants_widget', function() { 
-    $period_data = ef_get_dashboard_period();
-    $m = $period_data['m']; $y = $period_data['y'];
-    $current_period = $period_data['period'];
-     
     $tenants = get_posts([ 
         'post_type'      => 'ef_tenant', 
         'post_status'    => 'publish', 
@@ -694,52 +739,18 @@ add_shortcode('ef_outstanding_tenants_widget', function() {
     if (empty($tenants)) { 
         return '<div class="ef-dash-widget-box"><div class="ef-dash-empty">No tenants found.</div></div>'; 
     } 
-    $p_query = new WP_Query([ 
-        'post_type'      => 'payment', 
-        'post_status'    => ['publish', 'future', 'pending', 'draft', 'private'],
-        'posts_per_page' => -1, 
-    ]); 
- 
-    $payments_by_tenant = []; 
-    if ($p_query->have_posts()) { 
-        while ($p_query->have_posts()) { 
-            $p_query->the_post(); 
-            $pay_id = get_the_ID(); 
-            $period = ef_get_payment_period($pay_id);
-            if (strpos($period, $current_period) === 0) {
-                $tid = ef_get_payment_tenant_id($pay_id);
-                $amount = floatval(get_field('amount_paid', $pay_id) ?: get_post_meta($pay_id, 'amount_paid', true)); 
-                 
-                if ($tid) { 
-                    if (!isset($payments_by_tenant[$tid])) { 
-                        $payments_by_tenant[$tid] = 0; 
-                    } 
-                    $payments_by_tenant[$tid] += $amount; 
-                } 
-            }
-        } 
-        wp_reset_postdata(); 
-    } 
- 
+
     $outstanding_items = []; 
     foreach ($tenants as $tenant) { 
         $tid = $tenant->ID; 
-        if (ef_is_tenant_billable($tid, $m, $y)) {
-            $rent_val = get_field('monthly_rent', $tid) ?: get_post_meta($tid, 'monthly_rent', true);
-            $rent = floatval(str_replace(',', '', $rent_val)); 
-             
-            if ($rent <= 0) continue; 
-    
-            $paid = isset($payments_by_tenant[$tid]) ? $payments_by_tenant[$tid] : 0; 
-    
-            if ($paid < $rent) { 
-                $due_day = get_field('rent_due_day', $tid) ?: get_post_meta($tid, 'rent_due_day', true); 
-                $outstanding_items[] = [ 
-                    'name'    => get_the_title($tid), 
-                    'due_day' => $due_day ?: '01', 
-                    'amount'  => $rent - $paid 
-                ]; 
-            } 
+        $outstanding = ef_get_tenant_outstanding_balance($tid);
+        if ($outstanding > 0.001) {
+            $due_day = get_field('rent_due_day', $tid) ?: get_post_meta($tid, 'rent_due_day', true);
+            $outstanding_items[] = [
+                'name'    => get_the_title($tid),
+                'due_day' => $due_day ?: '01',
+                'amount'  => $outstanding
+            ];
         }
     } 
  

@@ -365,7 +365,7 @@ $tenant_list_logic = function() {
         }
     }
 
-    document.addEventListener('DOMContentLoaded', function() {
+    function efInitTenantSearch() {
         const searchInput = document.getElementById('efTenantSearch');
         if (searchInput) {
             searchInput.oninput = function() {
@@ -374,7 +374,13 @@ $tenant_list_logic = function() {
             };
         }
         efRenderTenantListPagination();
-    });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', efInitTenantSearch);
+    } else {
+        efInitTenantSearch();
+    }
     </script> 
     <?php return ob_get_clean(); 
 };
