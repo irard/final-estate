@@ -267,9 +267,7 @@ add_shortcode('count_tenant_overdue', function() {
     $t_query = new WP_Query(array('post_type' => 'ef_tenant', 'post_status' => 'publish', 'posts_per_page' => -1));    
     $overdue_count = 0;    
     
-    $period = ef_get_dashboard_period();
-    $current_period_date = new DateTimeImmutable($period['y'] . '-' . $period['m'] . '-01');
-    $current_month_start = $current_period_date->format('Y-m-d');
+    $today_str = date('Y-m-d');
 
     if ($t_query->have_posts()) {    
         while ($t_query->have_posts()) {    
@@ -280,7 +278,7 @@ add_shortcode('count_tenant_overdue', function() {
             if ($outstanding <= 0.001) continue;
 
             $end_date_str = ef_get_tenant_last_payment_end_date($t_id);
-            if ($end_date_str < $current_month_start) {
+            if ($end_date_str < $today_str) {
                 $overdue_count++;
             }
         }    
@@ -294,11 +292,7 @@ add_shortcode('count_tenant_due_soon', function() {
     $t_query = new WP_Query(array('post_type' => 'ef_tenant', 'post_status' => 'publish', 'posts_per_page' => -1));    
     $due_soon_count = 0;    
     
-    $period = ef_get_dashboard_period();
-    $days_in_month = (int)date('t', strtotime($period['y'] . '-' . $period['m'] . '-01'));
-    $day_to_use = str_pad(min((int)date('d'), $days_in_month), 2, '0', STR_PAD_LEFT);
-    $today = new DateTimeImmutable($period['y'] . '-' . $period['m'] . '-' . $day_to_use);
-    $today_zero = $today->setTime(0, 0, 0);  
+    $today_zero = (new DateTimeImmutable('now'))->setTime(0, 0, 0);
   
     if ($t_query->have_posts()) {    
         while ($t_query->have_posts()) {    
@@ -450,14 +444,8 @@ add_shortcode('overdue_list_card', function() {
     $t_query = new WP_Query(array('post_type' => 'ef_tenant', 'post_status' => 'publish', 'posts_per_page' => -1));    
     $items_html = ''; $count = 0;    
     
-    $period = ef_get_dashboard_period();
-    $current_period_date = new DateTimeImmutable($period['y'] . '-' . $period['m'] . '-01');
-    $current_month_start = $current_period_date->format('Y-m-d');
-
-    $days_in_month_now = (int)date('t', strtotime($period['y'] . '-' . $period['m'] . '-01'));
-    $day_to_use = str_pad(min((int)date('d'), $days_in_month_now), 2, '0', STR_PAD_LEFT);
-    $today = new DateTimeImmutable($period['y'] . '-' . $period['m'] . '-' . $day_to_use);
-    $today_zero = $today->setTime(0, 0, 0);  
+    $today_str = date('Y-m-d');
+    $today_zero = (new DateTimeImmutable('now'))->setTime(0, 0, 0);
     
     if ($t_query->have_posts()) {    
         while ($t_query->have_posts()) {    
@@ -468,7 +456,7 @@ add_shortcode('overdue_list_card', function() {
             if ($outstanding <= 0.001) continue;
 
             $end_date_str = ef_get_tenant_last_payment_end_date($t_id);
-            if ($end_date_str < $current_month_start) {
+            if ($end_date_str < $today_str) {
                 $count++;
 
                 $due_date = new DateTimeImmutable($end_date_str);
@@ -502,11 +490,7 @@ add_shortcode('duesoon_list_card', function() {
     $t_query = new WP_Query(array('post_type' => 'ef_tenant', 'post_status' => 'publish', 'posts_per_page' => -1));    
     $items_html = ''; $count = 0;    
     
-    $period = ef_get_dashboard_period();
-    $days_in_month = (int)date('t', strtotime($period['y'] . '-' . $period['m'] . '-01'));
-    $day_to_use = str_pad(min((int)date('d'), $days_in_month), 2, '0', STR_PAD_LEFT);
-    $today = new DateTimeImmutable($period['y'] . '-' . $period['m'] . '-' . $day_to_use);
-    $today_zero = $today->setTime(0, 0, 0);  
+    $today_zero = (new DateTimeImmutable('now'))->setTime(0, 0, 0);
     
     if ($t_query->have_posts()) {    
         while ($t_query->have_posts()) {    
@@ -555,11 +539,7 @@ add_shortcode('upcoming_list_card', function() {
     $t_query = new WP_Query(array('post_type' => 'ef_tenant', 'post_status' => 'publish', 'posts_per_page' => -1));    
     $items_html = ''; $count = 0;    
     
-    $period = ef_get_dashboard_period();
-    $days_in_month = (int)date('t', strtotime($period['y'] . '-' . $period['m'] . '-01'));
-    $day_to_use = str_pad(min((int)date('d'), $days_in_month), 2, '0', STR_PAD_LEFT);
-    $today = new DateTimeImmutable($period['y'] . '-' . $period['m'] . '-' . $day_to_use);
-    $today_zero = $today->setTime(0, 0, 0);  
+    $today_zero = (new DateTimeImmutable('now'))->setTime(0, 0, 0);
     
     if ($t_query->have_posts()) {    
         while ($t_query->have_posts()) {    
