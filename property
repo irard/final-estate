@@ -40,9 +40,11 @@ if (!function_exists('ef_get_id_from_any')) {
     function ef_get_id_from_any($val) {
         if (!$val) return 0;
         $val = maybe_unserialize($val);
-        if (is_array($val)) $val = reset($val);
-        if (is_object($val)) return intval($val->ID ?? $val->post_id ?? 0);
-        if (is_array($val)) return intval($val['ID'] ?? $val['id'] ?? $val[0] ?? 0);
+        if (is_array($val)) {
+            $first = reset($val);
+            return ef_get_id_from_any($first);
+        }
+        if (is_object($val)) return intval($val->ID ?? $val->post_id ?? $val->id ?? 0);
         return intval($val);
     }
 }
@@ -74,7 +76,7 @@ if (!function_exists('ef_get_payment_tenant_id')) {
 
 if (!function_exists('ef_get_tenant_property_id')) {
     function ef_get_tenant_property_id($t_id) {
-        $p = get_field('property_id', $t_id) ?: get_post_meta($t_id, 'property_id', true);
+        $p = get_field('property_id', $t_id) ?: get_post_meta($t_id, 'property_id', true) ?: get_field('associated_property', $t_id) ?: get_post_meta($t_id, 'associated_property', true) ?: get_field('select_property', $t_id) ?: get_post_meta($t_id, 'select_property', true);
         return ef_get_id_from_any($p);
     }
 }
@@ -295,15 +297,15 @@ function ef_handle_get_properties_dashboard() {
         wp_send_json_error('Unauthorized.'); 
     } 
  
-    $properties = get_posts([ 
-        'post_type'        => ['property', 'ef_property'],
-        'numberposts'      => -1,
+    $p_query = new WP_Query([
+        'post_type'        => array('property', 'properties', 'ef_property', 'ef_properties', 'building', 'buildings'),
         'posts_per_page'   => -1,
-        'post_status'      => ['publish', 'future', 'pending', 'draft', 'private', 'any'],
+        'post_status'      => array('publish', 'future', 'pending', 'draft', 'private', 'trash', 'any'),
         'orderby'          => 'date',
         'order'            => 'DESC',
         'suppress_filters' => true
     ]); 
+    $properties = $p_query->posts;
  
     if (empty($properties)) { 
         wp_send_json_success([]); 
@@ -415,13 +417,18 @@ function ef_handle_get_properties_dashboard() {
  
         $col_pct = ($billable_count > 0) ? round(($progress_sum / $billable_count) * 100) : 0;
 
+        $p_name = (function_exists('get_field') ? get_field('add_property', $p->ID) : null) ?: get_post_meta($p->ID, 'add_property', true) ?: $p->post_title;
+        if (!$p_name) $p_name = 'Property #' . $p->ID;
+
+        $p_address = (function_exists('get_field') ? get_field('add_address', $p->ID) : null) ?: get_post_meta($p->ID, 'add_address', true) ?: get_post_meta($p->ID, 'address', true) ?: 'N/A';
+
         $data[] = [ 
             'id'        => $p->ID, 
-            'name'      => function_exists('get_field') ? (get_field('add_property', $p->ID) ?: $p->post_title) : $p->post_title, 
+            'name'      => $p_name,
             'type'      => function_exists('get_field') ? (get_field('property_type', $p->ID) ?: 'Property') : (get_post_meta($p->ID, 'property_type', true) ?: 'Property'), 
             'units'     => $units, 
             'occupied'  => $occupied, 
-            'address'   => function_exists('get_field') ? get_field('add_address', $p->ID) : get_post_meta($p->ID, 'add_address', true), 
+            'address'   => $p_address,
             'expected'  => $expected, 
             'collected' => $collected,
             'col_pct'   => $col_pct
