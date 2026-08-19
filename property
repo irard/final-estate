@@ -40,9 +40,11 @@ if (!function_exists('ef_get_id_from_any')) {
     function ef_get_id_from_any($val) {
         if (!$val) return 0;
         $val = maybe_unserialize($val);
-        if (is_array($val)) $val = reset($val);
-        if (is_object($val)) return intval($val->ID ?? $val->post_id ?? 0);
-        if (is_array($val)) return intval($val['ID'] ?? $val['id'] ?? $val[0] ?? 0);
+        if (is_array($val)) {
+            $first = reset($val);
+            return ef_get_id_from_any($first);
+        }
+        if (is_object($val)) return intval($val->ID ?? $val->post_id ?? $val->id ?? 0);
         return intval($val);
     }
 }
@@ -74,7 +76,7 @@ if (!function_exists('ef_get_payment_tenant_id')) {
 
 if (!function_exists('ef_get_tenant_property_id')) {
     function ef_get_tenant_property_id($t_id) {
-        $p = get_field('property_id', $t_id) ?: get_post_meta($t_id, 'property_id', true);
+        $p = get_field('property_id', $t_id) ?: get_post_meta($t_id, 'property_id', true) ?: get_field('associated_property', $t_id) ?: get_post_meta($t_id, 'associated_property', true) ?: get_field('select_property', $t_id) ?: get_post_meta($t_id, 'select_property', true);
         return ef_get_id_from_any($p);
     }
 }
@@ -295,13 +297,15 @@ function ef_handle_get_properties_dashboard() {
         wp_send_json_error('Unauthorized.'); 
     } 
  
-    $properties = get_posts([ 
-        'post_type'   => 'property', 
-        'numberposts' => -1, 
-        'post_status' => 'publish', 
-        'orderby'     => 'date', 
-        'order'       => 'DESC' 
+    $p_query = new WP_Query([ 
+        'post_type'        => array('property', 'properties', 'ef_property', 'ef_properties', 'building', 'buildings'), 
+        'posts_per_page'   => -1, 
+        'post_status'      => array('publish', 'future', 'pending', 'draft', 'private', 'trash', 'any'), 
+        'orderby'          => 'date', 
+        'order'            => 'DESC', 
+        'suppress_filters' => true 
     ]); 
+    $properties = $p_query->posts;
  
     if (empty($properties)) { 
         wp_send_json_success([]); 
@@ -413,13 +417,18 @@ function ef_handle_get_properties_dashboard() {
  
         $col_pct = ($billable_count > 0) ? round(($progress_sum / $billable_count) * 100) : 0;
 
+        $p_name = (function_exists('get_field') ? get_field('add_property', $p->ID) : null) ?: get_post_meta($p->ID, 'add_property', true) ?: $p->post_title;
+        if (!$p_name) $p_name = 'Property #' . $p->ID;
+
+        $p_address = (function_exists('get_field') ? get_field('add_address', $p->ID) : null) ?: get_post_meta($p->ID, 'add_address', true) ?: get_post_meta($p->ID, 'address', true) ?: 'N/A';
+
         $data[] = [ 
             'id'        => $p->ID, 
-            'name'      => function_exists('get_field') ? (get_field('add_property', $p->ID) ?: $p->post_title) : $p->post_title, 
+            'name'      => $p_name, 
             'type'      => function_exists('get_field') ? (get_field('property_type', $p->ID) ?: 'Property') : (get_post_meta($p->ID, 'property_type', true) ?: 'Property'), 
             'units'     => $units, 
             'occupied'  => $occupied, 
-            'address'   => function_exists('get_field') ? get_field('add_address', $p->ID) : get_post_meta($p->ID, 'add_address', true), 
+            'address'   => $p_address, 
             'expected'  => $expected, 
             'collected' => $collected,
             'col_pct'   => $col_pct
@@ -516,6 +525,9 @@ add_shortcode('properties_page_grid', function() {
      
     <div id="properties-dashboard-wrapper"> 
         <input type="hidden" id="ef_property_nonce" value="<?php echo wp_create_nonce('ef_property_nonce'); ?>"> 
+        <div style="margin-bottom: 20px;">
+            <input type="text" id="efPropertySearch" placeholder="🔍 Search properties..." style="width: 100%; max-width: 500px; padding: 12px 16px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; outline: none; background: #ffffff; box-sizing: border-box;">
+        </div>
         <div id="properties-dashboard-grid" class="properties-dashboard-grid"> 
             <div class="properties-page-empty-state"><p>Loading properties...</p></div> 
         </div> 
@@ -625,6 +637,7 @@ add_action('wp_footer', function() { ?>
         const prevBtn = document.getElementById('prev-page'); 
         const nextBtn = document.getElementById('next-page'); 
         const lastBtn = document.getElementById('last-page');
+        const searchInput = document.getElementById('efPropertySearch');
  
         const setActiveById = (id) => { 
             if (!grid) return; 
@@ -633,12 +646,27 @@ add_action('wp_footer', function() { ?>
             if (card) card.classList.add('active'); 
         }; 
  
+        const getFilteredData = () => {
+            const searchQuery = (searchInput ? searchInput.value : '').toLowerCase().trim();
+            return allData.filter(p => {
+                if (!searchQuery) return true;
+                const nameMatch = (p.name || '').toLowerCase().includes(searchQuery);
+                const addressMatch = (p.address || '').toLowerCase().includes(searchQuery);
+                const typeMatch = (p.type || '').toLowerCase().includes(searchQuery);
+                return nameMatch || addressMatch || typeMatch;
+            });
+        };
+
         const render = () => { 
             if (!grid) return; 
-            const perPage = 5; 
-            const totalPages = Math.ceil(allData.length / perPage) || 1; 
+            const filteredData = getFilteredData();
+            const perPage = 4; 
+            const totalPages = Math.ceil(filteredData.length / perPage) || 1; 
+            if (curPage > totalPages) curPage = totalPages;
+            if (curPage < 1) curPage = 1;
+
             const start = (curPage - 1) * perPage; 
-            const slice = allData.slice(start, start + perPage); 
+            const slice = filteredData.slice(start, start + perPage); 
  
             if (slice.length === 0) { 
                 grid.innerHTML = `<div class="properties-page-empty-state"><p>No properties found.</p></div>`; 
@@ -758,10 +786,22 @@ add_action('wp_footer', function() { ?>
                     } 
                 }); 
  
-        if(firstBtn) firstBtn.onclick = () => { if (curPage>1) { curPage = 1; render(); } };
-        if(prevBtn) prevBtn.onclick = () => { if (curPage>1) { curPage--; render(); } }; 
-        if(nextBtn) nextBtn.onclick = () => { const totalPages = Math.ceil(allData.length / 5) || 1; if (curPage < totalPages) { curPage++; render(); } }; 
-        if(lastBtn) lastBtn.onclick = () => { const totalPages = Math.ceil(allData.length / 5) || 1; if (curPage < totalPages) { curPage = totalPages; render(); } };
+        if (searchInput) {
+            searchInput.addEventListener('input', () => {
+                curPage = 1;
+                render();
+            });
+        }
+
+        const getTotalPages = () => {
+            const filtered = getFilteredData();
+            return Math.ceil(filtered.length / 4) || 1;
+        };
+
+        if(firstBtn) firstBtn.onclick = () => { if (curPage > 1) { curPage = 1; render(); } };
+        if(prevBtn) prevBtn.onclick = () => { if (curPage > 1) { curPage--; render(); } }; 
+        if(nextBtn) nextBtn.onclick = () => { if (curPage < getTotalPages()) { curPage++; render(); } }; 
+        if(lastBtn) lastBtn.onclick = () => { if (curPage < getTotalPages()) { curPage = getTotalPages(); render(); } };
  
         const detailsContainer = document.getElementById('properties-page-details'); 
         const sidebar = document.getElementById('properties-sidebar'); 
