@@ -76,7 +76,7 @@ if (!function_exists('ef_get_payment_tenant_id')) {
 
 if (!function_exists('ef_get_tenant_property_id')) {
     function ef_get_tenant_property_id($t_id) {
-        $p = get_field('property_id', $t_id) ?: get_post_meta($t_id, 'property_id', true) ?: get_field('associated_property', $t_id) ?: get_post_meta($t_id, 'associated_property', true) ?: get_field('select_property', $t_id) ?: get_post_meta($t_id, 'select_property', true) ?: get_field('add_property', $t_id) ?: get_post_meta($t_id, 'add_property', true);
+        $p = get_field('property_id', $t_id) ?: get_post_meta($t_id, 'property_id', true) ?: get_field('property', $t_id) ?: get_post_meta($t_id, 'property', true) ?: get_field('tenant_property', $t_id) ?: get_post_meta($t_id, 'tenant_property', true) ?: get_field('associated_property', $t_id) ?: get_post_meta($t_id, 'associated_property', true) ?: get_field('select_property', $t_id) ?: get_post_meta($t_id, 'select_property', true) ?: get_field('add_property', $t_id) ?: get_post_meta($t_id, 'add_property', true);
         $id = ef_get_id_from_any($p);
         if ($id > 0) return $id;
         if ($p && is_string($p) && !is_numeric($p)) {

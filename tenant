@@ -1,4 +1,5 @@
 if (!defined('ABSPATH')) exit; 
+
 if (!function_exists('ef_get_tenant_due_day')) { 
     function ef_get_tenant_due_day($t_id) { 
         $d = get_field('rent_due_day', $t_id) ?: get_field('due_day', $t_id) ?: get_post_meta($t_id, 'rent_due_day', true) ?: get_post_meta($t_id, 'due_day', true); 
@@ -12,6 +13,7 @@ if (!function_exists('ef_get_tenant_due_day')) {
         return $ts ? intval(date('j', $ts)) : 5; 
     } 
 } 
+
 if (!function_exists('ef_is_tenant_billable')) { 
     function ef_is_tenant_billable($t_id, $m, $y) { 
         $s_str = get_field('tenant_start', $t_id) ?: get_post_meta($t_id, 'tenant_start', true); 
@@ -76,7 +78,7 @@ if (!function_exists('ef_get_payment_tenant_id')) {
 
 if (!function_exists('ef_get_tenant_property_id')) {
     function ef_get_tenant_property_id($t_id) {
-        $p = get_field('property_id', $t_id) ?: get_post_meta($t_id, 'property_id', true) ?: get_field('associated_property', $t_id) ?: get_post_meta($t_id, 'associated_property', true) ?: get_field('select_property', $t_id) ?: get_post_meta($t_id, 'select_property', true) ?: get_field('add_property', $t_id) ?: get_post_meta($t_id, 'add_property', true);
+        $p = get_field('property_id', $t_id) ?: get_post_meta($t_id, 'property_id', true) ?: get_field('property', $t_id) ?: get_post_meta($t_id, 'property', true) ?: get_field('tenant_property', $t_id) ?: get_post_meta($t_id, 'tenant_property', true) ?: get_field('associated_property', $t_id) ?: get_post_meta($t_id, 'associated_property', true) ?: get_field('select_property', $t_id) ?: get_post_meta($t_id, 'select_property', true) ?: get_field('add_property', $t_id) ?: get_post_meta($t_id, 'add_property', true);
         $id = ef_get_id_from_any($p);
         if ($id > 0) return $id;
         if ($p && is_string($p) && !is_numeric($p)) {
@@ -199,716 +201,659 @@ if (!function_exists('ef_get_tenant_monthly_status')) {
         return [
             'paid' => $paid,
             'rent' => $rent,
-            'is_fully_paid' => ($rent > 0 && $paid >= $rent) || ($rent == 0 && $paid > 0)
+            'is_fully_paid' => ($rent > 0 && ($paid - $rent) >= -0.001) || ($rent == 0 && $paid > 0)
         ];
     }
 }
-add_action('wp_ajax_save_property', 'ef_handle_save_property'); 
- 
-if (!function_exists('ef_handle_save_property')) { 
-function ef_handle_save_property() { 
-    check_ajax_referer('ef_property_nonce', 'nonce'); 
-    if (!is_user_logged_in()) { 
-        wp_send_json_error('Unauthorized.'); 
-    } 
- 
-    $property_id = !empty($_POST['property_id']) ? intval($_POST['property_id']) : 0; 
- 
-    if (empty($_POST['name']) || empty($_POST['type']) || !isset($_POST['units']) || $_POST['units'] === '' || empty($_POST['address'])) { 
-        wp_send_json_error('All fields are required.'); 
-    } 
- 
-    $name    = sanitize_text_field($_POST['name']);
-    $address = sanitize_text_field($_POST['address']); 
- 
-    $duplicate_check = get_posts([ 
-        'post_type'  => 'property', 
-        'meta_query' => [ 
-            'relation' => 'AND',
-            [ 
-                'key'   => 'add_address', 
-                'value' => $address, 
-            ],
-            [
-                'key'   => 'add_property',
-                'value' => $name,
-            ]
-        ], 
-        'exclude'    => [$property_id], 
-        'fields'     => 'ids', 
-        'numberposts'=> 1 
-    ]); 
- 
-    if (!empty($duplicate_check)) { 
-        wp_send_json_error('A property with this name and address already exists.'); 
-    } 
- 
-    $post_data = [ 
-        'post_title'  => $name, 
-        'post_type'   => 'property', 
-        'post_status' => 'publish' 
-    ]; 
- 
-    if ($property_id > 0) { 
-        if (get_post_type($property_id) !== 'property') {
-            wp_send_json_error('Invalid property ID provided.'); 
-        } 
-        $post_data['ID'] = $property_id; 
-        $post_id = wp_update_post($post_data); 
-    } else { 
-        $post_id = wp_insert_post($post_data); 
-    } 
- 
-    if (is_wp_error($post_id) || $post_id === 0) { 
-        $err_msg = is_wp_error($post_id) ? $post_id->get_error_message() : 'Failed to save post.'; 
-        wp_send_json_error('Database Error: ' . $err_msg); 
-    } 
- 
-    $type    = sanitize_text_field($_POST['type']); 
-    $units   = intval($_POST['units']); 
- 
-    if (function_exists('update_field')) { 
-        update_field('add_property', $name, $post_id); 
-        update_field('property_type', $type, $post_id); 
-        update_field('number_unit', $units, $post_id); 
-        update_field('add_address', $address, $post_id); 
-    } else { 
-        update_post_meta($post_id, 'add_property', $name); 
-        update_post_meta($post_id, 'property_type', $type); 
-        update_post_meta($post_id, 'number_unit', $units); 
-        update_post_meta($post_id, 'add_address', $address); 
-    } 
- 
- 
-    update_post_meta($post_id, 'property_units', $units); 
- 
-    wp_send_json_success(['id' => $post_id]); 
-} 
-} 
- 
-add_action('wp_ajax_delete_property', 'ef_handle_delete_property'); 
- 
-if (!function_exists('ef_handle_delete_property')) { 
-function ef_handle_delete_property() { 
-    check_ajax_referer('ef_property_nonce', 'nonce'); 
-    if (!is_user_logged_in()) { 
-        wp_send_json_error('Unauthorized.'); 
-    } 
- 
-    $property_id = !empty($_POST['property_id']) ? intval($_POST['property_id']) : 0; 
- 
-    if (!$property_id || get_post_type($property_id) !== 'property') {
-        wp_send_json_error('Invalid Property ID.'); 
-    } 
- 
-    if (wp_delete_post($property_id, true)) { 
-        wp_send_json_success(); 
-    } else { 
-        wp_send_json_error('Failed to delete property.'); 
-    } 
-} 
-} 
- 
-add_action('wp_ajax_get_properties_dashboard', 'ef_handle_get_properties_dashboard'); 
-if (!function_exists('ef_handle_get_properties_dashboard')) { 
-function ef_handle_get_properties_dashboard() { 
-    check_ajax_referer('ef_property_nonce', 'nonce'); 
-    if (!is_user_logged_in()) { 
-        wp_send_json_error('Unauthorized.'); 
-    } 
- 
-    $p_query = new WP_Query([ 
-        'post_type'        => array('property', 'properties', 'ef_property', 'ef_properties', 'building', 'buildings'),
-        'posts_per_page'   => -1, 
-        'post_status'      => array('publish', 'future', 'pending', 'draft', 'private', 'trash', 'any'), 
-        'orderby'          => 'date', 
-        'order'            => 'DESC', 
-        'suppress_filters' => true 
-    ]); 
-    $properties = $p_query->posts;
- 
-    if (empty($properties)) { 
-        wp_send_json_success([]); 
-    } 
- 
-    $property_ids = wp_list_pluck($properties, 'ID'); 
- 
- 
-    $all_tenants = get_posts([ 
-        'post_type'   => 'ef_tenant', 
-        'post_status' => 'publish', 
-        'numberposts' => -1
-    ]); 
- 
-    $tenants_by_property = []; 
-    $all_tenant_ids = []; 
-    foreach ($all_tenants as $t) { 
-        $p_id = ef_get_tenant_property_id($t->ID);
-        if ($p_id && in_array($p_id, $property_ids)) {
-            $tenants_by_property[$p_id][] = $t; 
-        }
-        $all_tenant_ids[] = $t->ID; 
-    } 
- 
- 
-    $period_data = ef_get_dashboard_period();
-    $current_month = $period_data['m']; 
-    $current_year  = $period_data['y']; 
-    $current_period = $period_data['period'];
- 
-    $all_payments = get_posts([ 
-        'post_type'      => 'payment', 
-        'numberposts'    => -1, 
-        'post_status'    => ['publish', 'future', 'pending', 'draft', 'private']
-    ]); 
- 
-    $payments_by_tenant = []; 
-    $payments_by_property = [];
-    foreach ($all_payments as $pay) { 
-        if (strpos(ef_get_payment_period($pay->ID), $current_period) === 0) {
-            $t_id = ef_get_payment_tenant_id($pay->ID);
-            if ($t_id) {
-                $payments_by_tenant[$t_id][] = $pay; 
-            }
-            $p_id = ef_get_payment_property_id($pay->ID);
-            if ($p_id) {
-                $payments_by_property[$p_id][] = $pay;
-            }
-        }
-    } 
- 
-    $data = []; 
-    foreach ($properties as $p) { 
-        $p_tenants = isset($tenants_by_property[$p->ID]) ? $tenants_by_property[$p->ID] : []; 
-        $occupied = count($p_tenants); 
- 
-        $units = 0; 
-        if (function_exists('get_field')) { 
-            $units = intval(get_field('number_unit', $p->ID));
-        } 
-        if (!$units) { 
-            $units = intval(get_post_meta($p->ID, 'number_unit', true)) ?: intval(get_post_meta($p->ID, 'property_units', true)) ?: 0;
-        } 
- 
-        $expected = ef_clean_amount(get_field('property_rent', $p->ID) ?: get_post_meta($p->ID, 'property_rent', true) ?: get_field('total_contract_amount', $p->ID) ?: get_post_meta($p->ID, 'total_contract_amount', true) ?: get_field('total_rent_cost', $p->ID) ?: get_post_meta($p->ID, 'total_rent_cost', true));
 
-        if ($expected <= 0) {
-            foreach ($p_tenants as $t) {
-                $rent_val = get_field('total_contract_amount', $t->ID) ?: get_post_meta($t->ID, 'total_contract_amount', true) ?: get_field('total_rent_cost', $t->ID) ?: get_post_meta($t->ID, 'total_rent_cost', true);
-                if (!$rent_val) {
-                    $rent_val = get_field('monthly_rent', $t->ID) ?: get_post_meta($t->ID, 'monthly_rent', true); 
-                }
-                $expected += ef_clean_amount($rent_val);
+// AJAX Actions for Tenants
+add_action('wp_ajax_eftm_get_tenants', 'ef_handle_get_tenants');
+if (!function_exists('ef_handle_get_tenants')) {
+    function ef_handle_get_tenants() {
+        check_ajax_referer('ef_tenant_nonce', 'nonce');
+        if (!is_user_logged_in()) wp_send_json_error('Unauthorized.');
+
+        $period = ef_get_dashboard_period();
+        $m = $period['m'];
+        $y = $period['y'];
+
+        $tenants = get_posts([
+            'post_type' => 'ef_tenant',
+            'post_status' => 'publish',
+            'numberposts' => -1,
+            'orderby' => 'title',
+            'order' => 'ASC'
+        ]);
+
+        $data = [];
+        foreach ($tenants as $t) {
+            $tid = $t->ID;
+            $status = ef_get_tenant_monthly_status($tid, $m, $y);
+            $prop_id = ef_get_tenant_property_id($tid);
+            $prop_name = '';
+            if ($prop_id) {
+                $prop_name = (function_exists('get_field') ? get_field('add_property', $prop_id) : null) ?: get_post_meta($prop_id, 'add_property', true) ?: get_the_title($prop_id);
+            }
+            $address = (function_exists('get_field') ? get_field('tenant_address', $tid) : null) ?: get_post_meta($tid, 'tenant_address', true) ?: $prop_name;
+
+            $data[] = [
+                'id' => $tid,
+                'name' => $t->post_title,
+                'property_name' => $prop_name,
+                'address' => $address ?: '-',
+                'monthly_rent' => $status['rent'],
+                'is_fully_paid' => $status['is_fully_paid']
+            ];
+        }
+
+        wp_send_json_success($data);
+    }
+}
+
+add_action('wp_ajax_eftm_handle_ajax_tenant_breakdown', 'ef_handle_tenant_breakdown');
+if (!function_exists('ef_handle_tenant_breakdown')) {
+    function ef_handle_tenant_breakdown() {
+        check_ajax_referer('ef_tenant_nonce', 'nonce');
+        if (!is_user_logged_in()) wp_send_json_error('Unauthorized.');
+
+        $tid = intval($_POST['tenant_id'] ?? 0);
+        if (!$tid) wp_send_json_error('Invalid Tenant ID');
+
+        $tenant = get_post($tid);
+        if (!$tenant || $tenant->post_type !== 'ef_tenant') wp_send_json_error('Tenant not found');
+
+        $prop_id = ef_get_tenant_property_id($tid);
+        $prop_name = '-';
+        if ($prop_id) {
+            $prop_name = (function_exists('get_field') ? (get_field('add_property', $prop_id) ?: get_field('property_name', $prop_id)) : null) ?: get_post_meta($prop_id, 'add_property', true) ?: get_post_meta($prop_id, 'property_name', true) ?: get_the_title($prop_id);
+        }
+
+        $total_contract = ef_clean_amount(get_field('total_contract_amount', $tid) ?: get_post_meta($tid, 'total_contract_amount', true) ?: get_field('total_rent_cost', $tid) ?: get_post_meta($tid, 'total_rent_cost', true));
+        $monthly_rent = ef_clean_amount(get_field('monthly_rent', $tid) ?: get_post_meta($tid, 'monthly_rent', true));
+        $contract_months = intval(get_field('tenant_contract_months', $tid) ?: get_post_meta($tid, 'tenant_contract_months', true) ?: get_field('contract_months', $tid) ?: get_post_meta($tid, 'contract_months', true) ?: 12);
+
+        if ($total_contract <= 0 && $monthly_rent > 0) {
+            $total_contract = $monthly_rent * $contract_months;
+        }
+
+        $tenant_start = get_field('tenant_start', $tid) ?: get_post_meta($tid, 'tenant_start', true) ?: '-';
+        $tenant_end = get_field('tenant_end', $tid) ?: get_post_meta($tid, 'tenant_end', true) ?: '-';
+        $tenant_email = get_field('tenant_email', $tid) ?: get_post_meta($tid, 'tenant_email', true) ?: '-';
+
+        // Get payments history
+        $all_payments = get_posts([
+            'post_type' => 'payment',
+            'post_status' => ['publish', 'future', 'pending', 'draft', 'private'],
+            'numberposts' => -1
+        ]);
+
+        $tenant_payments = [];
+        $paid_periods = [];
+        foreach ($all_payments as $pay) {
+            if (ef_get_payment_tenant_id($pay->ID) === $tid) {
+                $amt = ef_clean_amount(get_field('amount_paid', $pay->ID) ?: get_post_meta($pay->ID, 'amount_paid', true));
+                $start = get_field('cheque_start_date', $pay->ID) ?: get_post_meta($pay->ID, 'cheque_start_date', true);
+                $end = get_field('cheque_end_date', $pay->ID) ?: get_post_meta($pay->ID, 'cheque_end_date', true);
+                $pay_period = ef_get_payment_period($pay->ID);
+
+                if (!isset($paid_periods[$pay_period])) $paid_periods[$pay_period] = 0;
+                $paid_periods[$pay_period] += $amt;
+
+                $period_display = ($start && $end && $start !== $end) ? "$start to $end" : ($start ?: ($end ?: $pay_period));
+
+                $tenant_payments[] = [
+                    'id' => $pay->ID,
+                    'amount' => $amt,
+                    'period' => $period_display,
+                    'date' => get_field('date_of_payment', $pay->ID) ?: get_post_meta($pay->ID, 'date_of_payment', true) ?: get_the_date('Y-m-d', $pay->ID)
+                ];
             }
         }
 
-        $collected = 0; 
-        $billable_count = 0;
-        $progress_sum = 0;
-
-        $p_pay_total = 0;
-        $p_payments = isset($payments_by_property[$p->ID]) ? $payments_by_property[$p->ID] : [];
-        foreach ($p_payments as $pay) {
-            $p_pay_total += ef_clean_amount(get_field('amount_paid', $pay->ID) ?: get_post_meta($pay->ID, 'amount_paid', true));
-        }
-        $collected = $p_pay_total;
-
-        foreach ($p_tenants as $t) { 
-            $rent_val = get_field('monthly_rent', $t->ID) ?: get_post_meta($t->ID, 'monthly_rent', true); 
-            $monthly_rent = ef_clean_amount($rent_val);
-
-            if (function_exists("ef_is_tenant_billable") && !ef_is_tenant_billable($t->ID, $current_month, $current_year)) continue; 
-            
-            $billable_count++;
- 
-            $t_paid_total = 0;
-            $t_payments = isset($payments_by_tenant[$t->ID]) ? $payments_by_tenant[$t->ID] : []; 
-            foreach ($t_payments as $pay) { 
-                $amount_val = get_field('amount_paid', $pay->ID) ?: get_post_meta($pay->ID, 'amount_paid', true); 
-                $t_paid_total += ef_clean_amount($amount_val);
-            } 
-
-            if ($monthly_rent > 0) {
-                $progress_sum += min(1, $t_paid_total / $monthly_rent);
-            } elseif ($t_paid_total > 0) {
-                $progress_sum += 1;
+        $fully_paid_months = 0;
+        foreach ($paid_periods as $period => $amt) {
+            if (($monthly_rent > 0 && ($amt - $monthly_rent) >= -0.001) || ($monthly_rent == 0 && $amt > 0)) {
+                $fully_paid_months++;
             }
-        } 
- 
-        $col_pct = ($billable_count > 0) ? round(($progress_sum / $billable_count) * 100) : 0;
+        }
 
-        $p_name = (function_exists('get_field') ? get_field('add_property', $p->ID) : null) ?: get_post_meta($p->ID, 'add_property', true) ?: $p->post_title;
-        if (!$p_name) $p_name = 'Property #' . $p->ID;
+        wp_send_json_success([
+            'id' => $tid,
+            'name' => $tenant->post_title,
+            'property_id' => $prop_id,
+            'property_name' => $prop_name,
+            'total_contract' => $total_contract,
+            'monthly_rent' => $monthly_rent,
+            'contract_months' => $contract_months,
+            'tenant_start' => $tenant_start,
+            'tenant_end' => $tenant_end,
+            'tenant_email' => $tenant_email,
+            'paid_months_count' => $fully_paid_months,
+            'payments' => $tenant_payments
+        ]);
+    }
+}
 
-        $p_address = (function_exists('get_field') ? get_field('add_address', $p->ID) : null) ?: get_post_meta($p->ID, 'add_address', true) ?: get_post_meta($p->ID, 'address', true) ?: 'N/A';
+add_action('wp_ajax_save_tenant', 'ef_handle_save_tenant');
+if (!function_exists('ef_handle_save_tenant')) {
+    function ef_handle_save_tenant() {
+        check_ajax_referer('ef_tenant_nonce', 'nonce');
+        if (!is_user_logged_in()) wp_send_json_error('Unauthorized.');
 
-        $data[] = [ 
-            'id'        => $p->ID, 
-            'name'      => $p_name, 
-            'type'      => function_exists('get_field') ? (get_field('property_type', $p->ID) ?: 'Property') : (get_post_meta($p->ID, 'property_type', true) ?: 'Property'), 
-            'units'     => $units, 
-            'occupied'  => $occupied, 
-            'address'   => $p_address, 
-            'expected'  => $expected, 
-            'collected' => $collected,
-            'col_pct'   => $col_pct
-        ]; 
-    } 
-    wp_send_json_success($data); 
-} 
-} 
- 
-add_action('wp_ajax_get_property_tenants_simple', 'ef_handle_get_property_tenants_simple'); 
-if (!function_exists('ef_handle_get_property_tenants_simple')) { 
-function ef_handle_get_property_tenants_simple() { 
-    check_ajax_referer('ef_property_nonce', 'nonce'); 
-    if (!is_user_logged_in()) { 
-        wp_send_json_error('Unauthorized.'); 
-    } 
- 
-    $property_id = intval($_POST['property_id'] ?? 0); 
-    if (!$property_id) { 
-        wp_send_json_error('Property ID missing'); 
-    } 
- 
-    $tenants = get_posts([ 
-        'post_type'      => 'ef_tenant', 
-        'posts_per_page' => -1, 
-        'post_status'    => 'publish', 
-        'meta_query'     => [ 
-            [ 
-                'key'   => 'property_id', 
-                'value' => $property_id, 
-            ] 
-        ] 
-    ]); 
- 
-    $data = []; 
-    foreach ($tenants as $t) { 
-        $tid = $t->ID; 
-        $rent = function_exists('get_field') ? get_field('monthly_rent', $tid) : get_post_meta($tid, 'monthly_rent', true); 
-        $unit = function_exists('get_field') ? get_field('tenant_unit', $tid) : get_post_meta($tid, 'tenant_unit', true); 
- 
-        $address = function_exists('get_field') ? get_field('tenant_address', $tid) : get_post_meta($tid, 'tenant_address', true); 
- 
-        $data[] = [ 
-            'id'          => $tid, 
-            'name'        => $t->post_title, 
-            'unit'        => $unit ?: 'N/A', 
-            'address'     => $address ?: 'N/A', 
-            'rent'        => floatval($rent) 
-        ]; 
-    } 
-    wp_send_json_success($data); 
-} 
-} 
- 
-add_shortcode('properties_page_add_btn', function() { 
-    ob_start(); ?> 
-     
-    <button id="properties-page-add-trigger" class="properties-page-btn-primary">+ Add property</button> 
- 
-    <div id="properties-page-modal" class="properties-page-modal properties-page-hidden"> 
-        <div class="properties-page-modal-content"> 
-            <div class="properties-page-modal-header"> 
-                <h3 id="modal-title">Add property</h3> 
-                <button id="properties-page-close-btn" class="properties-page-close-btn">&times;</button> 
-            </div> 
-            <form id="properties-page-form"> 
-                <input type="hidden" id="in-id" value=""> 
-                <input type="hidden" id="ef_property_nonce" value="<?php echo wp_create_nonce('ef_property_nonce'); ?>"> 
-                <label>Name</label><input type="text" id="in-name" required placeholder="e.g. Sunset Apartments"> 
- 
-                <div class="properties-page-row"> 
-                    <div class="properties-page-col"> 
-                        <label>Type</label><input type="text" id="in-type" required placeholder="e.g. Residential"> 
-                    </div> 
-                    <div class="properties-page-col"> 
-                        <label>Units</label><input type="number" id="in-units" required min="0"> 
-                    </div> 
-                </div> 
- 
-                <label>Address</label><input type="text" id="in-address" required placeholder="Full address"> 
- 
-                <div class="properties-page-footer"> 
-                    <button type="button" id="properties-page-cancel-btn" class="properties-page-btn-cancel">Cancel</button> 
-                    <button type="submit" class="properties-page-btn-primary" id="submit-btn">Add</button> 
-                </div> 
-            </form> 
-        </div> 
-    </div> 
-    <?php return ob_get_clean(); 
-}); 
- 
-add_shortcode('properties_page_grid', function() { 
-    ob_start(); ?> 
-     
-    <div id="properties-dashboard-wrapper"> 
-        <input type="hidden" id="ef_property_nonce" value="<?php echo wp_create_nonce('ef_property_nonce'); ?>"> 
-        <div style="margin-bottom: 20px;">
-            <input type="text" id="efPropertySearch" placeholder="🔍 Search properties..." style="width: 100%; max-width: 500px; padding: 12px 16px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; outline: none; background: #ffffff; box-sizing: border-box;">
+        $tid = intval($_POST['tenant_id'] ?? 0);
+        $name = sanitize_text_field($_POST['name'] ?? '');
+        $prop_id = intval($_POST['property_id'] ?? 0);
+        $total_contract = ef_clean_amount($_POST['total_contract'] ?? 0);
+        $contract_months = intval($_POST['contract_months'] ?? 12);
+        $monthly_rent = ($contract_months > 0) ? ($total_contract / $contract_months) : $total_contract;
+        $tenant_email = sanitize_email($_POST['email'] ?? '');
+        $tenant_start = sanitize_text_field($_POST['tenant_start'] ?? '');
+        $tenant_end = sanitize_text_field($_POST['tenant_end'] ?? '');
+
+        if (!$name) wp_send_json_error('Tenant name is required.');
+
+        $post_data = [
+            'post_title' => $name,
+            'post_type' => 'ef_tenant',
+            'post_status' => 'publish'
+        ];
+
+        if ($tid > 0) {
+            $post_data['ID'] = $tid;
+            $post_id = wp_update_post($post_data);
+        } else {
+            $post_id = wp_insert_post($post_data);
+        }
+
+        if (is_wp_error($post_id) || !$post_id) {
+            wp_send_json_error('Failed to save tenant.');
+        }
+
+        if (function_exists('update_field')) {
+            update_field('property_id', $prop_id, $post_id);
+            update_field('property', $prop_id, $post_id);
+            update_field('associated_property', $prop_id, $post_id);
+            update_field('total_contract_amount', $total_contract, $post_id);
+            update_field('monthly_rent', $monthly_rent, $post_id);
+            update_field('tenant_contract_months', $contract_months, $post_id);
+            update_field('tenant_email', $tenant_email, $post_id);
+            update_field('tenant_start', $tenant_start, $post_id);
+            update_field('tenant_end', $tenant_end, $post_id);
+        }
+        update_post_meta($post_id, 'property_id', $prop_id);
+        update_post_meta($post_id, 'associated_property', $prop_id);
+        update_post_meta($post_id, 'total_contract_amount', $total_contract);
+        update_post_meta($post_id, 'total_rent_cost', $total_contract);
+        update_post_meta($post_id, 'contract_months', $contract_months);
+        update_post_meta($post_id, 'tenant_contract_months', $contract_months);
+        update_post_meta($post_id, 'monthly_rent', $monthly_rent);
+        update_post_meta($post_id, 'tenant_email', $tenant_email);
+        update_post_meta($post_id, 'tenant_start', $tenant_start);
+        update_post_meta($post_id, 'tenant_end', $tenant_end);
+
+        wp_send_json_success(['id' => $post_id]);
+    }
+}
+
+add_action('wp_ajax_delete_tenant', 'ef_handle_delete_tenant');
+if (!function_exists('ef_handle_delete_tenant')) {
+    function ef_handle_delete_tenant() {
+        check_ajax_referer('ef_tenant_nonce', 'nonce');
+        if (!is_user_logged_in()) wp_send_json_error('Unauthorized.');
+
+        $tid = intval($_POST['tenant_id'] ?? 0);
+        if (!$tid) wp_send_json_error('Invalid Tenant ID.');
+
+        if (wp_delete_post($tid, true)) {
+            wp_send_json_success();
+        } else {
+            wp_send_json_error('Failed to delete tenant.');
+        }
+    }
+}
+
+// Shortcodes
+add_shortcode('tenant_header', function() {
+    $t_query = new WP_Query([
+        'post_type' => 'ef_tenant',
+        'post_status' => 'publish',
+        'posts_per_page' => -1,
+        'fields' => 'ids'
+    ]);
+    $count = count($t_query->posts);
+    ob_start();
+    ?>
+    <div class="ef-tenant-header-box" style="margin-bottom: 20px;">
+        <h1 style="font-size: 32px; font-weight: 700; margin: 0 0 6px 0; color: #0f172a; font-family: system-ui, -apple-system, sans-serif;">Tenants</h1>
+        <div style="font-size: 15px; color: #64748b; font-weight: 500; font-family: system-ui, -apple-system, sans-serif;"><?php echo $count; ?> active tenant<?php echo $count === 1 ? '' : 's'; ?></div>
+    </div>
+    <?php
+    return ob_get_clean();
+});
+
+add_shortcode('add_tenant', function() {
+    $nonce = wp_create_nonce('ef_tenant_nonce');
+    $properties = get_posts([
+        'post_type' => array_values(array_diff(get_post_types(), ['post', 'attachment', 'revision', 'nav_menu_item', 'custom_css', 'oembed_cache', 'user_request', 'wp_block', 'wp_template', 'wp_template_part', 'wp_navigation', 'payment', 'ef_tenant', 'page'])),
+        'post_status' => 'publish',
+        'posts_per_page' => -1,
+        'orderby' => 'title',
+        'order' => 'ASC'
+    ]);
+    ob_start();
+    ?>
+    <div class="ef-add-tenant-box" style="display: flex; justify-content: flex-end; align-items: center;">
+        <button id="efBtnAddTenant" class="properties-page-btn-primary" style="background: #0a8a4f; color: #fff; border: none; padding: 10px 18px; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px;">+ Add tenant</button>
+
+        <div id="efTenantModal" class="properties-page-modal properties-page-hidden" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 99999; align-items: center; justify-content: center;">
+            <div class="properties-page-modal-content" style="background: #ffffff; border-radius: 12px; max-width: 500px; width: 100%; padding: 24px; box-sizing: border-box; position: relative;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h3 id="efTenantModalTitle" style="margin: 0; font-size: 20px;">Add tenant</h3>
+                    <button id="efTenantCloseBtn" style="background: none; border: none; font-size: 24px; cursor: pointer;">&times;</button>
+                </div>
+                <form id="efEditTenantForm">
+                    <input type="hidden" id="ef_tenant_nonce" value="<?php echo esc_attr($nonce); ?>">
+                    <input type="hidden" id="modal_field_id" value="">
+
+                    <div style="margin-bottom: 14px;">
+                        <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px;">Name</label>
+                        <input type="text" id="modal_field_name" required style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box;">
+                    </div>
+
+                    <div style="margin-bottom: 14px;">
+                        <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px;">Property</label>
+                        <select id="modal_field_property" required style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box;">
+                            <option value="">Select Property</option>
+                            <?php foreach ($properties as $prop) :
+                                $p_name = get_post_meta($prop->ID, 'add_property', true) ?: $prop->post_title;
+                            ?>
+                                <option value="<?php echo $prop->ID; ?>"><?php echo esc_html($p_name); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px;">
+                        <div>
+                            <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px;">Contract Amount (AED)</label>
+                            <input type="number" step="0.01" id="modal_field_total_contract" required style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px;">Contract Months</label>
+                            <input type="number" id="modal_field_contract_months" required value="12" min="1" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box;">
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom: 14px;">
+                        <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px;">Monthly Rent (auto)</label>
+                        <input type="text" id="modal_field_rent" readonly style="width: 100%; padding: 10px; border: 1px solid #e2e8f0; background: #f8fafc; border-radius: 6px; box-sizing: border-box;">
+                    </div>
+
+                    <div style="margin-bottom: 14px;">
+                        <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px;">Email</label>
+                        <input type="email" id="modal_field_email" required style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box;">
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px;">
+                        <div>
+                            <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px;">Start Date</label>
+                            <input type="date" id="modal_field_start" required style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box;">
+                        </div>
+                        <div>
+                            <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px;">End Date</label>
+                            <input type="date" id="modal_field_end" required style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box;">
+                        </div>
+                    </div>
+
+                    <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                        <button type="button" id="efTenantCancelBtn" style="padding: 10px 16px; border: 1px solid #cbd5e1; background: #fff; border-radius: 6px; cursor: pointer;">Cancel</button>
+                        <button type="submit" id="efTenantSubmitBtn" style="padding: 10px 18px; border: none; background: #0a8a4f; color: #fff; border-radius: 6px; font-weight: 600; cursor: pointer;">Add</button>
+                    </div>
+                </form>
+            </div>
         </div>
-        <div id="properties-dashboard-grid" class="properties-dashboard-grid"> 
-            <div class="properties-page-empty-state"><p>Loading properties...</p></div> 
-        </div> 
-        <div class="properties-dashboard-nav" style="display: flex; gap: 6px; align-items: center; justify-content: center; flex-wrap: wrap; margin-top: 15px;"> 
-            <button id="first-page" class="prop-nav-btn" disabled>&laquo;</button>
-            <button id="prev-page" class="prop-nav-btn" disabled>&lt;</button> 
-            <span id="page-info">Page 1 of 1</span> 
-            <button id="next-page" class="prop-nav-btn" disabled>&gt;</button> 
-            <button id="last-page" class="prop-nav-btn" disabled>&raquo;</button>
-        </div> 
-    </div> 
-    <?php return ob_get_clean(); 
-}); 
- 
-add_shortcode('properties_page_details', function() { 
-    ob_start(); ?> 
-     
-    <aside class="properties-page-sidebar" id="properties-sidebar"> 
-        <button id="close-details-mobile" class="properties-page-close-btn mobile-only-close">&times;</button> 
-        <div id="properties-page-details" class="properties-page-details-card"> 
-            <div class="properties-page-empty-state"> 
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"> 
-                    <path d="M19 21V5a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v5m-4 0h4"/> 
-                </svg> 
-                <p>Select a property to view details</p> 
-            </div> 
-        </div> 
-    </aside> 
-    <?php return ob_get_clean(); 
-}); 
- 
-add_action('wp_footer', function() { ?> 
-    <script> 
-    document.addEventListener('DOMContentLoaded', () => { 
-        const grid = document.getElementById('properties-dashboard-grid'); 
-        if (!grid && !document.getElementById('properties-page-modal')) return; 
- 
-        const ajaxUrl = '<?php echo admin_url("admin-ajax.php"); ?>'; 
- 
-        const modal = document.getElementById('properties-page-modal'); 
-        const trigger = document.getElementById('properties-page-add-trigger'); 
-        const closeBtn = document.getElementById('properties-page-close-btn'); 
-        const cancelBtn = document.getElementById('properties-page-cancel-btn'); 
-        const form = document.getElementById('properties-page-form'); 
-        const modalTitle = document.getElementById('modal-title'); 
-        const submitBtn = document.getElementById('submit-btn'); 
- 
-        const toggleModal = () => { 
-            if (!modal) return; 
-            modal.classList.toggle('properties-page-hidden'); 
-            if (modal.classList.contains('properties-page-hidden')) { 
-                document.body.style.overflow = ''; 
-                form.reset(); 
-                document.getElementById('in-id').value = ''; 
-                if(modalTitle) modalTitle.textContent = 'Add property'; 
-                if(submitBtn) submitBtn.textContent = 'Add'; 
-            } else { 
-                document.body.style.overflow = 'hidden'; 
-            } 
-        }; 
- 
-        if(trigger) trigger.onclick = toggleModal; 
-        if(closeBtn) closeBtn.onclick = toggleModal; 
-        if(cancelBtn) cancelBtn.onclick = toggleModal; 
-        if(modal) modal.addEventListener('click', (e) => { if (e.target === modal) toggleModal(); }); 
- 
-        if (form) { 
-            form.onsubmit = (e) => { 
-                e.preventDefault(); 
-                const propertyId = document.getElementById('in-id').value; 
-                const submitOriginalText = submitBtn.textContent; 
-                submitBtn.disabled = true; 
-                submitBtn.textContent = 'Saving...'; 
- 
-                const data = new FormData(); 
-                data.append('action', 'save_property'); 
-                const nonceEl = document.getElementById('ef_property_nonce'); 
-                if (nonceEl) { 
-                    data.append('nonce', nonceEl.value); 
-                } 
-                data.append('property_id', propertyId); 
-                data.append('name', document.getElementById('in-name').value); 
-                data.append('type', document.getElementById('in-type').value); 
-                data.append('units', document.getElementById('in-units').value); 
-                data.append('address', document.getElementById('in-address').value); 
- 
-                fetch(ajaxUrl, { method: 'POST', body: data }) 
-                .then(r => r.json()).then(res => { 
-                    if(res.success) { 
-                        location.reload(); 
-                    } else { 
-                        alert(res.data || 'Failed to save property.'); 
-                        submitBtn.disabled = false; 
-                        submitBtn.textContent = submitOriginalText; 
-                    } 
-                }).catch(err => { 
-                    alert('Network error or session expired.'); 
-                    submitBtn.disabled = false; 
-                    submitBtn.textContent = submitOriginalText; 
-                }); 
-            }; 
-        } 
- 
-        let curPage = 1, allData = []; 
-        const pageInfo = document.getElementById('page-info'); 
-        const firstBtn = document.getElementById('first-page');
-        const prevBtn = document.getElementById('prev-page'); 
-        const nextBtn = document.getElementById('next-page'); 
-        const lastBtn = document.getElementById('last-page');
-        const searchInput = document.getElementById('efPropertySearch');
- 
-        const setActiveById = (id) => { 
-            if (!grid) return; 
-            Array.from(grid.querySelectorAll('.properties-dashboard-card')).forEach(c => c.classList.remove('active')); 
-            const card = grid.querySelector(`.properties-dashboard-card[data-prop-id="${id}"]`); 
-            if (card) card.classList.add('active'); 
-        }; 
- 
-        const getFilteredData = () => {
-            const searchQuery = (searchInput ? searchInput.value : '').toLowerCase().trim();
-            return allData.filter(p => {
-                if (!searchQuery) return true;
-                const nameMatch = (p.name || '').toLowerCase().includes(searchQuery);
-                const addressMatch = (p.address || '').toLowerCase().includes(searchQuery);
-                const typeMatch = (p.type || '').toLowerCase().includes(searchQuery);
-                return nameMatch || addressMatch || typeMatch;
+    </div>
+    <?php
+    return ob_get_clean();
+});
+
+add_shortcode('tenant_list', function() {
+    $nonce = wp_create_nonce('ef_tenant_nonce');
+    ob_start();
+    ?>
+    <div id="efTenantListWrapper" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+        <input type="hidden" id="ef_tenant_list_nonce" value="<?php echo esc_attr($nonce); ?>">
+        <div style="margin-bottom: 20px;">
+            <input type="text" id="efTenantSearch" placeholder="Search tenants..." style="width: 100%; padding: 12px 16px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; outline: none; background: #ffffff; box-sizing: border-box;">
+        </div>
+        <div id="efTenantCardsContainer" style="display: flex; flex-direction: column; gap: 12px; min-height: 200px;">
+            <div style="text-align: center; color: #94a3b8; padding: 40px 0;">Loading tenants...</div>
+        </div>
+        <div class="ef-tenant-pagination" style="display: flex; gap: 6px; align-items: center; justify-content: center; flex-wrap: wrap; margin-top: 20px;">
+            <button id="efTenantFirstPage" class="prop-nav-btn" disabled style="padding: 6px 12px; border: 1px solid #cbd5e1; background: #fff; border-radius: 6px; cursor: pointer;">&laquo;</button>
+            <button id="efTenantPrevPage" class="prop-nav-btn" disabled style="padding: 6px 12px; border: 1px solid #cbd5e1; background: #fff; border-radius: 6px; cursor: pointer;">&lt;</button>
+            <span id="efTenantPageInfo" style="font-size: 14px; color: #475569; font-weight: 500; margin: 0 8px;">Page 1 of 1</span>
+            <button id="efTenantNextPage" class="prop-nav-btn" disabled style="padding: 6px 12px; border: 1px solid #cbd5e1; background: #fff; border-radius: 6px; cursor: pointer;">&gt;</button>
+            <button id="efTenantLastPage" class="prop-nav-btn" disabled style="padding: 6px 12px; border: 1px solid #cbd5e1; background: #fff; border-radius: 6px; cursor: pointer;">&raquo;</button>
+        </div>
+    </div>
+    <?php
+    return ob_get_clean();
+});
+
+add_shortcode('tenant_profile', function() {
+    ob_start();
+    ?>
+    <div id="efTenantProfileWrapper" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); min-height: 400px;">
+        <div id="efTenantProfileContainer">
+            <div style="text-align: center; color: #94a3b8; padding: 60px 0;">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom: 12px; opacity: 0.5;">
+                    <path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+                <p style="margin: 0; font-size: 15px; font-weight: 500;">Select a tenant to view details</p>
+            </div>
+        </div>
+    </div>
+    <?php
+    return ob_get_clean();
+});
+
+add_action('wp_footer', function() {
+?>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const ajaxUrl = '<?php echo admin_url("admin-ajax.php"); ?>';
+    const listContainer = document.getElementById('efTenantCardsContainer');
+    const profileContainer = document.getElementById('efTenantProfileContainer');
+    const searchInput = document.getElementById('efTenantSearch');
+
+    const firstBtn = document.getElementById('efTenantFirstPage');
+    const prevBtn = document.getElementById('efTenantPrevPage');
+    const nextBtn = document.getElementById('efTenantNextPage');
+    const lastBtn = document.getElementById('efTenantLastPage');
+    const pageInfo = document.getElementById('efTenantPageInfo');
+
+    const modal = document.getElementById('efTenantModal');
+    const btnAdd = document.getElementById('efBtnAddTenant');
+    const btnClose = document.getElementById('efTenantCloseBtn');
+    const btnCancel = document.getElementById('efTenantCancelBtn');
+    const editForm = document.getElementById('efEditTenantForm');
+
+    const totalContractInput = document.getElementById('modal_field_total_contract');
+    const contractMonthsInput = document.getElementById('modal_field_contract_months');
+    const rentInput = document.getElementById('modal_field_rent');
+
+    const updateMonthlyRentCalc = () => {
+        if (!totalContractInput || !contractMonthsInput || !rentInput) return;
+        const total = parseFloat(totalContractInput.value) || 0;
+        const months = parseInt(contractMonthsInput.value) || 12;
+        const monthly = months > 0 ? (total / months) : 0;
+        rentInput.value = 'AED ' + monthly.toLocaleString('en-AE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    };
+
+    if (totalContractInput) totalContractInput.addEventListener('input', updateMonthlyRentCalc);
+    if (contractMonthsInput) contractMonthsInput.addEventListener('input', updateMonthlyRentCalc);
+
+    const toggleModal = (show = true) => {
+        if (!modal) return;
+        modal.style.display = show ? 'flex' : 'none';
+        if (!show && editForm) {
+            editForm.reset();
+            document.getElementById('modal_field_id').value = '';
+            document.getElementById('efTenantModalTitle').textContent = 'Add tenant';
+            document.getElementById('efTenantSubmitBtn').textContent = 'Add';
+            if (rentInput) rentInput.value = '';
+        }
+    };
+
+    if (btnAdd) btnAdd.onclick = () => toggleModal(true);
+    if (btnClose) btnClose.onclick = () => toggleModal(false);
+    if (btnCancel) btnCancel.onclick = () => toggleModal(false);
+
+    if (editForm) {
+        editForm.onsubmit = (e) => {
+            e.preventDefault();
+            if (!editForm.reportValidity()) return;
+
+            const submitBtn = document.getElementById('efTenantSubmitBtn');
+            const originalText = submitBtn.textContent;
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Saving...';
+
+            const formData = new FormData();
+            formData.append('action', 'save_tenant');
+            const nonce = document.getElementById('ef_tenant_nonce')?.value || document.getElementById('ef_tenant_list_nonce')?.value;
+            formData.append('nonce', nonce);
+            formData.append('tenant_id', document.getElementById('modal_field_id').value);
+            formData.append('name', document.getElementById('modal_field_name').value);
+            formData.append('property_id', document.getElementById('modal_field_property').value);
+            formData.append('total_contract', document.getElementById('modal_field_total_contract').value);
+            formData.append('contract_months', document.getElementById('modal_field_contract_months').value);
+            formData.append('email', document.getElementById('modal_field_email').value);
+            formData.append('tenant_start', document.getElementById('modal_field_start').value);
+            formData.append('tenant_end', document.getElementById('modal_field_end').value);
+
+            fetch(ajaxUrl, { method: 'POST', body: formData })
+            .then(r => r.json())
+            .then(res => {
+                if (res.success) {
+                    toggleModal(false);
+                    loadTenants();
+                } else {
+                    alert(res.data || 'Failed to save tenant.');
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = originalText;
+                }
+            })
+            .catch(() => {
+                alert('Network error while saving tenant.');
+                submitBtn.disabled = false;
+                submitBtn.textContent = originalText;
             });
         };
+    }
 
-        const render = () => { 
-            if (!grid) return; 
-            const filteredData = getFilteredData();
-            const perPage = 4; 
-            const totalPages = Math.ceil(filteredData.length / perPage) || 1; 
-            if (curPage > totalPages) curPage = totalPages;
-            if (curPage < 1) curPage = 1;
+    let allTenants = [], curPage = 1;
+    const perPage = 10;
 
-            const start = (curPage - 1) * perPage; 
-            const slice = filteredData.slice(start, start + perPage); 
- 
-            if (slice.length === 0) { 
-                grid.innerHTML = `<div class="properties-page-empty-state"><p>No properties found.</p></div>`; 
-            } else { 
-                grid.innerHTML = slice.map((p) => { 
-                const occPct = p.units > 0 ? (p.occupied / p.units) * 100 : 0; 
-                const colPct = p.col_pct ?? (p.expected > 0 ? Math.round((p.collected / p.expected) * 100) : 0); 
-                const activeClass = (window._propertiesActiveId && window._propertiesActiveId == p.id) ? 'active' : ''; 
- 
-                return ` 
-                <div class="properties-dashboard-card ${activeClass}" role="button" tabindex="0" data-prop-id="${p.id}"> 
-                    <div class="properties-dashboard-header"><span class="properties-dashboard-badge">${p.type}</span></div> 
-                    <h3>${p.name}</h3> 
-                    <p class="properties-dashboard-address">${p.address}</p> 
-                    <div class="properties-dashboard-occ"><span>Occupancy</span><span>${p.occupied} / ${p.units}</span></div> 
-                    <div class="properties-dashboard-bar-bg"><div class="properties-dashboard-bar-fill" style="width: ${occPct}%"></div></div> 
-                    <div class="properties-dashboard-stats"> 
-                        <div class="properties-dashboard-stat-item"><small>TOTAL CONTRACT AMOUNT</small><span>AED ${p.expected.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span></div> 
-                    </div> 
-                    <div class="properties-dashboard-actions"> 
-                        <button class="dashboard-btn edit-btn" data-id="${p.id}">✏️ Edit</button> 
-                        <button class="dashboard-btn delete-btn" data-id="${p.id}">🗑 Delete</button> 
-                    </div> 
-                </div>`; 
-                }).join(''); 
-            } 
- 
-            Array.from(grid.querySelectorAll('.properties-dashboard-card')).forEach(card => { 
-                card.onclick = (e) => { 
-                    if (e.target.closest('.dashboard-btn')) return; 
-                    const id = card.getAttribute('data-prop-id'); 
-                    const propData = allData.find(p => p.id == id); 
-                    window._propertiesActiveId = id; 
-                    setActiveById(id); 
-                    window.dispatchEvent(new CustomEvent('showPropertyDetails', { detail: propData })); 
-                }; 
-            }); 
- 
-            Array.from(grid.querySelectorAll('.edit-btn')).forEach(btn => { 
-                btn.onclick = (e) => { 
-                    e.stopPropagation(); 
-                    const id = btn.getAttribute('data-id'); 
-                    const p = allData.find(item => item.id == id); 
-                    if (p && modal) { 
-                        document.getElementById('in-id').value = p.id; 
-                        document.getElementById('in-name').value = p.name; 
-                        document.getElementById('in-type').value = p.type; 
-                        document.getElementById('in-units').value = p.units; 
-                        document.getElementById('in-address').value = p.address; 
-                        if(modalTitle) modalTitle.textContent = 'Edit property'; 
-                        if(submitBtn) submitBtn.textContent = 'Save Changes'; 
-                        modal.classList.remove('properties-page-hidden'); 
-                        document.body.style.overflow = 'hidden'; 
-                    } 
-                }; 
-            }); 
- 
-            Array.from(grid.querySelectorAll('.delete-btn')).forEach(btn => { 
-                btn.onclick = (e) => { 
-                    e.stopPropagation(); 
-                    if (confirm('Delete this property?')) { 
-                        const id = btn.getAttribute('data-id'); 
-                        const data = new FormData(); 
-                        data.append('action', 'delete_property'); 
-                        const nonceEl = document.getElementById('ef_property_nonce'); 
-                        if (nonceEl) { 
-                            data.append('nonce', nonceEl.value); 
-                        } 
-                        data.append('property_id', id); 
-                        fetch(ajaxUrl, { method: 'POST', body: data }) 
-                        .then(r => r.json()).then(res => { 
-                            if (res.success) location.reload(); 
-                            else alert(res.data || 'Failed to delete.'); 
-                        }); 
-                    } 
-                }; 
-            }); 
- 
-            if(pageInfo) pageInfo.textContent = `Page ${curPage} of ${totalPages}`; 
-            if(firstBtn) firstBtn.disabled = curPage === 1;
-            if(prevBtn) prevBtn.disabled = curPage === 1; 
-            if(nextBtn) nextBtn.disabled = curPage >= totalPages; 
-            if(lastBtn) lastBtn.disabled = curPage >= totalPages;
-        }; 
- 
-                const dashboardData = new FormData(); 
-                dashboardData.append('action', 'get_properties_dashboard'); 
-                
-                const urlParams = new URLSearchParams(window.location.search);
-                if (urlParams.has('ef_month')) dashboardData.append('ef_month', urlParams.get('ef_month'));
-                if (urlParams.has('ef_year')) dashboardData.append('ef_year', urlParams.get('ef_year'));
+    const getInitials = (name) => {
+        if (!name) return 'T';
+        const parts = name.trim().split(/\s+/);
+        if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+        return name.substr(0, 2).toUpperCase();
+    };
 
-                const nonceEl = document.getElementById('ef_property_nonce'); 
-                if (nonceEl) { 
-                    dashboardData.append('nonce', nonceEl.value); 
-                } else { 
-                    console.error('Property nonce missing.'); 
-                    return; 
-                } 
- 
-                fetch(ajaxUrl, { method: 'POST', body: dashboardData }) 
-                .then(r => r.json()) 
-                .then(res => { 
-                    if(res.success) { 
-                        allData = res.data; 
-                        render(); 
-                    } else { 
-                        if (grid) { 
-                            grid.innerHTML = `<div class="properties-page-empty-state"><p>Error loading properties: ${res.data || 'Unknown error'}</p></div>`; 
-                        } 
-                    } 
-                }) 
-                .catch(err => { 
-                    console.error('Fetch error:', err); 
-                    if (grid) { 
-                        grid.innerHTML = `<div class="properties-page-empty-state"><p>Network error loading properties.</p></div>`; 
-                    } 
-                }); 
- 
-        if (searchInput) {
-            searchInput.addEventListener('input', () => {
-                curPage = 1;
-                render();
-            });
+    const getFilteredTenants = () => {
+        const query = (searchInput ? searchInput.value : '').toLowerCase().trim();
+        return allTenants.filter(t => {
+            if (!query) return true;
+            return (t.name || '').toLowerCase().includes(query) || (t.property_name || '').toLowerCase().includes(query) || (t.address || '').toLowerCase().includes(query);
+        });
+    };
+
+    const loadTenantProfile = async (tenantId) => {
+        if (!profileContainer) return;
+        profileContainer.innerHTML = '<div style="text-align: center; color: #94a3b8; padding: 60px 0;">Loading tenant details...</div>';
+
+        const formData = new FormData();
+        formData.append('action', 'eftm_handle_ajax_tenant_breakdown');
+        const nonce = document.getElementById('ef_tenant_list_nonce')?.value || document.getElementById('ef_tenant_nonce')?.value;
+        formData.append('nonce', nonce);
+        formData.append('tenant_id', tenantId);
+
+        try {
+            const res = await fetch(ajaxUrl, { method: 'POST', body: formData }).then(r => r.json());
+            if (!res.success) {
+                profileContainer.innerHTML = `<div style="color:#ef4444; padding:20px;">${res.data || 'Failed to load details'}</div>`;
+                return;
+            }
+            const t = res.data;
+            const fmt = amt => 'AED ' + (parseFloat(amt) || 0).toLocaleString('en-AE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+            const paymentsListHtml = t.payments.length ? t.payments.map(p => `
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; margin-bottom:8px;">
+                    <div>
+                        <div style="font-weight:600; font-size:13px; color:#0f172a;">${p.period}</div>
+                        <div style="font-size:11px; color:#64748b;">${p.date}</div>
+                    </div>
+                    <div style="font-weight:700; color:#0a8a4f; font-size:14px;">${fmt(p.amount)}</div>
+                </div>
+            `).join('') : '<div style="color:#94a3b8; font-size:13px; text-align:center; padding:20px 0;">No payments recorded</div>';
+
+            profileContainer.innerHTML = `
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:20px;">
+                    <div>
+                        <h2 style="margin:0 0 4px 0; font-size:22px; color:#0f172a;">${t.name}</h2>
+                        <div style="font-size:14px; color:#64748b;">${t.property_name || '-'}</div>
+                    </div>
+                    <button id="efEditTenantBtn" style="padding:6px 12px; border:1px solid #cbd5e1; background:#fff; border-radius:6px; font-weight:600; cursor:pointer; font-size:13px;">✏️ Edit</button>
+                </div>
+
+                <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:12px; margin-bottom:20px;">
+                    <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px;">
+                        <small style="color:#64748b; font-size:10px; font-weight:700; text-transform:uppercase; display:block; margin-bottom:4px;">TOTAL CONTRACT AMOUNT</small>
+                        <div style="font-weight:700; font-size:15px; color:#0f172a;">${fmt(t.total_contract)}</div>
+                    </div>
+                    <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px;">
+                        <small style="color:#64748b; font-size:10px; font-weight:700; text-transform:uppercase; display:block; margin-bottom:4px;">MONTHLY RENT</small>
+                        <div style="font-weight:700; font-size:15px; color:#0f172a;">${fmt(t.monthly_rent)}</div>
+                    </div>
+                    <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px;">
+                        <small style="color:#64748b; font-size:10px; font-weight:700; text-transform:uppercase; display:block; margin-bottom:4px;">PAYMENTS</small>
+                        <div style="font-weight:700; font-size:15px; color:#0a8a4f;">${t.paid_months_count} Months Paid</div>
+                    </div>
+                </div>
+
+                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px; margin-bottom:20px;">
+                    <div style="font-size:13px; font-weight:600; margin-bottom:8px; color:#0f172a;">Tenant Details</div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:13px; color:#475569;">
+                        <div><strong>Email:</strong> ${t.tenant_email}</div>
+                        <div><strong>Contract Months:</strong> ${t.contract_months}</div>
+                        <div><strong>Start Date:</strong> ${t.tenant_start}</div>
+                        <div><strong>End Date:</strong> ${t.tenant_end}</div>
+                    </div>
+                </div>
+
+                <div style="font-size:14px; font-weight:700; color:#0f172a; margin-bottom:12px;">Payment Ledger</div>
+                <div style="max-height:220px; overflow-y:auto;">${paymentsListHtml}</div>
+            `;
+
+            document.getElementById('efEditTenantBtn').onclick = () => {
+                document.getElementById('modal_field_id').value = t.id;
+                document.getElementById('modal_field_name').value = t.name;
+                document.getElementById('modal_field_property').value = t.property_id || '';
+                document.getElementById('modal_field_total_contract').value = t.total_contract;
+                document.getElementById('modal_field_contract_months').value = t.contract_months;
+                document.getElementById('modal_field_email').value = t.tenant_email !== '-' ? t.tenant_email : '';
+                document.getElementById('modal_field_start').value = t.tenant_start !== '-' ? t.tenant_start : '';
+                document.getElementById('modal_field_end').value = t.tenant_end !== '-' ? t.tenant_end : '';
+                updateMonthlyRentCalc();
+
+                document.getElementById('efTenantModalTitle').textContent = 'Edit tenant';
+                document.getElementById('efTenantSubmitBtn').textContent = 'Save Changes';
+                toggleModal(true);
+            };
+        } catch (err) {
+            profileContainer.innerHTML = '<div style="color:#ef4444; padding:20px;">Network error loading profile</div>';
+        }
+    };
+
+    const renderTenants = () => {
+        if (!listContainer) return;
+        const filtered = getFilteredTenants();
+        const totalPages = Math.ceil(filtered.length / perPage) || 1;
+        if (curPage > totalPages) curPage = totalPages;
+        if (curPage < 1) curPage = 1;
+
+        const start = (curPage - 1) * perPage;
+        const slice = filtered.slice(start, start + perPage);
+
+        if (slice.length === 0) {
+            listContainer.innerHTML = '<div style="text-align: center; color: #94a3b8; padding: 40px 0;">No tenants found.</div>';
+        } else {
+            listContainer.innerHTML = slice.map(t => {
+                const initials = getInitials(t.name);
+                const isSelected = window._activeTenantId == t.id;
+                const statusBadge = t.is_fully_paid
+                    ? '<span style="background:#dcfce7; color:#166534; font-size:11px; font-weight:700; padding:4px 8px; border-radius:4px; text-transform:uppercase;">PAID</span>'
+                    : '<span style="background:#fee2e2; color:#991b1b; font-size:11px; font-weight:700; padding:4px 8px; border-radius:4px; text-transform:uppercase;">UNPAID</span>';
+
+                // Notice: Rent amount is completely omitted from list card per user requirement
+                return `
+                <div class="ef-tenant-card ${isSelected ? 'active' : ''}" data-id="${t.id}" style="display:flex; align-items:center; justify-content:space-between; padding:14px 16px; border:1px solid ${isSelected ? '#0a8a4f' : '#e2e8f0'}; border-radius:10px; background:${isSelected ? '#f0fdf4' : '#ffffff'}; cursor:pointer; transition:all 0.15s ease;">
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        <div style="width:40px; height:40px; border-radius:50%; background:#0a8a4f; color:#ffffff; font-weight:700; font-size:14px; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                            ${initials}
+                        </div>
+                        <div>
+                            <div style="font-weight:700; font-size:14px; color:#0f172a; margin-bottom:2px;">${t.name}</div>
+                            <div style="font-size:12px; color:#64748b;">${t.property_name ? t.property_name + (t.address && t.address !== t.property_name ? ' · ' + t.address : '') : (t.address || '-')}</div>
+                        </div>
+                    </div>
+                    <div>
+                        ${statusBadge}
+                    </div>
+                </div>
+                `;
+            }).join('');
         }
 
-        const getTotalPages = () => {
-            const filtered = getFilteredData();
-            return Math.ceil(filtered.length / 4) || 1;
-        };
+        Array.from(listContainer.querySelectorAll('.ef-tenant-card')).forEach(card => {
+            card.onclick = () => {
+                const id = card.getAttribute('data-id');
+                window._activeTenantId = id;
+                renderTenants();
+                loadTenantProfile(id);
+            };
+        });
 
-        if(firstBtn) firstBtn.onclick = () => { if (curPage > 1) { curPage = 1; render(); } };
-        if(prevBtn) prevBtn.onclick = () => { if (curPage > 1) { curPage--; render(); } }; 
-        if(nextBtn) nextBtn.onclick = () => { if (curPage < getTotalPages()) { curPage++; render(); } }; 
-        if(lastBtn) lastBtn.onclick = () => { if (curPage < getTotalPages()) { curPage = getTotalPages(); render(); } };
- 
-        const detailsContainer = document.getElementById('properties-page-details'); 
-        const sidebar = document.getElementById('properties-sidebar'); 
-        const closeDetailsMobile = document.getElementById('close-details-mobile'); 
-        const fmtMoney = amount => 'AED ' + (parseFloat(amount) || 0).toLocaleString('en-AE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); 
- 
-        if (closeDetailsMobile && sidebar) { 
-            closeDetailsMobile.onclick = () => { 
-                sidebar.classList.remove('active'); 
-                if (window.innerWidth <= 768) { 
-                    document.body.style.overflow = ''; 
-                } 
-            }; 
-        } 
- 
-        window.addEventListener('showPropertyDetails', async (e) => { 
-            const prop = e.detail; 
-            if (!prop || !detailsContainer) return; 
- 
-            if (sidebar) { 
-                sidebar.classList.add('active'); 
-                if (window.innerWidth <= 768) { 
-                    document.body.style.overflow = 'hidden'; 
-                } 
-            } 
-            detailsContainer.innerHTML = `<div class="properties-page-empty-state"><p>Loading...</p></div>`; 
- 
-            const tenantData = new FormData(); 
-            tenantData.append('action', 'get_property_tenants_simple'); 
-            const nonceEl = document.getElementById('ef_property_nonce'); 
-            if (nonceEl) { 
-                tenantData.append('nonce', nonceEl.value); 
-            } 
-            tenantData.append('property_id', prop.id); 
- 
-            const tenants = await fetch(ajaxUrl, { method: 'POST', body: tenantData }) 
-                            .then(r => r.json()).then(res => res.success ? res.data : []) 
-                            .catch(() => []); 
- 
-            const available = Math.max(0, prop.units - prop.occupied); 
-            const isAvailable = prop.occupied < prop.units; 
- 
-            const tenantsHtml = tenants.length 
-                ? tenants.map(t => ` 
-                    <div style="padding:12px;background:#f9fafb;border-radius:8px;margin-bottom:10px;border:1px solid #e5e7eb;"> 
-                        <div style="display:flex; justify-content:space-between;"> 
-                            <div><strong>${t.name}</strong><br><span style="font-size:12px;color:#6b7280;">${t.address}</span></div> 
-                            <div style="text-align:right;"><span style="color:#0a8a4f;font-weight:600;">${fmtMoney(t.rent)}</span></div> 
-                        </div> 
-                    </div> 
-                `).join('') 
-                : `<div style="padding:20px;text-align:center;color:#9ca3af;font-size:14px;">No tenants</div>`; 
- 
-            detailsContainer.innerHTML = ` 
-                <h2 style="margin:0 0 5px 0;font-size:22px;">${prop.name}</h2> 
-                <p style="margin:0 0 20px 0;font-size:14px;color:#6b7280;">${prop.address || 'No address'}</p> 
- 
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;"> 
-                    <div style="background:#f9fafb;padding:12px;border-radius:8px;border:1px solid #e5e7eb;"> 
-                        <small style="color:#6b7280;text-transform:uppercase;font-size:10px;">Status</small> 
-                        <div style="font-weight:600;">${isAvailable ? '<span class="property-available">Available</span>' : '<span class="property-not-available">Full</span>'}</div> 
-                    </div> 
-                    <div style="background:#f9fafb;padding:12px;border-radius:8px;border:1px solid #e5e7eb;"> 
-                        <small style="color:#6b7280;text-transform:uppercase;font-size:10px;">Total Units</small> 
-                        <div style="font-weight:600;">${prop.units}</div> 
-                    </div> 
-                    <div style="background:#f9fafb;padding:12px;border-radius:8px;border:1px solid #e5e7eb;"> 
-                        <small style="color:#6b7280;text-transform:uppercase;font-size:10px;">Occupied</small> 
-                        <div style="font-weight:600;color:#dc2626;">${prop.occupied}</div> 
-                    </div> 
-                    <div style="background:#f9fafb;padding:12px;border-radius:8px;border:1px solid #e5e7eb;"> 
-                        <small style="color:#6b7280;text-transform:uppercase;font-size:10px;">Available</small> 
-                        <div style="font-weight:600;color:#059669;">${available}</div> 
-                    </div> 
-                </div> 
- 
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;"> 
-                    <div style="background:#f9fafb;padding:12px;border-radius:8px;border:1px solid #e5e7eb;"> 
-                        <small style="color:#6b7280;text-transform:uppercase;font-size:10px;">TOTAL CONTRACT AMOUNT</small> 
-                        <div style="font-size:16px;font-weight:700;">${fmtMoney(prop.expected)}</div> 
-                    </div> 
-                </div> 
- 
-                <h3 style="font-size:16px;margin-bottom:10px;">Tenants (${prop.occupied})</h3> 
-                <div style="max-height:300px;overflow-y:auto;">${tenantsHtml}</div> 
-            `; 
-        }); 
-    }); 
-    </script> 
-<?php }); 
+        if (pageInfo) pageInfo.textContent = `Page ${curPage} of ${totalPages}`;
+        if (firstBtn) firstBtn.disabled = curPage === 1;
+        if (prevBtn) prevBtn.disabled = curPage === 1;
+        if (nextBtn) nextBtn.disabled = curPage >= totalPages;
+        if (lastBtn) lastBtn.disabled = curPage >= totalPages;
+    };
+
+    const loadTenants = () => {
+        if (!listContainer) return;
+        const formData = new FormData();
+        formData.append('action', 'eftm_get_tenants');
+        const nonce = document.getElementById('ef_tenant_list_nonce')?.value || document.getElementById('ef_tenant_nonce')?.value;
+        if (nonce) formData.append('nonce', nonce);
+
+        fetch(ajaxUrl, { method: 'POST', body: formData })
+        .then(r => r.json())
+        .then(res => {
+            if (res.success) {
+                allTenants = res.data;
+                renderTenants();
+                if (allTenants.length > 0 && !window._activeTenantId) {
+                    window._activeTenantId = allTenants[0].id;
+                    renderTenants();
+                    loadTenantProfile(allTenants[0].id);
+                }
+            } else {
+                listContainer.innerHTML = `<div style="text-align: center; color: #ef4444; padding: 40px 0;">Failed to load tenants: ${res.data || 'Unknown error'}</div>`;
+            }
+        })
+        .catch(() => {
+            listContainer.innerHTML = '<div style="text-align: center; color: #ef4444; padding: 40px 0;">Network error loading tenants.</div>';
+        });
+    };
+
+    if (searchInput) {
+        searchInput.oninput = () => {
+            curPage = 1;
+            renderTenants();
+        };
+    }
+
+    if (firstBtn) firstBtn.onclick = () => { if (curPage > 1) { curPage = 1; renderTenants(); } };
+    if (prevBtn) prevBtn.onclick = () => { if (curPage > 1) { curPage--; renderTenants(); } };
+    if (nextBtn) nextBtn.onclick = () => { const total = Math.ceil(getFilteredTenants().length / perPage) || 1; if (curPage < total) { curPage++; renderTenants(); } };
+    if (lastBtn) lastBtn.onclick = () => { const total = Math.ceil(getFilteredTenants().length / perPage) || 1; if (curPage < total) { curPage = total; renderTenants(); } };
+
+    loadTenants();
+});
+</script>
+<?php
+});
