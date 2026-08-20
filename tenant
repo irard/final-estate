@@ -773,11 +773,7 @@ document.addEventListener('DOMContentLoaded', () => {
             listContainer.innerHTML = slice.map(t => {
                 const initials = getInitials(t.name);
                 const isSelected = window._activeTenantId == t.id;
-                const statusBadge = t.is_fully_paid
-                    ? '<span style="background:#dcfce7; color:#166534; font-size:11px; font-weight:700; padding:4px 8px; border-radius:4px; text-transform:uppercase;">PAID</span>'
-                    : '<span style="background:#fee2e2; color:#991b1b; font-size:11px; font-weight:700; padding:4px 8px; border-radius:4px; text-transform:uppercase;">UNPAID</span>';
 
-                // Notice: Rent amount is completely omitted from list card per user requirement
                 return `
                 <div class="ef-tenant-card ${isSelected ? 'active' : ''}" data-id="${t.id}" style="display:flex; align-items:center; justify-content:space-between; padding:14px 16px; border:1px solid ${isSelected ? '#0a8a4f' : '#e2e8f0'}; border-radius:10px; background:${isSelected ? '#f0fdf4' : '#ffffff'}; cursor:pointer; transition:all 0.15s ease;">
                     <div style="display:flex; align-items:center; gap:12px;">
@@ -788,9 +784,6 @@ document.addEventListener('DOMContentLoaded', () => {
                             <div style="font-weight:700; font-size:14px; color:#0f172a; margin-bottom:2px;">${t.name}</div>
                             <div style="font-size:12px; color:#64748b;">${t.property_name ? t.property_name + (t.address && t.address !== t.property_name ? ' · ' + t.address : '') : (t.address || '-')}</div>
                         </div>
-                    </div>
-                    <div>
-                        ${statusBadge}
                     </div>
                 </div>
                 `;

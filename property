@@ -901,20 +901,12 @@ add_action('wp_footer', function() { ?>
  
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;"> 
                     <div style="background:#f9fafb;padding:12px;border-radius:8px;border:1px solid #e5e7eb;"> 
-                        <small style="color:#6b7280;text-transform:uppercase;font-size:10px;">Status</small> 
-                        <div style="font-weight:600;">${isAvailable ? '<span class="property-available">Available</span>' : '<span class="property-not-available">Full</span>'}</div> 
-                    </div> 
-                    <div style="background:#f9fafb;padding:12px;border-radius:8px;border:1px solid #e5e7eb;"> 
                         <small style="color:#6b7280;text-transform:uppercase;font-size:10px;">Total Units</small> 
                         <div style="font-weight:600;">${prop.units}</div> 
                     </div> 
                     <div style="background:#f9fafb;padding:12px;border-radius:8px;border:1px solid #e5e7eb;"> 
                         <small style="color:#6b7280;text-transform:uppercase;font-size:10px;">Occupied</small> 
                         <div style="font-weight:600;color:#dc2626;">${prop.occupied}</div> 
-                    </div> 
-                    <div style="background:#f9fafb;padding:12px;border-radius:8px;border:1px solid #e5e7eb;"> 
-                        <small style="color:#6b7280;text-transform:uppercase;font-size:10px;">Available</small> 
-                        <div style="font-weight:600;color:#059669;">${available}</div> 
                     </div> 
                 </div> 
  
