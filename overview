@@ -386,8 +386,13 @@ add_shortcode('ef_card_collected_this_month', function() {
 }); 
  
 add_shortcode('ef_card_active_tenants', function() { 
-    $count_props = wp_count_posts('property'); 
-    $badge = ($count_props->publish ?? 0) . ' properties'; 
+    $prop_types = function_exists('ef_get_property_post_types') ? ef_get_property_post_types() : ['property', 'properties', 'ef_property', 'ef_properties', 'building', 'buildings', 'estate', 'estates'];
+    $total_pub = 0;
+    foreach ($prop_types as $pt) {
+        $c = wp_count_posts($pt);
+        $total_pub += intval($c->publish ?? 0);
+    }
+    $badge = $total_pub . ' properties';
     return ef_render_dashboard_card('users', do_shortcode('[ef_total_tenants]'), 'Active Tenants', $badge); 
 }); 
  
