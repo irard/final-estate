@@ -595,13 +595,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const toggleModal = (show = true) => {
         if (!modal) return;
-        modal.style.display = show ? 'flex' : 'none';
-        if (!show && editForm) {
-            editForm.reset();
-            document.getElementById('modal_field_id').value = '';
-            document.getElementById('efTenantModalTitle').textContent = 'Add tenant';
-            document.getElementById('efTenantSubmitBtn').textContent = 'Add';
-            if (rentInput) rentInput.value = '';
+        if (show) {
+            modal.classList.remove('properties-page-hidden');
+            modal.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+        } else {
+            modal.classList.add('properties-page-hidden');
+            modal.style.display = 'none';
+            document.body.style.overflow = '';
+            if (editForm) {
+                editForm.reset();
+                document.getElementById('modal_field_id').value = '';
+                document.getElementById('efTenantModalTitle').textContent = 'Add tenant';
+                document.getElementById('efTenantSubmitBtn').textContent = 'Add';
+                if (rentInput) rentInput.value = '';
+            }
         }
     };
 
@@ -705,7 +713,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         <h2 style="margin:0 0 4px 0; font-size:22px; color:#0f172a;">${t.name}</h2>
                         <div style="font-size:14px; color:#64748b;">${t.property_name || '-'}</div>
                     </div>
-                    <button id="efEditTenantBtn" style="padding:6px 12px; border:1px solid #cbd5e1; background:#fff; border-radius:6px; font-weight:600; cursor:pointer; font-size:13px;">✏️ Edit</button>
+                    <div style="display:flex; gap:8px;">
+                        <button id="efEditTenantBtn" title="Edit tenant" style="padding:6px 12px; border:1px solid #cbd5e1; background:#fff; border-radius:8px; font-weight:600; cursor:pointer; font-size:15px; display:flex; align-items:center; gap:4px; box-shadow:0 1px 2px rgba(0,0,0,0.05);">✏️</button>
+                        <button id="efDeleteTenantBtn" title="Delete tenant" style="padding:6px 12px; border:1px solid #fee2e2; background:#fff1f2; color:#dc2626; border-radius:8px; font-weight:600; cursor:pointer; font-size:13px; display:flex; align-items:center; gap:4px; box-shadow:0 1px 2px rgba(0,0,0,0.05);">🗑 Delete</button>
+                    </div>
                 </div>
 
                 <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:12px; margin-bottom:20px;">
@@ -751,6 +762,29 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('efTenantModalTitle').textContent = 'Edit tenant';
                 document.getElementById('efTenantSubmitBtn').textContent = 'Save Changes';
                 toggleModal(true);
+            };
+
+            document.getElementById('efDeleteTenantBtn').onclick = () => {
+                if (confirm('Are you sure you want to delete this tenant?')) {
+                    const formData = new FormData();
+                    formData.append('action', 'delete_tenant');
+                    const nonce = document.getElementById('ef_tenant_list_nonce')?.value || document.getElementById('ef_tenant_nonce')?.value;
+                    formData.append('nonce', nonce);
+                    formData.append('tenant_id', t.id);
+
+                    fetch(ajaxUrl, { method: 'POST', body: formData })
+                    .then(r => r.json())
+                    .then(res => {
+                        if (res.success) {
+                            window._activeTenantId = null;
+                            loadTenants();
+                            profileContainer.innerHTML = '<div style="text-align: center; color: #94a3b8; padding: 60px 0;"><p style="margin: 0; font-size: 15px; font-weight: 500;">Select a tenant to view details</p></div>';
+                        } else {
+                            alert(res.data || 'Failed to delete tenant.');
+                        }
+                    })
+                    .catch(() => alert('Network error deleting tenant.'));
+                }
             };
         } catch (err) {
             profileContainer.innerHTML = '<div style="color:#ef4444; padding:20px;">Network error loading profile</div>';
