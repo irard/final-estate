@@ -269,7 +269,7 @@ function ef_handle_save_property() {
  
     if ($property_id > 0) { 
         $existing_pt = get_post_type($property_id);
-        if (!$existing_pt) {
+        if (!$existing_pt) { 
             wp_send_json_error('Invalid property ID provided.'); 
         } 
         $post_data['ID'] = $property_id; 
@@ -315,7 +315,7 @@ function ef_handle_delete_property() {
  
     $property_id = !empty($_POST['property_id']) ? intval($_POST['property_id']) : 0; 
  
-    if (!$property_id || !get_post_type($property_id)) {
+    if (!$property_id || !get_post_type($property_id)) { 
         wp_send_json_error('Invalid Property ID.'); 
     } 
  
@@ -343,7 +343,7 @@ function ef_handle_get_properties_dashboard() {
     }
 
     $p_query = new WP_Query([ 
-        'post_type'        => $allowed_pts,
+        'post_type'        => $allowed_pts, 
         'posts_per_page'   => -1, 
         'post_status'      => array('publish', 'future', 'pending', 'draft', 'private', 'trash', 'any'), 
         'orderby'          => 'date', 
@@ -407,10 +407,10 @@ function ef_handle_get_properties_dashboard() {
  
         $units = 0; 
         if (function_exists('get_field')) { 
-            $units = intval(get_field('number_unit', $p->ID) ?: get_field('number_units', $p->ID) ?: get_field('units', $p->ID) ?: get_field('property_units', $p->ID));
+            $units = intval(get_field('number_unit', $p->ID) ?: get_field('number_units', $p->ID) ?: get_field('units', $p->ID) ?: get_field('property_units', $p->ID)); 
         } 
         if (!$units) { 
-            $units = intval(get_post_meta($p->ID, 'number_unit', true)) ?: intval(get_post_meta($p->ID, 'number_units', true)) ?: intval(get_post_meta($p->ID, 'units', true)) ?: intval(get_post_meta($p->ID, 'property_units', true)) ?: 0;
+            $units = intval(get_post_meta($p->ID, 'number_unit', true)) ?: intval(get_post_meta($p->ID, 'number_units', true)) ?: intval(get_post_meta($p->ID, 'units', true)) ?: intval(get_post_meta($p->ID, 'property_units', true)) ?: 0; 
         } 
  
         $expected = ef_clean_amount(get_field('property_rent', $p->ID) ?: get_post_meta($p->ID, 'property_rent', true) ?: get_field('total_contract_amount', $p->ID) ?: get_post_meta($p->ID, 'total_contract_amount', true) ?: get_field('total_rent_cost', $p->ID) ?: get_post_meta($p->ID, 'total_rent_cost', true));
