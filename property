@@ -76,8 +76,46 @@ if (!function_exists('ef_get_payment_tenant_id')) {
 
 if (!function_exists('ef_get_tenant_property_id')) {
     function ef_get_tenant_property_id($t_id) {
-        $p = get_field('property_id', $t_id) ?: get_post_meta($t_id, 'property_id', true) ?: get_field('associated_property', $t_id) ?: get_post_meta($t_id, 'associated_property', true) ?: get_field('select_property', $t_id) ?: get_post_meta($t_id, 'select_property', true);
-        return ef_get_id_from_any($p);
+        $p_keys = ['property_id', 'property', 'tenant_property', 'associated_property', 'select_property', 'add_property'];
+        $raw = null;
+        foreach ($p_keys as $key) {
+            $val = function_exists('get_field') ? get_field($key, $t_id) : null;
+            if (!$val) $val = get_post_meta($t_id, $key, true);
+            if ($val) {
+                $raw = $val;
+                break;
+            }
+        }
+        if (!$raw) return 0;
+
+        $raw = maybe_unserialize($raw);
+        if (is_array($raw)) {
+            $first = reset($raw);
+            return ef_get_id_from_any($first);
+        }
+
+        $id = ef_get_id_from_any($raw);
+        if ($id > 0) return $id;
+
+        if (is_string($raw) && !is_numeric($raw)) {
+            $p_clean = trim($raw);
+            $found = get_posts([
+                'post_type' => 'any',
+                'title' => $p_clean,
+                'numberposts' => 1,
+                'fields' => 'ids'
+            ]);
+            if (!empty($found)) return intval($found[0]);
+            $found_meta = get_posts([
+                'post_type' => 'any',
+                'meta_key' => 'add_property',
+                'meta_value' => $p_clean,
+                'numberposts' => 1,
+                'fields' => 'ids'
+            ]);
+            if (!empty($found_meta)) return intval($found_meta[0]);
+        }
+        return 0;
     }
 }
 
@@ -179,12 +217,12 @@ if (!function_exists('ef_get_tenant_monthly_status')) {
         return [
             'paid' => $paid,
             'rent' => $rent,
-            'is_fully_paid' => ($rent > 0 && $paid >= $rent) || ($rent == 0 && $paid > 0)
+            'is_fully_paid' => ($rent > 0 && ($paid - $rent) >= -0.001) || ($rent == 0 && $paid > 0)
         ];
     }
 }
+
 add_action('wp_ajax_save_property', 'ef_handle_save_property'); 
- 
 if (!function_exists('ef_handle_save_property')) { 
 function ef_handle_save_property() { 
     check_ajax_referer('ef_property_nonce', 'nonce'); 
@@ -230,10 +268,12 @@ function ef_handle_save_property() {
     ]; 
  
     if ($property_id > 0) { 
-        if (get_post_type($property_id) !== 'property') {
+        $existing_pt = get_post_type($property_id);
+        if (!$existing_pt) {
             wp_send_json_error('Invalid property ID provided.'); 
         } 
         $post_data['ID'] = $property_id; 
+        $post_data['post_type'] = $existing_pt;
         $post_id = wp_update_post($post_data); 
     } else { 
         $post_id = wp_insert_post($post_data); 
@@ -259,7 +299,6 @@ function ef_handle_save_property() {
         update_post_meta($post_id, 'add_address', $address); 
     } 
  
- 
     update_post_meta($post_id, 'property_units', $units); 
  
     wp_send_json_success(['id' => $post_id]); 
@@ -267,7 +306,6 @@ function ef_handle_save_property() {
 } 
  
 add_action('wp_ajax_delete_property', 'ef_handle_delete_property'); 
- 
 if (!function_exists('ef_handle_delete_property')) { 
 function ef_handle_delete_property() { 
     check_ajax_referer('ef_property_nonce', 'nonce'); 
@@ -277,7 +315,7 @@ function ef_handle_delete_property() {
  
     $property_id = !empty($_POST['property_id']) ? intval($_POST['property_id']) : 0; 
  
-    if (!$property_id || get_post_type($property_id) !== 'property') {
+    if (!$property_id || !get_post_type($property_id)) {
         wp_send_json_error('Invalid Property ID.'); 
     } 
  
@@ -297,8 +335,15 @@ function ef_handle_get_properties_dashboard() {
         wp_send_json_error('Unauthorized.'); 
     } 
  
+    $all_pts = function_exists('get_post_types') ? get_post_types() : [];
+    $exclude_pts = ['post', 'attachment', 'revision', 'nav_menu_item', 'custom_css', 'oembed_cache', 'user_request', 'wp_block', 'wp_template', 'wp_template_part', 'wp_navigation', 'payment', 'ef_tenant', 'page', 'acf-field-group', 'acf-field', 'acf-post-type', 'acf-taxonomy', 'acf-ui-options-page'];
+    $allowed_pts = array_values(array_diff($all_pts, $exclude_pts));
+    if (empty($allowed_pts)) {
+        $allowed_pts = ['property', 'properties', 'ef_property', 'ef_properties', 'building', 'buildings', 'estate', 'estates', 'real_estate', 'real_estates', 'house', 'houses', 'unit', 'units', 'any'];
+    }
+
     $p_query = new WP_Query([ 
-        'post_type'        => array('property', 'properties', 'ef_property', 'ef_properties', 'building', 'buildings'),
+        'post_type'        => $allowed_pts,
         'posts_per_page'   => -1, 
         'post_status'      => array('publish', 'future', 'pending', 'draft', 'private', 'trash', 'any'), 
         'orderby'          => 'date', 
@@ -312,7 +357,6 @@ function ef_handle_get_properties_dashboard() {
     } 
  
     $property_ids = wp_list_pluck($properties, 'ID'); 
- 
  
     $all_tenants = get_posts([ 
         'post_type'   => 'ef_tenant', 
@@ -329,7 +373,6 @@ function ef_handle_get_properties_dashboard() {
         }
         $all_tenant_ids[] = $t->ID; 
     } 
- 
  
     $period_data = ef_get_dashboard_period();
     $current_month = $period_data['m']; 
@@ -364,10 +407,10 @@ function ef_handle_get_properties_dashboard() {
  
         $units = 0; 
         if (function_exists('get_field')) { 
-            $units = intval(get_field('number_unit', $p->ID));
+            $units = intval(get_field('number_unit', $p->ID) ?: get_field('number_units', $p->ID) ?: get_field('units', $p->ID) ?: get_field('property_units', $p->ID));
         } 
         if (!$units) { 
-            $units = intval(get_post_meta($p->ID, 'number_unit', true)) ?: intval(get_post_meta($p->ID, 'property_units', true)) ?: 0;
+            $units = intval(get_post_meta($p->ID, 'number_unit', true)) ?: intval(get_post_meta($p->ID, 'number_units', true)) ?: intval(get_post_meta($p->ID, 'units', true)) ?: intval(get_post_meta($p->ID, 'property_units', true)) ?: 0;
         } 
  
         $expected = ef_clean_amount(get_field('property_rent', $p->ID) ?: get_post_meta($p->ID, 'property_rent', true) ?: get_field('total_contract_amount', $p->ID) ?: get_post_meta($p->ID, 'total_contract_amount', true) ?: get_field('total_rent_cost', $p->ID) ?: get_post_meta($p->ID, 'total_rent_cost', true));
@@ -417,10 +460,20 @@ function ef_handle_get_properties_dashboard() {
  
         $col_pct = ($billable_count > 0) ? round(($progress_sum / $billable_count) * 100) : 0;
 
-        $p_name = (function_exists('get_field') ? get_field('add_property', $p->ID) : null) ?: get_post_meta($p->ID, 'add_property', true) ?: $p->post_title;
+        $p_name = (function_exists('get_field') ? (get_field('add_property', $p->ID) ?: get_field('property_name', $p->ID)) : null) ?: get_post_meta($p->ID, 'add_property', true) ?: get_post_meta($p->ID, 'property_name', true) ?: $p->post_title;
         if (!$p_name) $p_name = 'Property #' . $p->ID;
 
-        $p_address = (function_exists('get_field') ? get_field('add_address', $p->ID) : null) ?: get_post_meta($p->ID, 'add_address', true) ?: get_post_meta($p->ID, 'address', true) ?: 'N/A';
+        $p_address = (function_exists('get_field') ? (get_field('add_address', $p->ID) ?: get_field('property_address', $p->ID) ?: get_field('address', $p->ID)) : null) ?: get_post_meta($p->ID, 'add_address', true) ?: get_post_meta($p->ID, 'property_address', true) ?: get_post_meta($p->ID, 'address', true) ?: 'N/A';
+
+        $p_img_raw = (function_exists('get_field') ? get_field('property_image', $p->ID) : null) ?: get_post_meta($p->ID, 'property_image', true);
+        $p_img_url = '';
+        if (is_array($p_img_raw) && !empty($p_img_raw['url'])) {
+            $p_img_url = $p_img_raw['url'];
+        } elseif (is_numeric($p_img_raw) && function_exists('wp_get_attachment_url')) {
+            $p_img_url = wp_get_attachment_url($p_img_raw);
+        } elseif (is_string($p_img_raw)) {
+            $p_img_url = $p_img_raw;
+        }
 
         $data[] = [ 
             'id'        => $p->ID, 
@@ -429,6 +482,7 @@ function ef_handle_get_properties_dashboard() {
             'units'     => $units, 
             'occupied'  => $occupied, 
             'address'   => $p_address, 
+            'image'     => $p_img_url,
             'expected'  => $expected, 
             'collected' => $collected,
             'col_pct'   => $col_pct
@@ -860,10 +914,6 @@ add_action('wp_footer', function() { ?>
                 <p style="margin:0 0 20px 0;font-size:14px;color:#6b7280;">${prop.address || 'No address'}</p> 
  
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;"> 
-                    <div style="background:#f9fafb;padding:12px;border-radius:8px;border:1px solid #e5e7eb;">
-                        <small style="color:#6b7280;text-transform:uppercase;font-size:10px;">Status</small>
-                        <div style="font-weight:600;">${isAvailable ? '<span class="property-available">Available</span>' : '<span class="property-not-available">Full</span>'}</div>
-                    </div>
                     <div style="background:#f9fafb;padding:12px;border-radius:8px;border:1px solid #e5e7eb;"> 
                         <small style="color:#6b7280;text-transform:uppercase;font-size:10px;">Total Units</small> 
                         <div style="font-weight:600;">${prop.units}</div> 
@@ -872,10 +922,6 @@ add_action('wp_footer', function() { ?>
                         <small style="color:#6b7280;text-transform:uppercase;font-size:10px;">Occupied</small> 
                         <div style="font-weight:600;color:#dc2626;">${prop.occupied}</div> 
                     </div> 
-                    <div style="background:#f9fafb;padding:12px;border-radius:8px;border:1px solid #e5e7eb;">
-                        <small style="color:#6b7280;text-transform:uppercase;font-size:10px;">Available</small>
-                        <div style="font-weight:600;color:#059669;">${available}</div>
-                    </div>
                 </div> 
  
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;"> 
