@@ -40,11 +40,9 @@ if (!function_exists('ef_get_id_from_any')) {
     function ef_get_id_from_any($val) {
         if (!$val) return 0;
         $val = maybe_unserialize($val);
-        if (is_array($val)) {
-            $first = reset($val);
-            return ef_get_id_from_any($first);
-        }
-        if (is_object($val)) return intval($val->ID ?? $val->post_id ?? $val->id ?? 0);
+        if (is_array($val)) $val = reset($val);
+        if (is_object($val)) return intval($val->ID ?? $val->post_id ?? 0);
+        if (is_array($val)) return intval($val['ID'] ?? $val['id'] ?? $val[0] ?? 0);
         return intval($val);
     }
 }
@@ -76,46 +74,8 @@ if (!function_exists('ef_get_payment_tenant_id')) {
 
 if (!function_exists('ef_get_tenant_property_id')) {
     function ef_get_tenant_property_id($t_id) {
-        $p_keys = ['property_id', 'property', 'tenant_property', 'associated_property', 'select_property', 'add_property'];
-        $raw = null;
-        foreach ($p_keys as $key) {
-            $val = function_exists('get_field') ? get_field($key, $t_id) : null;
-            if (!$val) $val = get_post_meta($t_id, $key, true);
-            if ($val) {
-                $raw = $val;
-                break;
-            }
-        }
-        if (!$raw) return 0;
-
-        $raw = maybe_unserialize($raw);
-        if (is_array($raw)) {
-            $first = reset($raw);
-            return ef_get_id_from_any($first);
-        }
-
-        $id = ef_get_id_from_any($raw);
-        if ($id > 0) return $id;
-
-        if (is_string($raw) && !is_numeric($raw)) {
-            $p_clean = trim($raw);
-            $found = get_posts([
-                'post_type' => 'any',
-                'title' => $p_clean,
-                'numberposts' => 1,
-                'fields' => 'ids'
-            ]);
-            if (!empty($found)) return intval($found[0]);
-            $found_meta = get_posts([
-                'post_type' => 'any',
-                'meta_key' => 'add_property',
-                'meta_value' => $p_clean,
-                'numberposts' => 1,
-                'fields' => 'ids'
-            ]);
-            if (!empty($found_meta)) return intval($found_meta[0]);
-        }
-        return 0;
+        $p = get_field('property_id', $t_id) ?: get_post_meta($t_id, 'property_id', true);
+        return ef_get_id_from_any($p);
     }
 }
 
@@ -130,61 +90,22 @@ if (!function_exists('ef_get_payment_property_id')) {
     }
 }
 
-if (!function_exists('ef_parse_any_date_to_ym')) {
-    function ef_parse_any_date_to_ym($date_str) {
-        if (!$date_str) return false;
-        $str = trim((string)$date_str);
-        if (preg_match('/^\d{8}$/', $str)) {
-            return substr($str, 0, 4) . '-' . substr($str, 4, 2);
-        }
-        if (strpos($str, '/') !== false) {
-            $parts = explode('/', $str);
-            if (count($parts) === 3) {
-                if (strlen($parts[0]) === 4) {
-                    $y = $parts[0]; $m = $parts[1];
-                } elseif (strlen($parts[2]) === 4) {
-                    $y = $parts[2];
-                    $m1 = intval($parts[0]); $m2 = intval($parts[1]);
-                    if ($m1 > 12) {
-                        $m = $parts[1];
-                    } elseif ($m2 > 12) {
-                        $m = $parts[0];
-                    } else {
-                        $m = $parts[0];
-                    }
-                } else {
-                    $y = date('Y'); $m = $parts[0];
-                }
-                return $y . '-' . str_pad($m, 2, '0', STR_PAD_LEFT);
-            }
-        }
-        if (preg_match('/^(\d{4})[-.\/](\d{1,2})/', $str, $matches)) {
-            return $matches[1] . '-' . str_pad($matches[2], 2, '0', STR_PAD_LEFT);
-        }
-        $ts = strtotime($str);
-        if ($ts) return date('Y-m', $ts);
-        return false;
-    }
-}
-
 if (!function_exists('ef_get_payment_period')) {
     function ef_get_payment_period($p_id) {
-        $ce = get_field('cheque_end_date', $p_id) ?: get_post_meta($p_id, 'cheque_end_date', true) ?: get_field('end_date', $p_id) ?: get_post_meta($p_id, 'end_date', true);
-        if ($ce) {
-            $ym = ef_parse_any_date_to_ym($ce);
-            if ($ym) return $ym;
-        }
-        $cs = get_field('cheque_start_date', $p_id) ?: get_post_meta($p_id, 'cheque_start_date', true);
-        if ($cs) {
-            $ym = ef_parse_any_date_to_ym($cs);
-            if ($ym) return $ym;
-        }
         $p = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true);
         if ($p) return substr((string)$p, 0, 7);
         $d = get_field('date_of_payment', $p_id) ?: get_post_meta($p_id, 'date_of_payment', true);
         if ($d) {
-            $ym = ef_parse_any_date_to_ym($d);
-            if ($ym) return $ym;
+            $d = (string)$d;
+            if (strpos($d, '/') !== false) {
+                $parts = explode('/', $d);
+                if (count($parts) === 3) {
+                    if (strlen($parts[2]) === 4) return "$parts[2]-" . str_pad($parts[1], 2, '0', STR_PAD_LEFT);
+                    if (strlen($parts[0]) === 4) return "$parts[0]-" . str_pad($parts[1], 2, '0', STR_PAD_LEFT);
+                }
+            }
+            $ts = strtotime($d);
+            if ($ts) return date('Y-m', $ts);
         }
         return get_the_date('Y-m', $p_id);
     }
@@ -217,12 +138,12 @@ if (!function_exists('ef_get_tenant_monthly_status')) {
         return [
             'paid' => $paid,
             'rent' => $rent,
-            'is_fully_paid' => ($rent > 0 && ($paid - $rent) >= -0.001) || ($rent == 0 && $paid > 0)
+            'is_fully_paid' => ($rent > 0 && $paid >= $rent) || ($rent == 0 && $paid > 0)
         ];
     }
 }
-
 add_action('wp_ajax_save_property', 'ef_handle_save_property'); 
+ 
 if (!function_exists('ef_handle_save_property')) { 
 function ef_handle_save_property() { 
     check_ajax_referer('ef_property_nonce', 'nonce'); 
@@ -268,12 +189,10 @@ function ef_handle_save_property() {
     ]; 
  
     if ($property_id > 0) { 
-        $existing_pt = get_post_type($property_id);
-        if (!$existing_pt) { 
+        if (get_post_type($property_id) !== 'property') { 
             wp_send_json_error('Invalid property ID provided.'); 
         } 
         $post_data['ID'] = $property_id; 
-        $post_data['post_type'] = $existing_pt;
         $post_id = wp_update_post($post_data); 
     } else { 
         $post_id = wp_insert_post($post_data); 
@@ -299,6 +218,7 @@ function ef_handle_save_property() {
         update_post_meta($post_id, 'add_address', $address); 
     } 
  
+ 
     update_post_meta($post_id, 'property_units', $units); 
  
     wp_send_json_success(['id' => $post_id]); 
@@ -306,6 +226,7 @@ function ef_handle_save_property() {
 } 
  
 add_action('wp_ajax_delete_property', 'ef_handle_delete_property'); 
+ 
 if (!function_exists('ef_handle_delete_property')) { 
 function ef_handle_delete_property() { 
     check_ajax_referer('ef_property_nonce', 'nonce'); 
@@ -315,7 +236,7 @@ function ef_handle_delete_property() {
  
     $property_id = !empty($_POST['property_id']) ? intval($_POST['property_id']) : 0; 
  
-    if (!$property_id || !get_post_type($property_id)) { 
+    if (!$property_id || get_post_type($property_id) !== 'property') { 
         wp_send_json_error('Invalid Property ID.'); 
     } 
  
@@ -335,28 +256,20 @@ function ef_handle_get_properties_dashboard() {
         wp_send_json_error('Unauthorized.'); 
     } 
  
-    $all_pts = function_exists('get_post_types') ? get_post_types() : [];
-    $exclude_pts = ['post', 'attachment', 'revision', 'nav_menu_item', 'custom_css', 'oembed_cache', 'user_request', 'wp_block', 'wp_template', 'wp_template_part', 'wp_navigation', 'payment', 'ef_tenant', 'page', 'acf-field-group', 'acf-field', 'acf-post-type', 'acf-taxonomy', 'acf-ui-options-page'];
-    $allowed_pts = array_values(array_diff($all_pts, $exclude_pts));
-    if (empty($allowed_pts)) {
-        $allowed_pts = ['property', 'properties', 'ef_property', 'ef_properties', 'building', 'buildings', 'estate', 'estates', 'real_estate', 'real_estates', 'house', 'houses', 'unit', 'units', 'any'];
-    }
-
-    $p_query = new WP_Query([ 
-        'post_type'        => $allowed_pts, 
-        'posts_per_page'   => -1, 
-        'post_status'      => array('publish', 'future', 'pending', 'draft', 'private', 'trash', 'any'), 
-        'orderby'          => 'date', 
-        'order'            => 'DESC', 
-        'suppress_filters' => true 
+    $properties = get_posts([ 
+        'post_type'   => 'property', 
+        'numberposts' => -1, 
+        'post_status' => 'publish', 
+        'orderby'     => 'date', 
+        'order'       => 'DESC' 
     ]); 
-    $properties = $p_query->posts;
  
     if (empty($properties)) { 
         wp_send_json_success([]); 
     } 
  
     $property_ids = wp_list_pluck($properties, 'ID'); 
+ 
  
     $all_tenants = get_posts([ 
         'post_type'   => 'ef_tenant', 
@@ -373,6 +286,7 @@ function ef_handle_get_properties_dashboard() {
         }
         $all_tenant_ids[] = $t->ID; 
     } 
+ 
  
     $period_data = ef_get_dashboard_period();
     $current_month = $period_data['m']; 
@@ -407,24 +321,13 @@ function ef_handle_get_properties_dashboard() {
  
         $units = 0; 
         if (function_exists('get_field')) { 
-            $units = intval(get_field('number_unit', $p->ID) ?: get_field('number_units', $p->ID) ?: get_field('units', $p->ID) ?: get_field('property_units', $p->ID)); 
+            $units = intval(get_field('number_unit', $p->ID)); 
         } 
         if (!$units) { 
-            $units = intval(get_post_meta($p->ID, 'number_unit', true)) ?: intval(get_post_meta($p->ID, 'number_units', true)) ?: intval(get_post_meta($p->ID, 'units', true)) ?: intval(get_post_meta($p->ID, 'property_units', true)) ?: 0; 
+            $units = intval(get_post_meta($p->ID, 'number_unit', true)) ?: intval(get_post_meta($p->ID, 'property_units', true)) ?: 0; 
         } 
  
-        $expected = ef_clean_amount(get_field('property_rent', $p->ID) ?: get_post_meta($p->ID, 'property_rent', true) ?: get_field('total_contract_amount', $p->ID) ?: get_post_meta($p->ID, 'total_contract_amount', true) ?: get_field('total_rent_cost', $p->ID) ?: get_post_meta($p->ID, 'total_rent_cost', true));
-
-        if ($expected <= 0) {
-            foreach ($p_tenants as $t) {
-                $rent_val = get_field('total_contract_amount', $t->ID) ?: get_post_meta($t->ID, 'total_contract_amount', true) ?: get_field('total_rent_cost', $t->ID) ?: get_post_meta($t->ID, 'total_rent_cost', true);
-                if (!$rent_val) {
-                    $rent_val = get_field('monthly_rent', $t->ID) ?: get_post_meta($t->ID, 'monthly_rent', true); 
-                }
-                $expected += ef_clean_amount($rent_val);
-            }
-        }
-
+        $expected = 0; 
         $collected = 0; 
         $billable_count = 0;
         $progress_sum = 0;
@@ -437,12 +340,19 @@ function ef_handle_get_properties_dashboard() {
         $collected = $p_pay_total;
 
         foreach ($p_tenants as $t) { 
-            $rent_val = get_field('monthly_rent', $t->ID) ?: get_post_meta($t->ID, 'monthly_rent', true); 
-            $monthly_rent = ef_clean_amount($rent_val);
-
             if (function_exists("ef_is_tenant_billable") && !ef_is_tenant_billable($t->ID, $current_month, $current_year)) continue; 
             
             $billable_count++;
+            $rent_val = get_field('monthly_rent', $t->ID) ?: get_post_meta($t->ID, 'monthly_rent', true); 
+            $monthly_rent = ef_clean_amount($rent_val);
+            
+            $contract_val = get_field('total_contract_amount', $t->ID) ?: get_post_meta($t->ID, 'total_contract_amount', true);
+            $contract_amount = ef_clean_amount($contract_val);
+            if ($contract_amount > 0) {
+                $expected += $contract_amount;
+            } else {
+                $expected += $monthly_rent;
+            }
  
             $t_paid_total = 0;
             $t_payments = isset($payments_by_tenant[$t->ID]) ? $payments_by_tenant[$t->ID] : []; 
@@ -460,29 +370,13 @@ function ef_handle_get_properties_dashboard() {
  
         $col_pct = ($billable_count > 0) ? round(($progress_sum / $billable_count) * 100) : 0;
 
-        $p_name = (function_exists('get_field') ? (get_field('add_property', $p->ID) ?: get_field('property_name', $p->ID)) : null) ?: get_post_meta($p->ID, 'add_property', true) ?: get_post_meta($p->ID, 'property_name', true) ?: $p->post_title;
-        if (!$p_name) $p_name = 'Property #' . $p->ID;
-
-        $p_address = (function_exists('get_field') ? (get_field('add_address', $p->ID) ?: get_field('property_address', $p->ID) ?: get_field('address', $p->ID)) : null) ?: get_post_meta($p->ID, 'add_address', true) ?: get_post_meta($p->ID, 'property_address', true) ?: get_post_meta($p->ID, 'address', true) ?: 'N/A';
-
-        $p_img_raw = (function_exists('get_field') ? get_field('property_image', $p->ID) : null) ?: get_post_meta($p->ID, 'property_image', true);
-        $p_img_url = '';
-        if (is_array($p_img_raw) && !empty($p_img_raw['url'])) {
-            $p_img_url = $p_img_raw['url'];
-        } elseif (is_numeric($p_img_raw) && function_exists('wp_get_attachment_url')) {
-            $p_img_url = wp_get_attachment_url($p_img_raw);
-        } elseif (is_string($p_img_raw)) {
-            $p_img_url = $p_img_raw;
-        }
-
         $data[] = [ 
             'id'        => $p->ID, 
-            'name'      => $p_name, 
+            'name'      => function_exists('get_field') ? (get_field('add_property', $p->ID) ?: $p->post_title) : $p->post_title, 
             'type'      => function_exists('get_field') ? (get_field('property_type', $p->ID) ?: 'Property') : (get_post_meta($p->ID, 'property_type', true) ?: 'Property'), 
             'units'     => $units, 
             'occupied'  => $occupied, 
-            'address'   => $p_address, 
-            'image'     => $p_img_url,
+            'address'   => function_exists('get_field') ? get_field('add_address', $p->ID) : get_post_meta($p->ID, 'add_address', true), 
             'expected'  => $expected, 
             'collected' => $collected,
             'col_pct'   => $col_pct
@@ -579,18 +473,13 @@ add_shortcode('properties_page_grid', function() {
      
     <div id="properties-dashboard-wrapper"> 
         <input type="hidden" id="ef_property_nonce" value="<?php echo wp_create_nonce('ef_property_nonce'); ?>"> 
-        <div style="margin-bottom: 20px;">
-            <input type="text" id="efPropertySearch" placeholder="🔍 Search properties..." style="width: 100%; max-width: 500px; padding: 12px 16px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; outline: none; background: #ffffff; box-sizing: border-box;">
-        </div>
         <div id="properties-dashboard-grid" class="properties-dashboard-grid"> 
             <div class="properties-page-empty-state"><p>Loading properties...</p></div> 
         </div> 
-        <div class="properties-dashboard-nav" style="display: flex; gap: 6px; align-items: center; justify-content: center; flex-wrap: wrap; margin-top: 15px;"> 
-            <button id="first-page" class="prop-nav-btn" disabled>&laquo;</button>
-            <button id="prev-page" class="prop-nav-btn" disabled>&lt;</button> 
+        <div class="properties-dashboard-nav"> 
+            <button id="prev-page" class="prop-nav-btn" disabled>Previous</button> 
             <span id="page-info">Page 1 of 1</span> 
-            <button id="next-page" class="prop-nav-btn" disabled>&gt;</button> 
-            <button id="last-page" class="prop-nav-btn" disabled>&raquo;</button>
+            <button id="next-page" class="prop-nav-btn" disabled>Next</button> 
         </div> 
     </div> 
     <?php return ob_get_clean(); 
@@ -687,11 +576,8 @@ add_action('wp_footer', function() { ?>
  
         let curPage = 1, allData = []; 
         const pageInfo = document.getElementById('page-info'); 
-        const firstBtn = document.getElementById('first-page');
         const prevBtn = document.getElementById('prev-page'); 
         const nextBtn = document.getElementById('next-page'); 
-        const lastBtn = document.getElementById('last-page');
-        const searchInput = document.getElementById('efPropertySearch');
  
         const setActiveById = (id) => { 
             if (!grid) return; 
@@ -700,27 +586,12 @@ add_action('wp_footer', function() { ?>
             if (card) card.classList.add('active'); 
         }; 
  
-        const getFilteredData = () => {
-            const searchQuery = (searchInput ? searchInput.value : '').toLowerCase().trim();
-            return allData.filter(p => {
-                if (!searchQuery) return true;
-                const nameMatch = (p.name || '').toLowerCase().includes(searchQuery);
-                const addressMatch = (p.address || '').toLowerCase().includes(searchQuery);
-                const typeMatch = (p.type || '').toLowerCase().includes(searchQuery);
-                return nameMatch || addressMatch || typeMatch;
-            });
-        };
-
         const render = () => { 
             if (!grid) return; 
-            const filteredData = getFilteredData();
             const perPage = 4; 
-            const totalPages = Math.ceil(filteredData.length / perPage) || 1; 
-            if (curPage > totalPages) curPage = totalPages;
-            if (curPage < 1) curPage = 1;
-
+            const totalPages = Math.ceil(allData.length / perPage) || 1; 
             const start = (curPage - 1) * perPage; 
-            const slice = filteredData.slice(start, start + perPage); 
+            const slice = allData.slice(start, start + perPage); 
  
             if (slice.length === 0) { 
                 grid.innerHTML = `<div class="properties-page-empty-state"><p>No properties found.</p></div>`; 
@@ -738,7 +609,8 @@ add_action('wp_footer', function() { ?>
                     <div class="properties-dashboard-occ"><span>Occupancy</span><span>${p.occupied} / ${p.units}</span></div> 
                     <div class="properties-dashboard-bar-bg"><div class="properties-dashboard-bar-fill" style="width: ${occPct}%"></div></div> 
                     <div class="properties-dashboard-stats"> 
-                        <div class="properties-dashboard-stat-item"><small>TOTAL CONTRACT AMOUNT</small><span>AED ${p.expected.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span></div> 
+                        <div class="properties-dashboard-stat-item"><small>TOTAL CONTRACT AMOUNT</small><span>AED ${p.expected.toLocaleString()}</span></div> 
+                       
                     </div> 
                     <div class="properties-dashboard-actions"> 
                         <button class="dashboard-btn edit-btn" data-id="${p.id}">✏️ Edit</button> 
@@ -800,10 +672,8 @@ add_action('wp_footer', function() { ?>
             }); 
  
             if(pageInfo) pageInfo.textContent = `Page ${curPage} of ${totalPages}`; 
-            if(firstBtn) firstBtn.disabled = curPage === 1;
             if(prevBtn) prevBtn.disabled = curPage === 1; 
             if(nextBtn) nextBtn.disabled = curPage >= totalPages; 
-            if(lastBtn) lastBtn.disabled = curPage >= totalPages;
         }; 
  
                 const dashboardData = new FormData(); 
@@ -840,22 +710,8 @@ add_action('wp_footer', function() { ?>
                     } 
                 }); 
  
-        if (searchInput) {
-            searchInput.addEventListener('input', () => {
-                curPage = 1;
-                render();
-            });
-        }
-
-        const getTotalPages = () => {
-            const filtered = getFilteredData();
-            return Math.ceil(filtered.length / 4) || 1;
-        };
-
-        if(firstBtn) firstBtn.onclick = () => { if (curPage > 1) { curPage = 1; render(); } };
-        if(prevBtn) prevBtn.onclick = () => { if (curPage > 1) { curPage--; render(); } }; 
-        if(nextBtn) nextBtn.onclick = () => { if (curPage < getTotalPages()) { curPage++; render(); } }; 
-        if(lastBtn) lastBtn.onclick = () => { if (curPage < getTotalPages()) { curPage = getTotalPages(); render(); } };
+        if(prevBtn) prevBtn.onclick = () => { if (curPage>1) { curPage--; render(); } }; 
+        if(nextBtn) nextBtn.onclick = () => { curPage++; render(); }; 
  
         const detailsContainer = document.getElementById('properties-page-details'); 
         const sidebar = document.getElementById('properties-sidebar'); 
@@ -897,6 +753,7 @@ add_action('wp_footer', function() { ?>
  
             const available = Math.max(0, prop.units - prop.occupied); 
             const isAvailable = prop.occupied < prop.units; 
+            const colPct = prop.col_pct ?? (prop.expected > 0 ? Math.round((prop.collected / prop.expected) * 100) : 0); 
  
             const tenantsHtml = tenants.length 
                 ? tenants.map(t => ` 
@@ -915,6 +772,10 @@ add_action('wp_footer', function() { ?>
  
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;"> 
                     <div style="background:#f9fafb;padding:12px;border-radius:8px;border:1px solid #e5e7eb;"> 
+                        <small style="color:#6b7280;text-transform:uppercase;font-size:10px;">Status</small> 
+                        <div style="font-weight:600;">${isAvailable ? '<span class="property-available">Available</span>' : '<span class="property-not-available">Full</span>'}</div> 
+                    </div> 
+                    <div style="background:#f9fafb;padding:12px;border-radius:8px;border:1px solid #e5e7eb;"> 
                         <small style="color:#6b7280;text-transform:uppercase;font-size:10px;">Total Units</small> 
                         <div style="font-weight:600;">${prop.units}</div> 
                     </div> 
@@ -922,14 +783,18 @@ add_action('wp_footer', function() { ?>
                         <small style="color:#6b7280;text-transform:uppercase;font-size:10px;">Occupied</small> 
                         <div style="font-weight:600;color:#dc2626;">${prop.occupied}</div> 
                     </div> 
+                    <div style="background:#f9fafb;padding:12px;border-radius:8px;border:1px solid #e5e7eb;"> 
+                        <small style="color:#6b7280;text-transform:uppercase;font-size:10px;">Available</small> 
+                        <div style="font-weight:600;color:#059669;">${available}</div> 
+                    </div> 
                 </div> 
  
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;"> 
+                <div > 
                     <div style="background:#f9fafb;padding:12px;border-radius:8px;border:1px solid #e5e7eb;"> 
                         <small style="color:#6b7280;text-transform:uppercase;font-size:10px;">TOTAL CONTRACT AMOUNT</small> 
                         <div style="font-size:16px;font-weight:700;">${fmtMoney(prop.expected)}</div> 
                     </div> 
-                </div> 
+                    
  
                 <h3 style="font-size:16px;margin-bottom:10px;">Tenants (${prop.occupied})</h3> 
                 <div style="max-height:300px;overflow-y:auto;">${tenantsHtml}</div> 
