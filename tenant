@@ -429,7 +429,6 @@ $tenant_list_logic = function() {
 };
 add_shortcode('tenant_list', $tenant_list_logic);
 add_shortcode('student_list', $tenant_list_logic);
-add_shortcode('properties_page_grid', $tenant_list_logic);
 
 add_shortcode('tenant_profile', function() { 
     ob_start(); ?> 

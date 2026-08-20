@@ -300,7 +300,7 @@ function ef_handle_get_properties_dashboard() {
     $p_query = new WP_Query([ 
         'post_type'        => 'property', 
         'posts_per_page'   => -1, 
-        'post_status'      => array('publish', 'future', 'pending', 'draft', 'private'),
+        'post_status'      => 'any',
         'orderby'          => 'date', 
         'order'            => 'DESC', 
         'suppress_filters' => true 
@@ -669,7 +669,7 @@ add_action('wp_footer', function() { ?>
         const render = () => { 
             if (!grid) return; 
             const filteredData = getFilteredData();
-            const perPage = 4; 
+            const perPage = 50;
             const totalPages = Math.ceil(filteredData.length / perPage) || 1; 
             if (curPage > totalPages) curPage = totalPages;
             if (curPage < 1) curPage = 1;
@@ -804,7 +804,7 @@ add_action('wp_footer', function() { ?>
 
         const getTotalPages = () => {
             const filtered = getFilteredData();
-            return Math.ceil(filtered.length / 4) || 1;
+            return Math.ceil(filtered.length / 50) || 1;
         };
 
         if(firstBtn) firstBtn.onclick = () => { if (curPage > 1) { curPage = 1; render(); } };
