@@ -298,7 +298,7 @@ function ef_handle_get_properties_dashboard() {
     } 
  
     $p_query = new WP_Query([ 
-        'post_type'        => array('property', 'properties', 'ef_property', 'ef_properties', 'building', 'buildings'), 
+        'post_type'        => 'property',
         'posts_per_page'   => -1, 
         'post_status'      => array('publish', 'future', 'pending', 'draft', 'private', 'trash', 'any'), 
         'orderby'          => 'date', 
@@ -417,7 +417,7 @@ function ef_handle_get_properties_dashboard() {
  
         $col_pct = ($billable_count > 0) ? round(($progress_sum / $billable_count) * 100) : 0;
 
-        $p_name = (function_exists('get_field') ? get_field('add_property', $p->ID) : null) ?: get_post_meta($p->ID, 'add_property', true) ?: $p->post_title;
+        $p_name = (function_exists('get_field') ? (get_field('add_property', $p->ID) ?: get_field('property_name', $p->ID)) : null) ?: get_post_meta($p->ID, 'add_property', true) ?: get_post_meta($p->ID, 'property_name', true) ?: $p->post_title;
         if (!$p_name) $p_name = 'Property #' . $p->ID;
 
         $p_address = (function_exists('get_field') ? get_field('add_address', $p->ID) : null) ?: get_post_meta($p->ID, 'add_address', true) ?: get_post_meta($p->ID, 'address', true) ?: 'N/A';
