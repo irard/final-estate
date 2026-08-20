@@ -239,6 +239,7 @@ add_shortcode('monthly_breakdown', function() {
  
         $p_query = new WP_Query($args); 
         $revenue_collected = 0.00; 
+        $month_payments = array();
  
         if ($p_query->have_posts()) { 
             while ($p_query->have_posts()) { 
@@ -247,9 +248,27 @@ add_shortcode('monthly_breakdown', function() {
                 $period = ef_get_payment_report_period($pay_id);
                 if (strpos($period, $period_match) === 0) {
                     $pay_val = get_field('amount_paid', $pay_id) ?: get_post_meta($pay_id, 'amount_paid', true); 
+                    $amt = floatval($pay_val);
                     if ($pay_val) { 
-                        $revenue_collected += floatval($pay_val); 
+                        $revenue_collected += $amt;
                     } 
+                    $t_val = get_field('associated_tenant', $pay_id) ?: get_field('select_tenant', $pay_id) ?: get_post_meta($pay_id, 'associated_tenant', true) ?: get_post_meta($pay_id, 'select_tenant', true);
+                    $t_id = function_exists('ef_get_id_from_any') ? ef_get_id_from_any($t_val) : intval($t_val);
+                    $t_name = $t_id ? get_the_title($t_id) : 'Unknown Tenant';
+
+                    $cheque_end = get_field('cheque_end_date', $pay_id) ?: get_post_meta($pay_id, 'cheque_end_date', true) ?: get_field('end_date', $pay_id) ?: get_post_meta($pay_id, 'end_date', true) ?: '-';
+                    $method = get_field('mode_of_payment', $pay_id) ?: get_post_meta($pay_id, 'mode_of_payment', true) ?: 'Payment';
+                    $ref = get_field('transaction_number', $pay_id) ?: get_post_meta($pay_id, 'transaction_number', true) ?: get_field('cheque_number', $pay_id) ?: get_post_meta($pay_id, 'cheque_number', true) ?: '';
+
+                    $method_display = $method . ($ref ? ' (' . $ref . ')' : '');
+
+                    $month_payments[] = array(
+                        'id' => $pay_id,
+                        'tenant' => $t_name,
+                        'cheque_end_date' => $cheque_end,
+                        'method' => $method_display,
+                        'amount' => $amt
+                    );
                 }
             } 
             wp_reset_postdata(); 
@@ -266,7 +285,8 @@ add_shortcode('monthly_breakdown', function() {
             'revenue'  => $revenue_collected, 
             'expected' => $monthly_rent_expected, 
             'gap'      => $gap, 
-            'rate'     => round($rate) . '%' 
+            'rate'     => round($rate) . '%',
+            'payments' => $month_payments
         ); 
     } 
  
@@ -296,11 +316,44 @@ add_shortcode('monthly_breakdown', function() {
                     </tr> 
                 </thead> 
                 <tbody> 
-                    <?php foreach ($monthly_data as $data): ?> 
-                    <tr> 
-                        <td class="ef-txt-bold" style="color: #0f172a;"><?php echo $data['label']; ?></td> 
+                    <?php foreach ($monthly_data as $m => $data): ?>
+                    <tr class="ef-month-row" data-target="month-details-<?php echo $m; ?>" style="cursor: pointer;">
+                        <td class="ef-txt-bold" style="color: #0f172a;">
+                            <div style="display: flex; align-items: center; justify-content: space-between;">
+                                <span><?php echo $data['label']; ?></span>
+                                <span class="ef-accordion-icon" style="font-size: 11px; color: #64748b; margin-left: 8px; transition: transform 0.2s ease; display: inline-block;">▼</span>
+                            </div>
+                        </td>
                         <td class="ef-col-right ef-txt-bold ef-brand-success">AED <?php echo number_format($data['revenue'], 2); ?></td> 
                     </tr> 
+                    <tr id="month-details-<?php echo $m; ?>" class="ef-month-details-row" style="display: none; background: #f8fafc;">
+                        <td colspan="2" style="padding: 12px 20px; border-bottom: 1px solid #e2e8f0;">
+                            <?php if (!empty($data['payments'])) : ?>
+                                <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                                    <thead>
+                                        <tr style="color: #64748b; border-bottom: 1px solid #cbd5e1; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;">
+                                            <th style="padding: 8px 10px;">Tenant</th>
+                                            <th style="padding: 8px 10px;">Cheque End Date</th>
+                                            <th style="padding: 8px 10px;">Method / Ref</th>
+                                            <th style="padding: 8px 10px; text-align: right;">Amount</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($data['payments'] as $p) : ?>
+                                        <tr style="border-bottom: 1px dashed #e2e8f0;">
+                                            <td style="padding: 8px 10px; font-weight: 600; color: #0f172a;"><?php echo esc_html($p['tenant']); ?></td>
+                                            <td style="padding: 8px 10px; color: #475569;"><?php echo esc_html($p['cheque_end_date']); ?></td>
+                                            <td style="padding: 8px 10px; color: #64748b;"><?php echo esc_html($p['method']); ?></td>
+                                            <td style="padding: 8px 10px; text-align: right; font-weight: 600; color: #0a8a4f;">AED <?php echo number_format($p['amount'], 2); ?></td>
+                                        </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            <?php else : ?>
+                                <div style="color: #94a3b8; font-size: 13px; font-style: italic; padding: 6px 0;">No payments recorded for this month.</div>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
                     <?php endforeach; ?> 
                 </tbody> 
             </table> 
@@ -309,6 +362,19 @@ add_shortcode('monthly_breakdown', function() {
  
     <script> 
     document.addEventListener("DOMContentLoaded", function() { 
+        document.querySelectorAll('.ef-month-row').forEach(row => {
+            row.addEventListener('click', function() {
+                const targetId = this.getAttribute('data-target');
+                const detailsRow = document.getElementById(targetId);
+                const icon = this.querySelector('.ef-accordion-icon');
+                if (detailsRow) {
+                    const isOpen = detailsRow.style.display !== 'none';
+                    detailsRow.style.display = isOpen ? 'none' : 'table-row';
+                    if (icon) icon.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(180deg)';
+                }
+            });
+        });
+
         const ctx = document.getElementById('efRevenueChart').getContext('2d'); 
         const revenueData = [<?php echo implode(',', array_column($monthly_data, 'revenue')); ?>]; 
  
