@@ -300,7 +300,7 @@ function ef_handle_get_properties_dashboard() {
     $p_query = new WP_Query([ 
         'post_type'        => 'property', 
         'posts_per_page'   => -1, 
-        'post_status'      => array('publish', 'future', 'pending', 'draft', 'private', 'trash', 'any'), 
+        'post_status'      => array('publish', 'future', 'pending', 'draft', 'private'),
         'orderby'          => 'date', 
         'order'            => 'DESC', 
         'suppress_filters' => true 
@@ -422,6 +422,13 @@ function ef_handle_get_properties_dashboard() {
 
         $p_address = (function_exists('get_field') ? get_field('add_address', $p->ID) : null) ?: get_post_meta($p->ID, 'add_address', true) ?: get_post_meta($p->ID, 'address', true) ?: 'N/A';
 
+        $tenant_names = [];
+        foreach ($p_tenants as $t) {
+            if ($t->post_title) {
+                $tenant_names[] = $t->post_title;
+            }
+        }
+
         $data[] = [ 
             'id'        => $p->ID, 
             'name'      => $p_name, 
@@ -431,7 +438,8 @@ function ef_handle_get_properties_dashboard() {
             'address'   => $p_address, 
             'expected'  => $expected, 
             'collected' => $collected,
-            'col_pct'   => $col_pct
+            'col_pct'   => $col_pct,
+            'tenants'   => $tenant_names
         ]; 
     } 
     wp_send_json_success($data); 
@@ -653,7 +661,8 @@ add_action('wp_footer', function() { ?>
                 const nameMatch = (p.name || '').toLowerCase().includes(searchQuery);
                 const addressMatch = (p.address || '').toLowerCase().includes(searchQuery);
                 const typeMatch = (p.type || '').toLowerCase().includes(searchQuery);
-                return nameMatch || addressMatch || typeMatch;
+                const tenantMatch = (p.tenants || []).some(t => (t || '').toLowerCase().includes(searchQuery));
+                return nameMatch || addressMatch || typeMatch || tenantMatch;
             });
         };
 
