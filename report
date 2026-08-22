@@ -334,7 +334,7 @@ add_shortcode('monthly_breakdown', function() {
                                     <thead> 
                                         <tr style="color: #64748b; border-bottom: 1px solid #cbd5e1; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;"> 
                                             <th style="padding: 8px 10px;">Tenant</th> 
-                                            <th style="padding: 8px 10px;">Cheque End Date</th> 
+                                            <th style="padding: 8px 10px;">Payment End Date</th>
                                             <th style="padding: 8px 10px;">Method / Ref</th> 
                                             <th style="padding: 8px 10px; text-align: right;">Amount</th> 
                                         </tr> 
