@@ -38,14 +38,14 @@ if (!function_exists('ef_parse_any_date_to_ym')) {
 
 if (!function_exists('ef_get_payment_report_period')) {
     function ef_get_payment_report_period($p_id) {
+        $cs = get_field('cheque_start_date', $p_id) ?: get_post_meta($p_id, 'cheque_start_date', true) ?: get_field('start_date', $p_id) ?: get_post_meta($p_id, 'start_date', true);
+        if ($cs) {
+            $ym = ef_parse_any_date_to_ym($cs);
+            if ($ym) return $ym;
+        }
         $ce = get_field('cheque_end_date', $p_id) ?: get_post_meta($p_id, 'cheque_end_date', true) ?: get_field('end_date', $p_id) ?: get_post_meta($p_id, 'end_date', true);
         if ($ce) {
             $ym = ef_parse_any_date_to_ym($ce);
-            if ($ym) return $ym;
-        }
-        $cs = get_field('cheque_start_date', $p_id) ?: get_post_meta($p_id, 'cheque_start_date', true);
-        if ($cs) {
-            $ym = ef_parse_any_date_to_ym($cs);
             if ($ym) return $ym;
         }
         $p = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true);
@@ -249,14 +249,14 @@ add_shortcode('monthly_breakdown', function() {
                     $t_id = function_exists('ef_get_id_from_any') ? ef_get_id_from_any($t_val) : intval($t_val);
                     $t_name = $t_id ? get_the_title($t_id) : 'Unknown Tenant';
 
-                    $raw_cheque_end = get_field('cheque_end_date', $pay_id) ?: get_post_meta($pay_id, 'cheque_end_date', true) ?: get_field('end_date', $pay_id) ?: get_post_meta($pay_id, 'end_date', true) ?: '-';
-                    $cheque_end_display = '-';
-                    if ($raw_cheque_end && $raw_cheque_end !== '-') {
-                        if (strpos($raw_cheque_end, '/') !== false) {
-                            $cheque_end_display = $raw_cheque_end;
+                    $raw_cheque_start = get_field('cheque_start_date', $pay_id) ?: get_post_meta($pay_id, 'cheque_start_date', true) ?: get_field('start_date', $pay_id) ?: get_post_meta($pay_id, 'start_date', true) ?: '-';
+                    $cheque_start_display = '-';
+                    if ($raw_cheque_start && $raw_cheque_start !== '-') {
+                        if (strpos($raw_cheque_start, '/') !== false) {
+                            $cheque_start_display = $raw_cheque_start;
                         } else {
-                            $ts = strtotime($raw_cheque_end);
-                            $cheque_end_display = $ts ? date('d/m/Y', $ts) : $raw_cheque_end;
+                            $ts = strtotime($raw_cheque_start);
+                            $cheque_start_display = $ts ? date('d/m/Y', $ts) : $raw_cheque_start;
                         }
                     }
 
@@ -268,7 +268,7 @@ add_shortcode('monthly_breakdown', function() {
                     $month_payments[] = array(
                         'id' => $pay_id,
                         'tenant' => $t_name,
-                        'cheque_end_date' => $cheque_end_display,
+                        'cheque_start_date' => $cheque_start_display,
                         'method' => $method_display,
                         'amount' => $amt
                     );
@@ -334,7 +334,7 @@ add_shortcode('monthly_breakdown', function() {
                                     <thead> 
                                         <tr style="color: #64748b; border-bottom: 1px solid #cbd5e1; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;"> 
                                             <th style="padding: 8px 10px;">Tenant</th> 
-                                            <th style="padding: 8px 10px;">Payment End Date</th>
+                                            <th style="padding: 8px 10px;">Payment Start Date</th>
                                             <th style="padding: 8px 10px;">Method / Ref</th> 
                                             <th style="padding: 8px 10px; text-align: right;">Amount</th> 
                                         </tr> 
@@ -343,7 +343,7 @@ add_shortcode('monthly_breakdown', function() {
                                         <?php foreach ($data['payments'] as $p) : ?> 
                                         <tr style="border-bottom: 1px dashed #e2e8f0;"> 
                                             <td style="padding: 8px 10px; font-weight: 600; color: #0f172a;"><?php echo esc_html($p['tenant']); ?></td> 
-                                            <td style="padding: 8px 10px; color: #475569;"><?php echo esc_html($p['cheque_end_date']); ?></td> 
+                                            <td style="padding: 8px 10px; color: #475569;"><?php echo esc_html($p['cheque_start_date']); ?></td>
                                             <td style="padding: 8px 10px; color: #64748b;"><?php echo esc_html($p['method']); ?></td> 
                                             <td style="padding: 8px 10px; text-align: right; font-weight: 600; color: #0a8a4f;">AED <?php echo number_format($p['amount'], 2); ?></td> 
                                         </tr> 
