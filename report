@@ -19,7 +19,7 @@ if (!function_exists('ef_parse_any_date_to_ym')) {
                     } elseif ($m2 > 12) {
                         $m = $parts[0];
                     } else {
-                        $m = $parts[0];
+                        $m = $parts[1];
                     }
                 } else {
                     $y = date('Y'); $m = $parts[0];
@@ -249,7 +249,17 @@ add_shortcode('monthly_breakdown', function() {
                     $t_id = function_exists('ef_get_id_from_any') ? ef_get_id_from_any($t_val) : intval($t_val);
                     $t_name = $t_id ? get_the_title($t_id) : 'Unknown Tenant';
 
-                    $cheque_end = get_field('cheque_end_date', $pay_id) ?: get_post_meta($pay_id, 'cheque_end_date', true) ?: get_field('end_date', $pay_id) ?: get_post_meta($pay_id, 'end_date', true) ?: '-';
+                    $raw_cheque_end = get_field('cheque_end_date', $pay_id) ?: get_post_meta($pay_id, 'cheque_end_date', true) ?: get_field('end_date', $pay_id) ?: get_post_meta($pay_id, 'end_date', true) ?: '-';
+                    $cheque_end_display = '-';
+                    if ($raw_cheque_end && $raw_cheque_end !== '-') {
+                        if (strpos($raw_cheque_end, '/') !== false) {
+                            $cheque_end_display = $raw_cheque_end;
+                        } else {
+                            $ts = strtotime($raw_cheque_end);
+                            $cheque_end_display = $ts ? date('d/m/Y', $ts) : $raw_cheque_end;
+                        }
+                    }
+
                     $method = get_field('mode_of_payment', $pay_id) ?: get_post_meta($pay_id, 'mode_of_payment', true) ?: 'Payment';
                     $ref = get_field('transaction_number', $pay_id) ?: get_post_meta($pay_id, 'transaction_number', true) ?: get_field('cheque_number', $pay_id) ?: get_post_meta($pay_id, 'cheque_number', true) ?: '';
 
@@ -258,7 +268,7 @@ add_shortcode('monthly_breakdown', function() {
                     $month_payments[] = array(
                         'id' => $pay_id,
                         'tenant' => $t_name,
-                        'cheque_end_date' => $cheque_end,
+                        'cheque_end_date' => $cheque_end_display,
                         'method' => $method_display,
                         'amount' => $amt
                     );
@@ -324,7 +334,7 @@ add_shortcode('monthly_breakdown', function() {
                                     <thead> 
                                         <tr style="color: #64748b; border-bottom: 1px solid #cbd5e1; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;"> 
                                             <th style="padding: 8px 10px;">Tenant</th> 
-                                            <th style="padding: 8px 10px;">Cheque End Date</th> 
+                                            <th style="padding: 8px 10px;">Payment End Date</th>
                                             <th style="padding: 8px 10px;">Method / Ref</th> 
                                             <th style="padding: 8px 10px; text-align: right;">Amount</th> 
                                         </tr> 
@@ -501,7 +511,7 @@ add_shortcode('ef_monthly_breakdown', function() {
                 <?php foreach ($monthly_data as $data): ?>
                 <tr style="border-bottom: 1px solid #f1f3f5;">
                     <td style="padding: 12px; font-weight: 500;"><?php echo $data['label']; ?></td>
-                    <td style="padding: 12px; text-align: right; color: #2b8a3e; font-weight: bold;">$<?php echo number_format($data['revenue'], 2); ?></td>
+                    <td style="padding: 12px; text-align: right; color: #2b8a3e; font-weight: bold;">AED <?php echo number_format($data['revenue'], 2); ?></td>
                 </tr>
                 <?php endforeach; ?>
             </tbody>
@@ -627,11 +637,11 @@ function ef_handle_report_export_download() {
 
         fputcsv($output, array('ESTATEFLOW ANNUAL SUMMARY (' . $year . ')'));
         fputcsv($output, array('Metric Name', 'Calculated Value'));
-        fputcsv($output, array('Total Yearly Revenue Collected', '$' . number_format($total_yearly_revenue, 2)));
+        fputcsv($output, array('Total Yearly Revenue Collected', 'AED ' . number_format($total_yearly_revenue, 2)));
         fputcsv($output, array()); 
 
         fputcsv($output, array('MONTH-BY-MONTH DETAILED REVENUE TABLE'));
-        fputcsv($output, array('Month Period', 'Monthly Revenue ($)'));
+        fputcsv($output, array('Month Period', 'Monthly Revenue (AED)'));
         foreach ($report_rows as $row) {
             fputcsv($output, array($row['month'], $row['revenue']));
         }
@@ -672,7 +682,7 @@ function ef_handle_report_export_download() {
                 <tr>
                     <td style="background-color:#f1f5f9; border:1px solid #cbd5e1; text-align:center; width:100%; border-radius:4px;">
                         <span style="font-size:8pt; font-weight:bold; color:#475569;">TOTAL REVENUE</span><br><br>
-                        <strong style="font-size:14pt; color:#0f766e;">$' . number_format($total_yearly_revenue, 2) . '</strong>
+                        <strong style="font-size:14pt; color:#0f766e;">AED ' . number_format($total_yearly_revenue, 2) . '</strong>
                     </td>
                 </tr>
             </table>
@@ -691,13 +701,13 @@ function ef_handle_report_export_download() {
             foreach ($report_rows as $row) {
                 $html .= '<tr style="border-bottom:1px solid #e2e8f0;">
                     <td style="color:#0f172a; font-weight:bold;">' . $row['month'] . '</td>
-                    <td align="right" style="color:#0f766e; font-weight:bold;">$' . number_format($row['revenue'], 2) . '</td>
+                    <td align="right" style="color:#0f766e; font-weight:bold;">AED ' . number_format($row['revenue'], 2) . '</td>
                 </tr>';
             }
             $html .= '
                 <tr style="background-color:#f8fafc; font-weight:bold; border-top:2px solid #1e293b;">
                     <td style="color:#0f172a; font-weight:bold;">Total Summary</td>
-                    <td align="right" style="color:#0f766e; font-weight:bold;">$' . number_format($total_yearly_revenue, 2) . '</td>
+                    <td align="right" style="color:#0f766e; font-weight:bold;">AED ' . number_format($total_yearly_revenue, 2) . '</td>
                 </tr>
             </tbody></table>
 
@@ -740,7 +750,7 @@ function ef_handle_report_export_download() {
         $stream .= "BT\n";
         $stream .= "/FB 11 Tf 50 705 Td (EXECUTIVE SUMMARY METRICS) Tj\n";
         $stream .= "/FR 10 Tf\n";
-        $stream .= "0 -25 Td (Total Yearly Revenue Collected:) Tj /FB 10 Tf 200 0 Td (\$" . number_format($total_yearly_revenue, 2) . ") Tj\n";
+        $stream .= "0 -25 Td (Total Yearly Revenue Collected:) Tj /FB 10 Tf 200 0 Td (AED " . number_format($total_yearly_revenue, 2) . ") Tj\n";
         $stream .= "ET\n";
 
         $stream .= "0.5 w 50 610 m 545 610 l S\n";
@@ -760,13 +770,13 @@ function ef_handle_report_export_download() {
 
         foreach ($report_rows as $row) {
             $stream .= "(" . str_pad($row['month'], 25, " ") . ") Tj\n";
-            $stream .= "300 0 Td (\$" . str_pad(number_format($row['revenue'], 2), 15, " ", STR_PAD_LEFT) . ") Tj\n";
+            $stream .= "300 0 Td (AED " . str_pad(number_format($row['revenue'], 2), 15, " ", STR_PAD_LEFT) . ") Tj\n";
             $stream .= "-300 -18 Td\n"; 
         }
 
         $stream .= "ET\n0.5 w 50 314 m 545 314 l S\nBT\n/FB 9 Tf 50 300 Td";
         $stream .= "(Total Summary) Tj\n";
-        $stream .= "300 0 Td (\$" . str_pad(number_format($total_yearly_revenue, 2), 15, " ", STR_PAD_LEFT) . ") Tj\n";
+        $stream .= "300 0 Td (AED " . str_pad(number_format($total_yearly_revenue, 2), 15, " ", STR_PAD_LEFT) . ") Tj\n";
 
         $stream .= "ET\n";
 
