@@ -225,7 +225,7 @@ add_shortcode('ef_log_payment_btn', function() {
    
             <div class="ef-input-flex-row-2col">   
                 <div class="ef-modal-input-field-group" style="margin-bottom:0;">   
-                    <label>Received Cheque Date</label>   
+                    <label>Date Received</label>
                     <input type="date" id="ef_log_date" value="<?php echo date('Y-m-d'); ?>" class="ef-modal-element-input">   
                 </div>   
                 <div class="ef-modal-input-field-group" style="margin-bottom:0; visibility: hidden;">   
