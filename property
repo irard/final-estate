@@ -112,7 +112,7 @@ if (!function_exists('ef_parse_any_date_to_ym')) {
                     } elseif ($m2 > 12) {
                         $m = $parts[0];
                     } else {
-                        $m = $parts[0];
+                        $m = $parts[1];
                     }
                 } else {
                     $y = date('Y'); $m = $parts[0];

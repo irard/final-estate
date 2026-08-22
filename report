@@ -19,7 +19,7 @@ if (!function_exists('ef_parse_any_date_to_ym')) {
                     } elseif ($m2 > 12) {
                         $m = $parts[0];
                     } else {
-                        $m = $parts[0];
+                        $m = $parts[1];
                     }
                 } else {
                     $y = date('Y'); $m = $parts[0];
@@ -249,7 +249,17 @@ add_shortcode('monthly_breakdown', function() {
                     $t_id = function_exists('ef_get_id_from_any') ? ef_get_id_from_any($t_val) : intval($t_val);
                     $t_name = $t_id ? get_the_title($t_id) : 'Unknown Tenant';
 
-                    $cheque_end = get_field('cheque_end_date', $pay_id) ?: get_post_meta($pay_id, 'cheque_end_date', true) ?: get_field('end_date', $pay_id) ?: get_post_meta($pay_id, 'end_date', true) ?: '-';
+                    $raw_cheque_end = get_field('cheque_end_date', $pay_id) ?: get_post_meta($pay_id, 'cheque_end_date', true) ?: get_field('end_date', $pay_id) ?: get_post_meta($pay_id, 'end_date', true) ?: '-';
+                    $cheque_end_display = '-';
+                    if ($raw_cheque_end && $raw_cheque_end !== '-') {
+                        if (strpos($raw_cheque_end, '/') !== false) {
+                            $cheque_end_display = $raw_cheque_end;
+                        } else {
+                            $ts = strtotime($raw_cheque_end);
+                            $cheque_end_display = $ts ? date('d/m/Y', $ts) : $raw_cheque_end;
+                        }
+                    }
+
                     $method = get_field('mode_of_payment', $pay_id) ?: get_post_meta($pay_id, 'mode_of_payment', true) ?: 'Payment';
                     $ref = get_field('transaction_number', $pay_id) ?: get_post_meta($pay_id, 'transaction_number', true) ?: get_field('cheque_number', $pay_id) ?: get_post_meta($pay_id, 'cheque_number', true) ?: '';
 
@@ -258,7 +268,7 @@ add_shortcode('monthly_breakdown', function() {
                     $month_payments[] = array(
                         'id' => $pay_id,
                         'tenant' => $t_name,
-                        'cheque_end_date' => $cheque_end,
+                        'cheque_end_date' => $cheque_end_display,
                         'method' => $method_display,
                         'amount' => $amt
                     );
