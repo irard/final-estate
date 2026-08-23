@@ -454,36 +454,23 @@ add_shortcode('ef_dashboard_filter', function() {
     return ob_get_clean();
 });
 
-$ef_rent_status_page_callback = function() {
+$ef_rent_status_title_callback = function() {
     $period_data = function_exists('ef_get_dashboard_period') ? ef_get_dashboard_period() : ['m' => date('m'), 'y' => date('Y')];
     $m = $period_data['m'];
     $y = $period_data['y'];
     $ts = strtotime("$y-$m-01");
     $month_year = $ts ? date('F Y', $ts) : "$m $y";
-
-    ob_start();
-    ?>
-    <div class="ef-status-page-wrapper" style="font-family: inherit;">
-        <div class="ef-rent-status-header" style="margin-bottom: 20px;">
-            <h2 style="font-size: 24px; font-weight: 700; color: #0f172a; margin: 0 0 16px 0;">Rent status for <?php echo esc_html($month_year); ?></h2>
-            <?php echo do_shortcode('[ef_dashboard_filter]'); ?>
-        </div>
-        <div class="ef-status-page-directory">
-            <?php echo do_shortcode('[ef_master_tenant_directory]'); ?>
-        </div>
-    </div>
-    <?php
-    return ob_get_clean();
+    return '<div class="ef-rent-status-header" style="margin-bottom: 20px;"><h2 style="font-size: 24px; font-weight: 700; color: #0f172a; margin: 0;">Rent status for ' . esc_html($month_year) . '</h2></div>';
 };
 
-add_shortcode('rent_status', $ef_rent_status_page_callback);
-add_shortcode('status', $ef_rent_status_page_callback);
-add_shortcode('rent_status_page', $ef_rent_status_page_callback);
-add_shortcode('status_page', $ef_rent_status_page_callback);
-add_shortcode('ef_status_page', $ef_rent_status_page_callback);
-add_shortcode('rent_status_title', $ef_rent_status_page_callback);
-add_shortcode('rent_status_header', $ef_rent_status_page_callback);
-add_shortcode('ef_rent_status', $ef_rent_status_page_callback);
+add_shortcode('rent_status', $ef_rent_status_title_callback);
+add_shortcode('status', $ef_rent_status_title_callback);
+add_shortcode('rent_status_page', $ef_rent_status_title_callback);
+add_shortcode('status_page', $ef_rent_status_title_callback);
+add_shortcode('ef_status_page', $ef_rent_status_title_callback);
+add_shortcode('rent_status_title', $ef_rent_status_title_callback);
+add_shortcode('rent_status_header', $ef_rent_status_title_callback);
+add_shortcode('ef_rent_status', $ef_rent_status_title_callback);
 
 add_shortcode('ef_dashboard_overview', function() { 
     return do_shortcode('[ef_dashboard_filter]') .
