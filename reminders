@@ -121,6 +121,42 @@ if (!function_exists('ef_get_tenant_outstanding_balance')) {
     }
 }
 
+if (!function_exists('ef_parse_date_to_ymd')) {
+    function ef_parse_date_to_ymd($date_str) {
+        if (!$date_str) return false;
+        $str = trim((string)$date_str);
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $str)) {
+            return $str;
+        }
+        if (strpos($str, '/') !== false) {
+            $parts = explode('/', $str);
+            if (count($parts) === 3) {
+                if (strlen($parts[0]) === 4) {
+                    $y = intval($parts[0]); $m = intval($parts[1]); $d = intval($parts[2]);
+                } elseif (strlen($parts[2]) === 4) {
+                    $y = intval($parts[2]);
+                    $p1 = intval($parts[0]); $p2 = intval($parts[1]);
+                    if ($p1 > 12) {
+                        $d = $p1; $m = $p2;
+                    } elseif ($p2 > 12) {
+                        $m = $p1; $d = $p2;
+                    } else {
+                        $d = $p1; $m = $p2;
+                    }
+                } else {
+                    return false;
+                }
+                if ($y > 0 && $m >= 1 && $m <= 12 && $d >= 1 && $d <= 31) {
+                    return sprintf('%04d-%02d-%02d', $y, $m, $d);
+                }
+            }
+        }
+        $ts = strtotime($str);
+        if ($ts) return date('Y-m-d', $ts);
+        return false;
+    }
+}
+
 if (!function_exists('ef_get_tenant_last_payment_end_date')) {
     function ef_get_tenant_last_payment_end_date($t_id) {
         $payments = get_posts(array(    
@@ -139,8 +175,8 @@ if (!function_exists('ef_get_tenant_last_payment_end_date')) {
                     $end_date = get_field('date_of_payment', $pid) ?: get_post_meta($pid, 'date_of_payment', true);
                 }
                 if ($end_date) {
-                    $end_date_formatted = date('Y-m-d', strtotime($end_date));
-                    if (empty($max_end_date) || $end_date_formatted > $max_end_date) {
+                    $end_date_formatted = ef_parse_date_to_ymd($end_date);
+                    if ($end_date_formatted && (empty($max_end_date) || $end_date_formatted > $max_end_date)) {
                         $max_end_date = $end_date_formatted;
                     }
                 }
@@ -150,7 +186,7 @@ if (!function_exists('ef_get_tenant_last_payment_end_date')) {
             // Fallback to contract start date
             $start_date = get_field('tenant_start', $t_id) ?: get_post_meta($t_id, 'tenant_start', true);
             if ($start_date) {
-                $max_end_date = date('Y-m-d', strtotime($start_date));
+                $max_end_date = ef_parse_date_to_ymd($start_date) ?: date('Y-m-d');
             } else {
                 $max_end_date = date('Y-m-d'); // Default to today
             }
