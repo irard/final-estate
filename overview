@@ -872,3 +872,19 @@ add_shortcode('ef_recent_payments_widget', function() {
     return ob_get_clean(); 
 });
 
+$ef_rent_status_callback = function() {
+    $period = function_exists('ef_get_dashboard_period') ? ef_get_dashboard_period() : ['m' => date('m'), 'y' => date('Y')];
+    $m = $period['m'];
+    $y = $period['y'];
+    $month_name = date('F', strtotime("$y-$m-01"));
+    return '<div class="ef-rent-status-header"><h2 class="ef-rent-status-title" style="margin:0 0 16px 0; font-size:22px; font-weight:700; color:#0f172a;">Rent status for ' . $month_name . ' ' . $y . '</h2></div>';
+};
+
+add_shortcode('rent_status', $ef_rent_status_callback);
+add_shortcode('status', $ef_rent_status_callback);
+add_shortcode('rent_status_page', $ef_rent_status_callback);
+add_shortcode('status_page', $ef_rent_status_callback);
+add_shortcode('ef_status_page', $ef_rent_status_callback);
+add_shortcode('rent_status_title', $ef_rent_status_callback);
+add_shortcode('rent_status_header', $ef_rent_status_callback);
+add_shortcode('ef_rent_status', $ef_rent_status_callback);
