@@ -2198,14 +2198,98 @@ body.ef-no-scroll {
   }
 }
 @media (max-width: 768px) {
-  .atc-panel,
-  .ef-popup-modal-box {
-    height: 60% !important;
-    overflow-y: auto !important;
+  .atc-modal,
+  .ef-popup-modal-container,
+  .properties-page-modal,
+  .ef-modal-backdrop-blur,
+  .atc-due-popup,
+  .ef-modal-due-popup {
+    padding: 12px !important;
+    box-sizing: border-box !important;
+    align-items: center !important;
+    justify-content: center !important;
   }
-  .atc-row.contract,
-  .ef-grid-modal-2col.contract {
-    display: block;
+
+  .atc-panel,
+  .ef-popup-modal-box,
+  .properties-page-modal-content,
+  .ef-modal-window-surface {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    max-height: 90vh !important;
+    max-height: 90dvh !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    padding: 18px 16px !important;
+    border-radius: 14px !important;
+    box-sizing: border-box !important;
+  }
+
+  .atc-row,
+  .ef-grid-modal-2col,
+  .ef-input-flex-row-2col,
+  .properties-page-row {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+    grid-template-columns: 1fr !important;
+    margin-bottom: 12px !important;
+  }
+
+  .atc-row label,
+  .properties-page-col,
+  .ef-modal-input-field-group {
+    width: 100% !important;
+    flex: 1 1 100% !important;
+  }
+
+  .atc-form input,
+  .atc-form select,
+  .ef-modal-element-input,
+  .ef-form-input-box,
+  .properties-page-modal input,
+  .properties-page-modal select {
+    font-size: 16px !important;
+    height: 44px !important;
+    box-sizing: border-box !important;
+    width: 100% !important;
+  }
+
+  .properties-page-footer,
+  .ef-modal-action-footer-cluster,
+  .atc-actions {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 10px !important;
+    margin-top: 18px !important;
+    justify-content: stretch !important;
+  }
+
+  .properties-page-footer button,
+  .ef-modal-action-footer-cluster button,
+  .atc-actions button {
+    flex: 1 1 auto !important;
+    min-height: 44px !important;
+    font-size: 14px !important;
+    text-align: center !important;
+    justify-content: center !important;
+  }
+
+  .atc-due-grid,
+  .ef-due-grid {
+    grid-template-columns: repeat(7, 1fr) !important;
+    gap: 4px !important;
+    padding: 10px 6px !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .atc-due-box,
+  .ef-due-box {
+    padding: 8px 2px !important;
+    font-size: 12px !important;
+    text-align: center !important;
   }
   .ef-stats-cards-row {
     grid-template-columns: 1fr;
