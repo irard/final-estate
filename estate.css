@@ -95,10 +95,14 @@
 .ef-login-btn:active {
   transform: scale(0.99);
 }
-select#modal_field_property {
+select#modal_field_property,
+#ef_log_tenant,
+#ef_log_method {
   padding: 8px 10px !important;
   max-width: 100% !important;
+  width: 100% !important;
   box-sizing: border-box !important;
+  text-overflow: ellipsis !important;
 }
 select, select option {
   max-width: 100% !important;
@@ -2281,7 +2285,9 @@ body.ef-no-scroll {
   .atc-form select option,
   .ef-modal-element-input option,
   .ef-form-input-box option,
-  .properties-page-modal select option {
+  .properties-page-modal select option,
+  #ef_log_tenant option,
+  #ef_log_method option {
     max-width: 100% !important;
     font-size: 12px !important;
   }
