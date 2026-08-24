@@ -2208,6 +2208,7 @@ body.ef-no-scroll {
     box-sizing: border-box !important;
     align-items: center !important;
     justify-content: center !important;
+    overflow-x: hidden !important;
   }
 
   .atc-panel,
@@ -2220,6 +2221,7 @@ body.ef-no-scroll {
     max-height: 80vh !important;
     max-height: 80dvh !important;
     overflow-y: auto !important;
+    overflow-x: hidden !important;
     -webkit-overflow-scrolling: touch !important;
     padding: 14px 14px 20px 14px !important;
     border-radius: 12px !important;
@@ -2291,18 +2293,22 @@ body.ef-no-scroll {
 
   .atc-due-grid,
   .ef-due-grid {
-    grid-template-columns: repeat(7, 1fr) !important;
+    grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
     gap: 4px !important;
-    padding: 10px 6px !important;
+    padding: 10px 4px !important;
+    width: 100% !important;
     max-width: 100% !important;
     box-sizing: border-box !important;
+    overflow-x: hidden !important;
   }
 
   .atc-due-box,
   .ef-due-box {
-    padding: 8px 2px !important;
-    font-size: 12px !important;
+    padding: 6px 1px !important;
+    font-size: 11px !important;
     text-align: center !important;
+    box-sizing: border-box !important;
+    min-width: 0 !important;
   }
   .ef-stats-cards-row {
     grid-template-columns: 1fr;
