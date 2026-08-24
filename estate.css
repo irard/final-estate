@@ -2214,26 +2214,27 @@ body.ef-no-scroll {
   .ef-popup-modal-box,
   .properties-page-modal-content,
   .ef-modal-window-surface {
-    width: 100% !important;
-    max-width: 100% !important;
+    width: 92% !important;
+    max-width: 420px !important;
     height: auto !important;
-    max-height: 85vh !important;
-    max-height: 85dvh !important;
+    max-height: 80vh !important;
+    max-height: 80dvh !important;
     overflow-y: auto !important;
     -webkit-overflow-scrolling: touch !important;
-    padding: 16px 14px 80px 14px !important;
-    border-radius: 14px !important;
+    padding: 14px 14px 20px 14px !important;
+    border-radius: 12px !important;
     box-sizing: border-box !important;
+    margin: auto !important;
   }
 
   .atc-row,
   .ef-grid-modal-2col,
   .ef-input-flex-row-2col,
   .properties-page-row {
-    display: grid !important;
-    grid-template-columns: 1fr 1fr !important;
-    gap: 8px 10px !important;
-    margin-bottom: 8px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 6px !important;
+    margin-bottom: 6px !important;
   }
 
   .atc-row label,
@@ -2241,7 +2242,15 @@ body.ef-no-scroll {
   .ef-modal-input-field-group,
   .ef-form-group {
     width: 100% !important;
-    margin-bottom: 8px !important;
+    margin-bottom: 6px !important;
+  }
+
+  .atc-row label,
+  .ef-modal-input-field-group label,
+  .ef-form-group label,
+  .properties-page-modal label {
+    font-size: 11px !important;
+    margin-bottom: 2px !important;
   }
 
   .atc-form input,
@@ -2250,11 +2259,12 @@ body.ef-no-scroll {
   .ef-form-input-box,
   .properties-page-modal input,
   .properties-page-modal select {
-    font-size: 14px !important;
-    height: 40px !important;
-    padding: 8px 10px !important;
+    font-size: 13px !important;
+    height: 36px !important;
+    padding: 6px 10px !important;
     box-sizing: border-box !important;
     width: 100% !important;
+    margin-bottom: 4px !important;
   }
 
   .properties-page-footer,
@@ -2262,18 +2272,19 @@ body.ef-no-scroll {
   .atc-actions {
     display: flex !important;
     flex-wrap: wrap !important;
-    gap: 10px !important;
-    margin-top: 16px !important;
-    padding-bottom: 40px !important;
-    justify-content: stretch !important;
+    gap: 8px !important;
+    margin-top: 12px !important;
+    padding-bottom: 10px !important;
+    justify-content: flex-end !important;
   }
 
   .properties-page-footer button,
   .ef-modal-action-footer-cluster button,
   .atc-actions button {
     flex: 1 1 auto !important;
-    min-height: 44px !important;
-    font-size: 14px !important;
+    min-height: 38px !important;
+    padding: 6px 14px !important;
+    font-size: 13px !important;
     text-align: center !important;
     justify-content: center !important;
   }
