@@ -1264,10 +1264,10 @@ html.ef-dark-theme #content {
   color: #fff;
 }
 .ef-due-box:hover {
-	color: #fff!important;
-	border: 1px solid #00a86b!important;
-	background: #00a86b!important;
-	transform: translateY(-1px) !important;
+    color: #fff!important;
+    border: 1px solid #00a86b!important;
+    background: #00a86b!important;
+    transform: translateY(-1px) !important;
 }
 
 .ef-sticky-buttons {
@@ -1740,7 +1740,7 @@ html.ef-dark-theme .ef-btn-nav {
   gap: 6px;
 }
 .ef-btn-receipt {
-  padding: 8px 16px;
+  padding: 8px 12px;
   border-radius: 8px;
   font-size: 14px;
   cursor: pointer;
@@ -1895,7 +1895,7 @@ body.ef-no-scroll {
 .prop-nav-btn {
   background: #fff;
   border: 1px solid #e2e8f0;
-  padding: 8px 16px;
+  padding: 8px 12px;
   border-radius: 8px;
   cursor: pointer;
   font-weight: 500;
@@ -2272,4 +2272,51 @@ body.ef-no-scroll {
     margin-bottom: 1rem;
     width: 100%;
   }
+}
+
+.ef-bulk-period-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 15px;
+    margin-bottom: 8px;
+}
+.ef-bulk-period-header label {
+    margin-bottom: 0 !important;
+}
+.ef-add-bulk-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 600;
+    transition: color 0.2s;
+}
+.ef-add-bulk-btn:hover {
+    color: #00a86b;
+}
+.ef-add-bulk-btn svg {
+    color: #00a86b;
+}
+.ef-period-input-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+.ef-period-input-row input {
+    flex: 1;
+}
+.ef-remove-period-btn {
+    background: none;
+    border: none;
+    color: #ef4444;
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
 }
