@@ -2282,6 +2282,30 @@ body.ef-no-scroll {
     text-overflow: ellipsis !important;
   }
 
+  input[type="date"],
+  .atc-form input[type="date"],
+  .ef-modal-element-input[type="date"],
+  .ef-form-input-box[type="date"] {
+    -webkit-appearance: none !important;
+    appearance: none !important;
+    min-height: 34px !important;
+    height: 34px !important;
+    max-height: 34px !important;
+    line-height: 1.2 !important;
+    padding: 4px 8px !important;
+    font-size: 12px !important;
+    box-sizing: border-box !important;
+  }
+
+  input[type="date"]::-webkit-date-and-time-value {
+    text-align: left !important;
+    min-height: 1em !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    line-height: 1.2 !important;
+  }
+
   .atc-form select option,
   .ef-modal-element-input option,
   .ef-form-input-box option,
