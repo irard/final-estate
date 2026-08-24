@@ -96,7 +96,13 @@
   transform: scale(0.99);
 }
 select#modal_field_property {
-  padding: 0px !important;
+  padding: 8px 10px !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+select, select option {
+  max-width: 100% !important;
+  box-sizing: border-box !important;
 }
 .ef-dash-widget-box {
   background: #f0f5f4;
@@ -2266,8 +2272,18 @@ body.ef-no-scroll {
     padding: 4px 8px !important;
     box-sizing: border-box !important;
     width: 100% !important;
+    max-width: 100% !important;
     margin-bottom: 4px !important;
     border-radius: 6px !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .atc-form select option,
+  .ef-modal-element-input option,
+  .ef-form-input-box option,
+  .properties-page-modal select option {
+    max-width: 100% !important;
+    font-size: 12px !important;
   }
 
   .properties-page-footer,
