@@ -1,4 +1,57 @@
 if (!defined('ABSPATH')) exit;
+if (!function_exists('ef_clean_amount')) {
+    function ef_clean_amount($val) {
+        if (is_numeric($val)) return floatval($val);
+        $val = preg_replace('/[^\d.]/', '', (string)$val);
+        return floatval($val);
+    }
+}
+
+if (!function_exists('ef_get_tenant_total_contract_amount')) {
+    function ef_get_tenant_total_contract_amount($t_id) {
+        $val = get_field('total_rent_cost', $t_id) ?: get_post_meta($t_id, 'total_rent_cost', true);
+        if (!$val) {
+            $val = get_field('total_contract_amount', $t_id) ?: get_post_meta($t_id, 'total_contract_amount', true);
+        }
+        if ($val) {
+            return ef_clean_amount($val);
+        }
+        $monthly_rent = ef_clean_amount(get_field('monthly_rent', $t_id) ?: get_post_meta($t_id, 'monthly_rent', true));
+        return $monthly_rent * 12;
+    }
+}
+
+if (!function_exists('ef_get_tenant_total_payments_amount')) {
+    function ef_get_tenant_total_payments_amount($t_id) {
+        $payments = get_posts(array(
+            'post_type'      => 'payment',
+            'post_status'    => ['publish', 'future'],
+            'posts_per_page' => -1
+        ));
+        $total_paid = 0.00;
+        $target_tid = intval($t_id);
+        foreach ($payments as $p) {
+            $pid = $p->ID;
+            $pay_tid = ef_get_payment_tenant_id($pid);
+            if ($pay_tid === $target_tid) {
+                $amount = get_field('amount_paid', $pid) ?: get_post_meta($pid, 'amount_paid', true);
+                if ($amount) {
+                    $total_paid += ef_clean_amount($amount);
+                }
+            }
+        }
+        return $total_paid;
+    }
+}
+
+if (!function_exists('ef_get_tenant_outstanding_balance')) {
+    function ef_get_tenant_outstanding_balance($t_id) {
+        $contract = ef_get_tenant_total_contract_amount($t_id);
+        $paid = ef_get_tenant_total_payments_amount($t_id);
+        return max(0.00, $contract - $paid);
+    }
+}
+
 if (!function_exists('ef_get_tenant_due_day')) {
     function ef_get_tenant_due_day($t_id) {
         $d = get_field('rent_due_day', $t_id) ?: get_field('due_day', $t_id) ?: get_post_meta($t_id, 'rent_due_day', true) ?: get_post_meta($t_id, 'due_day', true);
@@ -557,6 +610,91 @@ add_shortcode('tenant_profile', function() {
             efToggleScrollLock();
         };
 
+        window.efDownloadTenantPDF = function(tenantName) {
+            const screen = document.getElementById('efWorkspaceDynamicScreen');
+            if (!screen) return;
+
+            const clone = screen.cloneNode(true);
+            clone.querySelectorAll('.ef-action-btn-group, .ef-btn-receipt, .ef-ledger-pagination').forEach(el => el.remove());
+
+            clone.style.padding = '24px';
+            clone.style.background = '#ffffff';
+            clone.style.boxSizing = 'border-box';
+
+            const wrapper = document.createElement('div');
+            wrapper.style.position = 'fixed';
+            wrapper.style.left = '-10000px';
+            wrapper.style.top = '-10000px';
+            wrapper.style.width = '800px';
+            wrapper.style.zIndex = '-9999';
+            wrapper.style.display = 'block';
+            wrapper.appendChild(clone);
+            document.body.appendChild(wrapper);
+
+            const safeName = (tenantName || 'Tenant').replace(/[^a-zA-Z0-9_\-\s]/g, '').trim();
+            const filename = `${safeName || 'Tenant'}-Profile.pdf`;
+
+            const options = {
+                margin: [0.3, 0.3, 0.3, 0.3],
+                filename: filename,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: {
+                    scale: 2,
+                    logging: false,
+                    useCORS: true,
+                    windowWidth: 800,
+                    width: 800,
+                    x: 0,
+                    y: 0,
+                    scrollY: 0,
+                    scrollX: 0
+                },
+                jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+            };
+
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+                          (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+            let pdfWindow;
+            if (isIOS) {
+                pdfWindow = window.open('', '_blank');
+                if (pdfWindow) {
+                    pdfWindow.document.write('Generating PDF... Please wait.');
+                }
+            }
+
+            html2pdf().set(options).from(clone).outputPdf('blob').then(function(blob) {
+                const url = URL.createObjectURL(blob);
+                if (isIOS) {
+                    if (pdfWindow) {
+                        pdfWindow.location.href = url;
+                    } else {
+                        window.location.href = url;
+                    }
+                } else {
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                }
+
+                setTimeout(() => {
+                    URL.revokeObjectURL(url);
+                    if (document.body.contains(wrapper)) {
+                        document.body.removeChild(wrapper);
+                    }
+                }, 2000);
+            }).catch(err => {
+                console.error('Tenant Profile PDF Generation Error:', err);
+                if (pdfWindow) pdfWindow.close();
+                if (document.body.contains(wrapper)) {
+                    document.body.removeChild(wrapper);
+                }
+            });
+        };
+
         window.addEventListener('ef_load_tenant', e => { 
             efLoadTenantLedgerPage(e.detail.id, 1);
         }); 
@@ -1036,6 +1174,9 @@ function eftm_handle_ajax_tenant_breakdown() {
         </div> 
         <?php if (is_user_logged_in()) : ?> 
         <div class="ef-action-btn-group"> 
+            <button class="ef-btn-action" onclick="efDownloadTenantPDF('<?php echo esc_js($tenant_name); ?>')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> Download PDF
+            </button>
             <button class="ef-btn-action" 
                     data-id="<?php echo $tenant_id; ?>" data-name="<?php echo esc_attr($tenant_name); ?>" data-property-id="<?php echo $propId; ?>" 
                     data-unit="<?php echo esc_attr($unit); ?>" data-rent="<?php echo $monthly_rent; ?>" data-address="<?php echo esc_attr($address); ?>" 
@@ -1055,11 +1196,13 @@ function eftm_handle_ajax_tenant_breakdown() {
     <?php
     $total_contract_val = floatval($total_rent_cost ?: (12 * $monthly_rent));
     $total_contract_formatted = (floor($total_contract_val) == $total_contract_val) ? number_format($total_contract_val) : number_format($total_contract_val, 2);
+    $remaining_balance = ef_get_tenant_outstanding_balance($tenant_id);
     ?>
     <div class="ef-meta-grid-3col"> 
         <div class="ef-meta-info-card"><div class="ef-meta-card-label">TOTAL CONTRACT AMOUNT</div><div class="ef-meta-card-value ef-text-green">AED <?php echo $total_contract_formatted; ?></div></div> 
         <div class="ef-meta-info-card"><div class="ef-meta-card-label">MONTHLY RENT</div><div class="ef-meta-card-value">AED <?php echo number_format($monthly_rent, 2); ?></div></div> 
         <div class="ef-meta-info-card"><div class="ef-meta-card-label">Payments</div><div class="ef-meta-card-value"><?php echo $fully_paid_months_count; ?></div></div> 
+        <div class="ef-meta-info-card"><div class="ef-meta-card-label">REMAINING BALANCE</div><div class="ef-meta-card-value">AED <?php echo number_format($remaining_balance, 2); ?></div></div>
     </div> 
     <div class="ef-section-title-sub">Contact & Contract Details</div> 
     <div class="ef-contact-row-flex" style="margin-bottom: 12px;"> 
