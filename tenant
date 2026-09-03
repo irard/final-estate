@@ -52,6 +52,57 @@ if (!function_exists('ef_get_tenant_outstanding_balance')) {
     }
 }
 
+if (!function_exists('ef_number_to_words_dirham')) {
+    function ef_number_to_words_dirham($amount) {
+        $amount = floatval($amount);
+        $units = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+        $tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+
+        $convert_group = function($n) use (&$convert_group, $units, $tens) {
+            $str = "";
+            if ($n >= 100) {
+                $str .= $units[intval($n / 100)] . " Hundred ";
+                $n %= 100;
+            }
+            if ($n >= 20) {
+                $str .= $tens[intval($n / 10)] . ($n % 10 ? " " . $units[$n % 10] : "");
+            } else if ($n > 0) {
+                $str .= $units[$n];
+            }
+            return trim($str);
+        };
+
+        if ($amount == 0) return "Only Zero UAE Dirham";
+
+        $dirhams = floor($amount);
+        $fils = round(($amount - $dirhams) * 100);
+
+        $parts = [];
+        if ($dirhams >= 1000000) {
+            $millions = floor($dirhams / 1000000);
+            $dirhams %= 1000000;
+            $parts[] = $convert_group($millions) . " Million";
+        }
+        if ($dirhams >= 1000) {
+            $thousands = floor($dirhams / 1000);
+            $dirhams %= 1000;
+            $parts[] = $convert_group($thousands) . " Thousand";
+        }
+        if ($dirhams > 0) {
+            $parts[] = $convert_group($dirhams);
+        }
+
+        $word_str = implode(" ", $parts);
+        $res = "Only " . trim($word_str) . " UAE Dirham";
+        if ($fils > 0) {
+            $fils_word = $convert_group($fils);
+            $res .= " and " . $fils_word . " Fils";
+        }
+
+        return $res;
+    }
+}
+
 if (!function_exists('ef_get_tenant_due_day')) {
     function ef_get_tenant_due_day($t_id) {
         $d = get_field('rent_due_day', $t_id) ?: get_field('due_day', $t_id) ?: get_post_meta($t_id, 'rent_due_day', true) ?: get_post_meta($t_id, 'due_day', true);
@@ -613,13 +664,85 @@ add_shortcode('tenant_profile', function() {
         window.efDownloadTenantPDF = function(tenantName) {
             const screen = document.getElementById('efWorkspaceDynamicScreen');
             if (!screen) return;
+            const content = screen.querySelector('#efTenantProfileContent') || screen;
 
-            const clone = screen.cloneNode(true);
-            clone.querySelectorAll('.ef-action-btn-group, .ef-btn-receipt, .ef-ledger-pagination').forEach(el => el.remove());
+            const tName = content.getAttribute('data-tenant-name') || tenantName || 'Tenant';
+            const prop = content.getAttribute('data-property') || '';
+            const totalContract = content.getAttribute('data-total-contract') || '0.00';
+            const totalContractWords = content.getAttribute('data-total-contract-words') || '';
+            const contractStart = content.getAttribute('data-contract-start') || '';
+            const contractEnd = content.getAttribute('data-contract-end') || '';
 
-            clone.style.padding = '24px';
-            clone.style.background = '#ffffff';
-            clone.style.boxSizing = 'border-box';
+            let payments = [];
+            try {
+                payments = JSON.parse(content.getAttribute('data-payments') || '[]');
+            } catch(e) {}
+
+            const today = new Date();
+            const day = String(today.getDate()).padStart(2, '0');
+            const month = String(today.getMonth() + 1).padStart(2, '0');
+            const year = today.getFullYear();
+            const dateRequested = `${day}/${month}/${year}`;
+            const timeStr = today.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true });
+
+            let rowsHtml = '';
+            if (payments.length > 0) {
+                payments.forEach((p, index) => {
+                    const rowNum = index + 1;
+                    const rvStr = p.rv ? (p.rv.startsWith('RV') ? p.rv : 'RV ' + p.rv) : '';
+                    rowsHtml += `
+                        <tr style="border-bottom: 1px solid #f1f5f9; font-size: 13px;">
+                            <td style="padding: 12px 8px; vertical-align: top; color: #1e293b; line-height: 1.5; width: 45%;">
+                                ${p.method} received from ${tName}<br>
+                                Amount ${p.amount} UAE Dirham<br>
+                                ${rvStr} dt ${p.date}
+                            </td>
+                            <td style="padding: 12px 8px; vertical-align: top; color: #475569;">${p.status}</td>
+                            <td style="padding: 12px 8px; vertical-align: top; color: #0f172a; font-weight: 600;">${p.amount}</td>
+                            <td style="padding: 12px 8px; vertical-align: top; color: #475569;">${p.date}</td>
+                            <td style="padding: 12px 8px; vertical-align: top; color: #475569;">${rvStr || p.rv || ''}</td>
+                            <td style="padding: 12px 8px; vertical-align: top; color: #1e293b; font-weight: bold; text-align: right;">${rowNum} ✓</td>
+                        </tr>
+                    `;
+                });
+            } else {
+                rowsHtml = `<tr><td colspan="6" style="padding: 20px; text-align: center; color: #64748b;">No recorded payments found.</td></tr>`;
+            }
+
+            const pdfHtml = `
+                <div style="font-family: Arial, sans-serif; padding: 40px; background: #ffffff; color: #0f172a; width: 740px; box-sizing: border-box;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 30px;">
+                        <div>
+                            <div style="font-size: 13px; color: #334155; font-weight: bold; margin-bottom: 25px;">${dateRequested}</div>
+                            <div style="font-size: 22px; font-weight: bold; color: #0f172a;">${totalContract}</div>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="font-size: 16px; font-weight: bold; color: #0f172a; margin-bottom: 6px;">${totalContract} AED</div>
+                            <div style="font-size: 12px; color: #475569; margin-bottom: 6px;">${contractEnd} &nbsp;&nbsp;&nbsp;&nbsp; ${contractStart}</div>
+                            <div style="font-size: 13px; color: #334155; font-weight: 500;">${prop}</div>
+                        </div>
+                    </div>
+
+                    <div style="text-align: center; margin-top: 15px; margin-bottom: 40px;">
+                        <div style="font-size: 20px; font-weight: bold; color: #0f172a; margin-bottom: 8px;">${tName}</div>
+                        <div style="font-size: 16px; font-weight: bold; color: #1e293b;">${totalContractWords}</div>
+                    </div>
+
+                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 50px;">
+                        <tbody>
+                            ${rowsHtml}
+                        </tbody>
+                    </table>
+
+                    <div style="margin-top: 80px;">
+                        <div style="font-size: 14px; font-weight: bold; color: #0f172a; margin-bottom: 30px;">admin</div>
+                        <div style="display: flex; justify-content: space-between; font-size: 11px; color: #64748b;">
+                            <span>Printed from MELIKA</span>
+                            <span>${timeStr}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
 
             const wrapper = document.createElement('div');
             wrapper.style.position = 'fixed';
@@ -628,10 +751,10 @@ add_shortcode('tenant_profile', function() {
             wrapper.style.width = '800px';
             wrapper.style.zIndex = '-9999';
             wrapper.style.display = 'block';
-            wrapper.appendChild(clone);
+            wrapper.innerHTML = pdfHtml;
             document.body.appendChild(wrapper);
 
-            const safeName = (tenantName || 'Tenant').replace(/[^a-zA-Z0-9_\-\s]/g, '').trim();
+            const safeName = (tName || 'Tenant').replace(/[^a-zA-Z0-9_\-\s]/g, '').trim();
             const filename = `${safeName || 'Tenant'}-Profile.pdf`;
 
             const options = {
@@ -663,7 +786,7 @@ add_shortcode('tenant_profile', function() {
                 }
             }
 
-            html2pdf().set(options).from(clone).outputPdf('blob').then(function(blob) {
+            html2pdf().set(options).from(wrapper.firstElementChild).outputPdf('blob').then(function(blob) {
                 const url = URL.createObjectURL(blob);
                 if (isIOS) {
                     if (pdfWindow) {
@@ -1163,7 +1286,58 @@ function eftm_handle_ajax_tenant_breakdown() {
     $initials = ''; $words = explode(' ', $tenant_name); foreach ($words as $w) $initials .= strtoupper(substr($w, 0, 1)); 
     $initials = substr($initials, 0, 2); 
     $due_day_display = !empty($due_day) ? $due_day . (in_array($due_day, [1,21,31]) ? 'st' : (in_array($due_day, [2,22]) ? 'nd' : (in_array($due_day, [3,23]) ? 'rd' : 'th'))) : '-'; 
+
+    $total_contract_val = floatval($total_rent_cost ?: (12 * $monthly_rent));
+    $total_contract_formatted = (floor($total_contract_val) == $total_contract_val) ? number_format($total_contract_val) : number_format($total_contract_val, 2);
+    $total_contract_words = ef_number_to_words_dirham($total_contract_val);
+
+    // Fetch ALL payments for PDF generation
+    $all_payments_for_pdf = [];
+    if (!empty($all_payments)) {
+        foreach ($all_payments as $ap) {
+            $ap_id = $ap->ID;
+            $ap_raw_date = get_field('date_of_payment', $ap_id) ?: get_post_meta($ap_id, 'date_of_payment', true);
+            $ap_ts = $ap_raw_date ? strtotime($ap_raw_date) : get_the_date('U', $ap_id);
+            $ap_period = (function_exists('get_field') ? get_field('payment_period', $ap_id) : null) ?: get_post_meta($ap_id, 'payment_period', true) ?: date('Y-m', $ap_ts);
+            $ap_period = substr((string)$ap_period, 0, 7);
+
+            $ap_status = 'Paid';
+            if ($tenant_id && $ap_period) {
+                $py = substr($ap_period, 0, 4);
+                $pm = substr($ap_period, 5, 2);
+                if (function_exists('ef_get_tenant_monthly_status')) {
+                    $st = ef_get_tenant_monthly_status($tenant_id, $pm, $py);
+                    if (!$st['is_fully_paid']) $ap_status = 'Partial';
+                }
+            }
+
+            $ap_method_raw = (get_field('mode_of_payment', $ap_id) ?: get_post_meta($ap_id, 'mode_of_payment', true)) ?: 'Cash';
+            $ap_cheque = get_field('transaction_cheque_number', $ap_id) ?: get_post_meta($ap_id, 'transaction_cheque_number', true);
+            $ap_method_str = $ap_cheque ? ($ap_method_raw . ' (' . $ap_cheque . ')') : $ap_method_raw;
+
+            $all_payments_for_pdf[] = [
+                'id' => $ap_id,
+                'period' => $ap_period,
+                'date' => date('d-M-Y', $ap_ts),
+                'method' => $ap_method_str,
+                'amount' => number_format(floatval(get_field('amount_paid', $ap_id) ?: get_post_meta($ap_id, 'amount_paid', true)), 2),
+                'rv' => get_field('receipt_voucher', $ap_id) ?: get_post_meta($ap_id, 'receipt_voucher', true) ?: ('RV ' . str_pad($ap_id, 6, '0', STR_PAD_LEFT)),
+                'status' => $ap_status
+            ];
+        }
+    }
+    $pdf_payments_json = esc_attr(json_encode($all_payments_for_pdf));
+    $contract_start_fmt = $contract_start ? date('d-M-Y', strtotime($contract_start)) : 'N/A';
+    $contract_end_fmt = $contract_end ? date('d-M-Y', strtotime($contract_end)) : 'N/A';
     ?> 
+    <div id="efTenantProfileContent"
+         data-tenant-name="<?php echo esc_attr($tenant_name); ?>"
+         data-property="<?php echo esc_attr($property_display); ?>"
+         data-total-contract="<?php echo esc_attr($total_contract_formatted); ?>"
+         data-total-contract-words="<?php echo esc_attr($total_contract_words); ?>"
+         data-contract-start="<?php echo esc_attr($contract_start_fmt); ?>"
+         data-contract-end="<?php echo esc_attr($contract_end_fmt); ?>"
+         data-payments="<?php echo $pdf_payments_json; ?>">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;"> 
         <div class="ef-header-profile-block"> 
             <div class="ef-profile-avatar-big"><?php echo esc_html($initials); ?></div> 
@@ -1247,6 +1421,7 @@ function eftm_handle_ajax_tenant_breakdown() {
         <?php else : ?> 
             <div style="color: #64748b; font-size: 14px; font-style: italic; padding: 20px 0; text-align: center; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 12px;">No recorded invoice transactions found.</div> 
         <?php endif; ?> 
+    </div>
     </div> 
     <?php 
     wp_die(); 
