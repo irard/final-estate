@@ -95,8 +95,18 @@
 .ef-login-btn:active {
   transform: scale(0.99);
 }
-select#modal_field_property {
-  padding: 0px !important;
+select#modal_field_property,
+#ef_log_tenant,
+#ef_log_method {
+  padding: 8px 10px !important;
+  max-width: 100% !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  text-overflow: ellipsis !important;
+}
+select, select option {
+  max-width: 100% !important;
+  box-sizing: border-box !important;
 }
 .ef-dash-widget-box {
   background: #f0f5f4;
@@ -1513,7 +1523,7 @@ html.ef-dark-theme #content {
   text-align: left;
 }
 .ef-core-tabular-matrix td {
-  padding: 14px 16px;
+  padding: 14px 12px;
   border-bottom: 1px solid #e2e8f0;
   color: #334155;
   vertical-align: middle;
@@ -1740,7 +1750,7 @@ html.ef-dark-theme .ef-btn-nav {
   gap: 6px;
 }
 .ef-btn-receipt {
-  padding: 8px 12px;
+  padding: 5px 12px;
   border-radius: 8px;
   font-size: 14px;
   cursor: pointer;
@@ -2198,14 +2208,154 @@ body.ef-no-scroll {
   }
 }
 @media (max-width: 768px) {
-  .atc-panel,
-  .ef-popup-modal-box {
-    height: 60% !important;
-    overflow-y: auto !important;
+  .atc-modal,
+  .ef-popup-modal-container,
+  .properties-page-modal,
+  .ef-modal-backdrop-blur,
+  .atc-due-popup,
+  .ef-modal-due-popup {
+    padding: 12px !important;
+    box-sizing: border-box !important;
+    align-items: center !important;
+    justify-content: center !important;
+    overflow-x: hidden !important;
   }
-  .atc-row.contract,
-  .ef-grid-modal-2col.contract {
-    display: block;
+
+  .atc-panel,
+  .ef-popup-modal-box,
+  .properties-page-modal-content,
+  .ef-modal-window-surface {
+    width: 90% !important;
+    max-width: 360px !important;
+    height: auto !important;
+    max-height: 80vh !important;
+    max-height: 80dvh !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    padding: 12px 12px 18px 12px !important;
+    border-radius: 12px !important;
+    box-sizing: border-box !important;
+    margin: auto !important;
+  }
+
+  .atc-row,
+  .ef-grid-modal-2col,
+  .ef-input-flex-row-2col,
+  .properties-page-row {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 6px !important;
+    margin-bottom: 6px !important;
+  }
+
+  .atc-row label,
+  .properties-page-col,
+  .ef-modal-input-field-group,
+  .ef-form-group {
+    width: 100% !important;
+    margin-bottom: 6px !important;
+  }
+
+  .atc-row label,
+  .ef-modal-input-field-group label,
+  .ef-form-group label,
+  .properties-page-modal label {
+    font-size: 11px !important;
+    margin-bottom: 2px !important;
+  }
+
+  .atc-form input,
+  .atc-form select,
+  .ef-modal-element-input,
+  .ef-form-input-box,
+  .properties-page-modal input,
+  .properties-page-modal select {
+    font-size: 12px !important;
+    height: 34px !important;
+    padding: 4px 8px !important;
+    box-sizing: border-box !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-bottom: 4px !important;
+    border-radius: 6px !important;
+    text-overflow: ellipsis !important;
+  }
+
+  input[type="date"],
+  .atc-form input[type="date"],
+  .ef-modal-element-input[type="date"],
+  .ef-form-input-box[type="date"] {
+    -webkit-appearance: none !important;
+    appearance: none !important;
+    min-height: 34px !important;
+    height: 34px !important;
+    max-height: 34px !important;
+    line-height: 1.2 !important;
+    padding: 4px 8px !important;
+    font-size: 12px !important;
+    box-sizing: border-box !important;
+  }
+
+  input[type="date"]::-webkit-date-and-time-value {
+    text-align: left !important;
+    min-height: 1em !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    line-height: 1.2 !important;
+  }
+
+  .atc-form select option,
+  .ef-modal-element-input option,
+  .ef-form-input-box option,
+  .properties-page-modal select option,
+  #ef_log_tenant option,
+  #ef_log_method option {
+    max-width: 100% !important;
+    font-size: 12px !important;
+  }
+
+  .properties-page-footer,
+  .ef-modal-action-footer-cluster,
+  .atc-actions {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+    margin-top: 12px !important;
+    padding-bottom: 10px !important;
+    justify-content: flex-end !important;
+  }
+
+  .properties-page-footer button,
+  .ef-modal-action-footer-cluster button,
+  .atc-actions button {
+    flex: 1 1 auto !important;
+    min-height: 38px !important;
+    padding: 6px 14px !important;
+    font-size: 13px !important;
+    text-align: center !important;
+    justify-content: center !important;
+  }
+
+  .atc-due-grid,
+  .ef-due-grid {
+    grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
+    gap: 4px !important;
+    padding: 10px 4px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    overflow-x: hidden !important;
+  }
+
+  .atc-due-box,
+  .ef-due-box {
+    padding: 6px 1px !important;
+    font-size: 11px !important;
+    text-align: center !important;
+    box-sizing: border-box !important;
+    min-width: 0 !important;
   }
   .ef-stats-cards-row {
     grid-template-columns: 1fr;
