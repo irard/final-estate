@@ -1143,10 +1143,17 @@ html.ef-dark-theme #content {
   gap: 10px;
   align-items: center;
 }
+.ef-btn-icon-only {
+  padding: 8px !important;
+  width: 36px !important;
+  height: 36px !important;
+  justify-content: center !important;
+}
 .ef-btn-delete-icon {
-  width: 58px !important;
-  height: 33px;
-  justify-content: end;
+  padding: 8px !important;
+  width: 36px !important;
+  height: 36px !important;
+  justify-content: center !important;
 }
 .ef-profile-avatar-big {
   width: 56px;
@@ -2421,6 +2428,25 @@ body.ef-no-scroll {
     -webkit-overflow-scrolling: touch;
     margin-bottom: 1rem;
     width: 100%;
+  }
+
+  .ef-action-btn-group {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 8px !important;
+    flex-wrap: nowrap !important;
+  }
+
+  .ef-action-btn-group .ef-btn-text {
+    display: none !important;
+  }
+
+  .ef-action-btn-group .ef-btn-action {
+    padding: 8px !important;
+    width: 36px !important;
+    height: 36px !important;
+    justify-content: center !important;
   }
 }
 
