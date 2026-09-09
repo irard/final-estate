@@ -2203,6 +2203,17 @@ body.ef-no-scroll {
   overflow-y: auto !important;
 }
 
+#efTenantProfileModal.ef-show,
+#efTenantProfileModal.active {
+  display: flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+#efTenantProfileModal:not(.ef-show):not(.active) {
+  display: none !important;
+}
+
 #efTenantProfileModal .ef-popup-modal-box {
   background: #ffffff !important;
   border-radius: 16px !important;
@@ -2214,12 +2225,19 @@ body.ef-no-scroll {
   max-height: 90vh !important;
   margin: auto !important;
   overflow-y: auto !important;
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
 }
 
-#efWorkspaceDynamicScreen {
-  background: #fff;
-  border-radius: 12px;
-  padding: 0;
+#efWorkspaceDynamicScreen,
+#efTenantProfileContent {
+  background: #fff !important;
+  border-radius: 12px !important;
+  padding: 0 !important;
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
 }
 @media (max-width: 768px) {
   .atc-modal,
