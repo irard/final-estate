@@ -668,78 +668,138 @@ add_shortcode('tenant_profile', function() {
 
             const tName = content.getAttribute('data-tenant-name') || tenantName || 'Tenant';
             const prop = content.getAttribute('data-property') || '';
+            const unit = content.getAttribute('data-unit') || '1A';
+            const monthlyRent = content.getAttribute('data-monthly-rent') || '0.00';
             const totalContract = content.getAttribute('data-total-contract') || '0.00';
-            const totalContractWords = content.getAttribute('data-total-contract-words') || '';
-            const contractStart = content.getAttribute('data-contract-start') || '';
-            const contractEnd = content.getAttribute('data-contract-end') || '';
+            const totalPaid = content.getAttribute('data-total-paid') || '0.00';
+            const expectedTotal = content.getAttribute('data-expected-total') || '0.00';
+            const remainingBalance = content.getAttribute('data-remaining-balance') || '0.00';
+            const paymentsCount = content.getAttribute('data-payments-count') || '0';
+            const email = content.getAttribute('data-email') || 'None';
+            const phone = content.getAttribute('data-phone') || 'None';
+            const address = content.getAttribute('data-address') || 'No Address Provided';
+            const contractStart = content.getAttribute('data-contract-start') || 'N/A';
+            const contractEnd = content.getAttribute('data-contract-end') || 'N/A';
 
             let payments = [];
             try {
                 payments = JSON.parse(content.getAttribute('data-payments') || '[]');
             } catch(e) {}
 
-            const today = new Date();
-            const day = String(today.getDate()).padStart(2, '0');
-            const month = String(today.getMonth() + 1).padStart(2, '0');
-            const year = today.getFullYear();
-            const dateRequested = `${day}/${month}/${year}`;
-            const timeStr = today.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true });
+            const initials = tName.split(' ').map(w => w.charAt(0).toUpperCase()).join('').substring(0, 2) || 'SR';
 
             let rowsHtml = '';
             if (payments.length > 0) {
                 payments.forEach((p, index) => {
-                    const rowNum = index + 1;
-                    const rvStr = p.rv ? (p.rv.startsWith('RV') ? p.rv : 'RV ' + p.rv) : '';
+                    const statusClass = (p.status === 'Paid') ? 'color: #059669; background: #ecfdf5;' : 'color: #d97706; background: #fef3c7;';
                     rowsHtml += `
                         <tr style="border-bottom: 1px solid #f1f5f9; font-size: 13px;">
-                            <td style="padding: 12px 8px; vertical-align: top; color: #1e293b; line-height: 1.5; width: 45%;">
-                                ${p.method} received from ${tName}<br>
-                                Amount ${p.amount} UAE Dirham<br>
-                                ${rvStr} dt ${p.date}
-                            </td>
-                            <td style="padding: 12px 8px; vertical-align: top; color: #475569;">${p.status}</td>
-                            <td style="padding: 12px 8px; vertical-align: top; color: #0f172a; font-weight: 600;">${p.amount}</td>
-                            <td style="padding: 12px 8px; vertical-align: top; color: #475569;">${p.date}</td>
-                            <td style="padding: 12px 8px; vertical-align: top; color: #475569;">${rvStr || p.rv || ''}</td>
-                            <td style="padding: 12px 8px; vertical-align: top; color: #1e293b; font-weight: bold; text-align: right;">${rowNum} ✓</td>
+                            <td style="padding: 12px 14px; color: #0f172a; font-weight: 500;">${p.period || p.date}</td>
+                            <td style="padding: 12px 14px; color: #475569;">${p.method}</td>
+                            <td style="padding: 12px 14px; color: #64748b;">${p.date}</td>
+                            <td style="padding: 12px 14px; color: #059669; font-weight: 700;">AED ${p.amount}</td>
+                            <td style="padding: 12px 14px; text-align: right;"><span style="padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; ${statusClass}">${p.status}</span></td>
                         </tr>
                     `;
                 });
             } else {
-                rowsHtml = `<tr><td colspan="6" style="padding: 20px; text-align: center; color: #64748b;">No recorded payments found.</td></tr>`;
+                rowsHtml = `<tr><td colspan="5" style="padding: 20px; text-align: center; color: #64748b;">No recorded payments found.</td></tr>`;
             }
 
             const pdfHtml = `
-                <div style="font-family: Arial, sans-serif; padding: 40px; background: #ffffff; color: #0f172a; width: 740px; box-sizing: border-box;">
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 30px;">
+                <div style="font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding: 32px; background: #ffffff; color: #0f172a; width: 740px; box-sizing: border-box; border: 1px solid #e2e8f0; border-radius: 12px;">
+                    <!-- Header -->
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px;">
+                        <div style="display: flex; align-items: center; gap: 16px;">
+                            <div style="width: 56px; height: 56px; border-radius: 50%; background: #00a86b; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 700;">${initials}</div>
+                            <div>
+                                <h1 style="margin: 0 0 4px 0; font-size: 24px; font-weight: 800; color: #0f172a;">${tName}</h1>
+                                <div style="color: #64748b; font-size: 14px; font-weight: 500; margin-bottom: 6px;">${prop} — Unit ${unit}</div>
+                                <span style="display: inline-block; padding: 3px 10px; border-radius: 12px; background: #ecfdf5; color: #059669; font-size: 12px; font-weight: 600;">Contract active</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Meta Cards Grid -->
+                    <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-bottom: 28px;">
+                        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 10px;">
+                            <div style="color: #64748b; font-size: 11px; font-weight: 600; margin-bottom: 6px;">Monthly rent</div>
+                            <div style="color: #059669; font-size: 15px; font-weight: 800;">AED ${monthlyRent}</div>
+                        </div>
+                        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 10px;">
+                            <div style="color: #64748b; font-size: 11px; font-weight: 600; margin-bottom: 6px;">Contract amount</div>
+                            <div style="color: #0f172a; font-size: 15px; font-weight: 800;">AED ${totalContract}</div>
+                        </div>
+                        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 10px;">
+                            <div style="color: #64748b; font-size: 11px; font-weight: 600; margin-bottom: 6px;">Total paid</div>
+                            <div style="color: #059669; font-size: 15px; font-weight: 800;">AED ${totalPaid}</div>
+                        </div>
+                        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 10px;">
+                            <div style="color: #64748b; font-size: 11px; font-weight: 600; margin-bottom: 6px;">Expected total</div>
+                            <div style="color: #0f172a; font-size: 15px; font-weight: 800;">AED ${expectedTotal}</div>
+                        </div>
+                        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 10px;">
+                            <div style="color: #64748b; font-size: 11px; font-weight: 600; margin-bottom: 6px;">Remaining</div>
+                            <div style="color: #059669; font-size: 15px; font-weight: 800;">AED ${remainingBalance}</div>
+                        </div>
+                        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 10px;">
+                            <div style="color: #64748b; font-size: 11px; font-weight: 600; margin-bottom: 6px;">Payments</div>
+                            <div style="color: #0f172a; font-size: 15px; font-weight: 800;">${paymentsCount}</div>
+                        </div>
+                    </div>
+
+                    <!-- Details Sections -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 28px;">
                         <div>
-                            <div style="font-size: 13px; color: #334155; font-weight: bold; margin-bottom: 25px;">${dateRequested}</div>
-                            <div style="font-size: 22px; font-weight: bold; color: #0f172a;">${totalContract}</div>
+                            <div style="color: #64748b; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px;">CONTACT DETAILS</div>
+                            <div style="display: flex; flex-direction: column; gap: 8px;">
+                                <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; font-size: 13px; color: #1e293b; display: flex; align-items: center; gap: 8px;">
+                                    <span style="color: #64748b;">✉️</span> <span>${email}</span>
+                                </div>
+                                <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; font-size: 13px; color: #1e293b; display: flex; align-items: center; gap: 8px;">
+                                    <span style="color: #64748b;">📞</span> <span>${phone}</span>
+                                </div>
+                                <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; font-size: 13px; color: #1e293b; display: flex; align-items: center; gap: 8px;">
+                                    <span style="color: #64748b;">📍</span> <span>${address}</span>
+                                </div>
+                            </div>
                         </div>
-                        <div style="text-align: right;">
-                            <div style="font-size: 16px; font-weight: bold; color: #0f172a; margin-bottom: 6px;">${totalContract} AED</div>
-                            <div style="font-size: 12px; color: #475569; margin-bottom: 6px;">${contractEnd} &nbsp;&nbsp;&nbsp;&nbsp; ${contractStart}</div>
-                            <div style="font-size: 13px; color: #334155; font-weight: 500;">${prop}</div>
+                        <div>
+                            <div style="color: #64748b; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px;">CONTRACT DETAILS</div>
+                            <div style="display: flex; flex-direction: column; gap: 8px;">
+                                <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; font-size: 13px; display: flex; justify-content: space-between; align-items: center;">
+                                    <span style="color: #64748b;">Start date</span>
+                                    <span style="color: #0f172a; font-weight: 700; font-family: monospace;">${contractStart}</span>
+                                </div>
+                                <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; font-size: 13px; display: flex; justify-content: space-between; align-items: center;">
+                                    <span style="color: #64748b;">End date</span>
+                                    <span style="color: #0f172a; font-weight: 700; font-family: monospace;">${contractEnd}</span>
+                                </div>
+                                <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; font-size: 13px; display: flex; justify-content: space-between; align-items: center;">
+                                    <span style="color: #64748b;">Duration</span>
+                                    <span style="color: #0f172a; font-weight: 700;">—</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
-                    <div style="text-align: center; margin-top: 15px; margin-bottom: 40px;">
-                        <div style="font-size: 20px; font-weight: bold; color: #0f172a; margin-bottom: 8px;">${tName}</div>
-                        <div style="font-size: 16px; font-weight: bold; color: #1e293b;">${totalContractWords}</div>
-                    </div>
-
-                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 50px;">
-                        <tbody>
-                            ${rowsHtml}
-                        </tbody>
-                    </table>
-
-                    <div style="margin-top: 80px;">
-                        <div style="font-size: 14px; font-weight: bold; color: #0f172a; margin-bottom: 30px;">admin</div>
-                        <div style="display: flex; justify-content: space-between; font-size: 11px; color: #64748b;">
-                            <span>Printed from MELIKA</span>
-                            <span>${timeStr}</span>
-                        </div>
+                    <!-- Payment History Section -->
+                    <div>
+                        <div style="color: #64748b; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;">PAYMENT HISTORY</div>
+                        <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                            <thead>
+                                <tr style="border-bottom: 1px solid #e2e8f0; background: #f8fafc;">
+                                    <th style="padding: 10px 14px; color: #64748b; font-size: 11px; text-transform: uppercase;">Period / Allocation</th>
+                                    <th style="padding: 10px 14px; color: #64748b; font-size: 11px; text-transform: uppercase;">Method</th>
+                                    <th style="padding: 10px 14px; color: #64748b; font-size: 11px; text-transform: uppercase;">Date</th>
+                                    <th style="padding: 10px 14px; color: #64748b; font-size: 11px; text-transform: uppercase;">Amount</th>
+                                    <th style="padding: 10px 14px; color: #64748b; font-size: 11px; text-transform: uppercase; text-align: right;">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${rowsHtml}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             `;
@@ -1291,6 +1351,13 @@ function eftm_handle_ajax_tenant_breakdown() {
     $total_contract_formatted = (floor($total_contract_val) == $total_contract_val) ? number_format($total_contract_val) : number_format($total_contract_val, 2);
     $total_contract_words = ef_number_to_words_dirham($total_contract_val);
 
+    $total_paid_val = ef_get_tenant_total_payments_amount($tenant_id);
+    $total_paid_formatted = (floor($total_paid_val) == $total_paid_val) ? number_format($total_paid_val) : number_format($total_paid_val, 2);
+    $expected_total_val = $total_contract_val;
+    $expected_total_formatted = $total_contract_formatted;
+    $remaining_balance = ef_get_tenant_outstanding_balance($tenant_id);
+    $remaining_balance_formatted = (floor($remaining_balance) == $remaining_balance) ? number_format($remaining_balance) : number_format($remaining_balance, 2);
+
     // Fetch ALL payments for PDF generation
     $all_payments_for_pdf = [];
     if (!empty($all_payments)) {
@@ -1333,10 +1400,21 @@ function eftm_handle_ajax_tenant_breakdown() {
     <div id="efTenantProfileContent"
          data-tenant-name="<?php echo esc_attr($tenant_name); ?>"
          data-property="<?php echo esc_attr($property_display); ?>"
+         data-unit="<?php echo esc_attr($unit ?: '1A'); ?>"
+         data-monthly-rent="<?php echo esc_attr(number_format($monthly_rent, 2)); ?>"
          data-total-contract="<?php echo esc_attr($total_contract_formatted); ?>"
          data-total-contract-words="<?php echo esc_attr($total_contract_words); ?>"
-         data-contract-start="<?php echo esc_attr($contract_start_fmt); ?>"
-         data-contract-end="<?php echo esc_attr($contract_end_fmt); ?>"
+         data-total-paid="<?php echo esc_attr($total_paid_formatted); ?>"
+         data-expected-total="<?php echo esc_attr($expected_total_formatted); ?>"
+         data-remaining-balance="<?php echo esc_attr($remaining_balance_formatted); ?>"
+         data-payments-count="<?php echo esc_attr($fully_paid_months_count); ?>"
+         data-email="<?php echo esc_attr($email ?: 'None'); ?>"
+         data-phone="<?php echo esc_attr($phone ?: 'None'); ?>"
+         data-address="<?php echo esc_attr($address ?: 'No Address Provided'); ?>"
+         data-contract-start="<?php echo esc_attr($contract_start ?: 'N/A'); ?>"
+         data-contract-end="<?php echo esc_attr($contract_end ?: 'N/A'); ?>"
+         data-contract-start-fmt="<?php echo esc_attr($contract_start_fmt); ?>"
+         data-contract-end-fmt="<?php echo esc_attr($contract_end_fmt); ?>"
          data-payments="<?php echo $pdf_payments_json; ?>">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;"> 
         <div class="ef-header-profile-block"> 
@@ -1370,21 +1448,54 @@ function eftm_handle_ajax_tenant_breakdown() {
     <?php
     $total_contract_val = floatval($total_rent_cost ?: (12 * $monthly_rent));
     $total_contract_formatted = (floor($total_contract_val) == $total_contract_val) ? number_format($total_contract_val) : number_format($total_contract_val, 2);
+    $total_paid_val = ef_get_tenant_total_payments_amount($tenant_id);
+    $total_paid_formatted = (floor($total_paid_val) == $total_paid_val) ? number_format($total_paid_val) : number_format($total_paid_val, 2);
+    $expected_total_val = $total_contract_val;
+    $expected_total_formatted = $total_contract_formatted;
     $remaining_balance = ef_get_tenant_outstanding_balance($tenant_id);
+    $remaining_balance_formatted = (floor($remaining_balance) == $remaining_balance) ? number_format($remaining_balance) : number_format($remaining_balance, 2);
     ?>
     <div class="ef-meta-grid-3col"> 
-        <div class="ef-meta-info-card"><div class="ef-meta-card-label">TOTAL CONTRACT AMOUNT</div><div class="ef-meta-card-value ef-text-green">AED <?php echo $total_contract_formatted; ?></div></div> 
-        <div class="ef-meta-info-card"><div class="ef-meta-card-label">MONTHLY RENT</div><div class="ef-meta-card-value">AED <?php echo number_format($monthly_rent, 2); ?></div></div> 
+        <div class="ef-meta-info-card"><div class="ef-meta-card-label">Monthly rent</div><div class="ef-meta-card-value ef-text-green">AED <?php echo number_format($monthly_rent, 2); ?></div></div>
+        <div class="ef-meta-info-card"><div class="ef-meta-card-label">Contract amount</div><div class="ef-meta-card-value">AED <?php echo $total_contract_formatted; ?></div></div>
+        <div class="ef-meta-info-card"><div class="ef-meta-card-label">Total paid</div><div class="ef-meta-card-value ef-text-green">AED <?php echo $total_paid_formatted; ?></div></div>
+        <div class="ef-meta-info-card"><div class="ef-meta-card-label">Expected total</div><div class="ef-meta-card-value">AED <?php echo $expected_total_formatted; ?></div></div>
         <div class="ef-meta-info-card"><div class="ef-meta-card-label">Payments</div><div class="ef-meta-card-value"><?php echo $fully_paid_months_count; ?></div></div> 
-        <div class="ef-meta-info-card"><div class="ef-meta-card-label">REMAINING BALANCE</div><div class="ef-meta-card-value">AED <?php echo number_format($remaining_balance, 2); ?></div></div>
+        <div class="ef-meta-info-card"><div class="ef-meta-card-label">Remaining balance</div><div class="ef-meta-card-value ef-text-green">AED <?php echo $remaining_balance_formatted; ?></div></div>
     </div> 
-    <div class="ef-section-title-sub">Contact & Contract Details</div> 
-    <div class="ef-contact-row-flex" style="margin-bottom: 12px;"> 
-        <div class="ef-contact-item">✉️ <?php echo esc_html($email ?: 'None'); ?></div> 
-        <div class="ef-contact-item">📞 <?php echo esc_html($phone ?: 'None'); ?></div> 
-    </div> 
-    <div class="ef-contact-row-flex" style="margin-bottom: 16px;"><div class="ef-contact-item">📍 <?php echo esc_html($address ?: 'No Address Provided'); ?></div></div> 
-    <div style="font-size: 14px; display: flex; align-items: center;"><span class="ef-contract-badge-pill">Contract Period</span><span style="color: #0f172a; font-weight: 500;"><?php echo esc_html($contract_start ?: 'N/A'); ?> ➔ <?php echo esc_html($contract_end ?: 'N/A'); ?></span></div> 
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; margin-top: 24px; margin-bottom: 24px;">
+        <div>
+            <div class="ef-section-title-sub" style="margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; font-size: 12px; font-weight: 700; color: #64748b;">CONTACT DETAILS</div>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; display: flex; align-items: center; gap: 10px; font-size: 14px; color: #1e293b; font-weight: 500;">
+                    <span style="color: #64748b;">✉️</span> <span><?php echo esc_html($email ?: 'None'); ?></span>
+                </div>
+                <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; display: flex; align-items: center; gap: 10px; font-size: 14px; color: #1e293b; font-weight: 500;">
+                    <span style="color: #64748b;">📞</span> <span><?php echo esc_html($phone ?: 'None'); ?></span>
+                </div>
+                <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; display: flex; align-items: center; gap: 10px; font-size: 14px; color: #1e293b; font-weight: 500;">
+                    <span style="color: #64748b;">📍</span> <span><?php echo esc_html($address ?: 'No Address Provided'); ?></span>
+                </div>
+            </div>
+        </div>
+        <div>
+            <div class="ef-section-title-sub" style="margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; font-size: 12px; font-weight: 700; color: #64748b;">CONTRACT DETAILS</div>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; font-size: 14px;">
+                    <span style="color: #64748b; font-weight: 500;">Start date</span>
+                    <span style="color: #0f172a; font-weight: 600; font-family: monospace; font-size: 13px;"><?php echo esc_html($contract_start ?: 'N/A'); ?></span>
+                </div>
+                <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; font-size: 14px;">
+                    <span style="color: #64748b; font-weight: 500;">End date</span>
+                    <span style="color: #0f172a; font-weight: 600; font-family: monospace; font-size: 13px;"><?php echo esc_html($contract_end ?: 'N/A'); ?></span>
+                </div>
+                <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; font-size: 14px;">
+                    <span style="color: #64748b; font-weight: 500;">Duration</span>
+                    <span style="color: #0f172a; font-weight: 600; font-size: 13px;"><?php echo esc_html($contract_months ? ($contract_months . ' Months') : '—'); ?></span>
+                </div>
+            </div>
+        </div>
+    </div>
     <div class="ef-section-title-sub" style="margin-top: 32px;">Payment Ledger History</div> 
     <div class="ef-payment-history-list"> 
         <?php if (!empty($payment_history)) : foreach ($payment_history as $p) : 
