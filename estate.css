@@ -2478,6 +2478,11 @@ body.ef-no-scroll {
     height: 36px !important;
     justify-content: center !important;
   }
+
+  .ef-meta-grid-3col {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px !important;
+  }
 }
 
 .ef-bulk-period-header {

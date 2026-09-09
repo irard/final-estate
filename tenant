@@ -1438,7 +1438,7 @@ function eftm_handle_ajax_tenant_breakdown() {
     $contract_start_fmt = $contract_start ? date('d-M-Y', strtotime($contract_start)) : 'N/A';
     $contract_end_fmt = $contract_end ? date('d-M-Y', strtotime($contract_end)) : 'N/A';
     ?> 
-    <div id="efTenantProfileContent"
+    <div id="efTenantProfileContent" style="position: relative;"
          data-tenant-name="<?php echo esc_attr($tenant_name); ?>"
          data-property="<?php echo esc_attr($property_display); ?>"
          data-unit="<?php echo esc_attr($unit ?: '1A'); ?>"
@@ -1457,7 +1457,10 @@ function eftm_handle_ajax_tenant_breakdown() {
          data-contract-start-fmt="<?php echo esc_attr($contract_start_fmt); ?>"
          data-contract-end-fmt="<?php echo esc_attr($contract_end_fmt); ?>"
          data-payments="<?php echo $pdf_payments_json; ?>">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;"> 
+        <button type="button" title="Close Profile" onclick="efCloseTenantProfile()" style="position: absolute; top: -8px; right: 0px; background: transparent; border: none; font-size: 22px; color: #64748b; font-weight: 400; cursor: pointer; z-index: 10; padding: 4px;">
+            ✕
+        </button>
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; padding-right: 32px;">
         <div class="ef-header-profile-block"> 
             <div class="ef-profile-avatar-big"><?php echo esc_html($initials); ?></div> 
             <div> 
@@ -1491,11 +1494,8 @@ function eftm_handle_ajax_tenant_breakdown() {
             </button>
             <button class="ef-btn-action ef-btn-delete-icon" onclick="efLiveDeleteTenant(<?php echo $tenant_id; ?>, '<?php echo esc_js($tenant_name); ?>')" style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:6px 12px; font-size:13px; color:#059669; font-weight:500; display:inline-flex; align-items:center; cursor:pointer;">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-            </button>
-            <?php endif; ?>
-            <button class="ef-btn-action" title="Close Profile" onclick="efCloseTenantProfile()" style="background:transparent; border:none; padding:6px 10px; font-size:18px; color:#64748b; font-weight:400; cursor:pointer; margin-left:4px;">
-                ✕
             </button> 
+            <?php endif; ?>
         </div> 
     </div> 
     <?php
