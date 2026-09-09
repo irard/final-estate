@@ -2185,34 +2185,35 @@ body.ef-no-scroll {
   visibility: visible !important;
   width: 100%;
 }
-@media (min-width: 769px) {
-  #efTenantProfileModal {
-    display: block !important;
-    position: static !important;
-    background: none !important;
-    width: auto !important;
-    height: auto !important;
-    flex: 1;
-    z-index: auto !important;
-  }
-  #efTenantProfileModal .ef-popup-modal-box {
-    position: static !important;
-    max-width: none !important;
-    width: 100% !important;
-    box-shadow: none !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    background: none !important;
-  }
-  #efTenantProfileModal .ef-popup-modal-box > button {
-    display: none !important;
-  }
-  #efWorkspaceDynamicScreen {
-    background: #fff;
-    border-radius: 12px;
-    border: 1px solid #e2e8f0;
-    padding: 24px;
-  }
+#efTenantProfileModal {
+  position: fixed !important;
+  inset: 0 !important;
+  background: rgba(15, 23, 42, 0.6) !important;
+  backdrop-filter: blur(4px) !important;
+  z-index: 99999 !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 20px !important;
+  box-sizing: border-box !important;
+  overflow-y: auto !important;
+}
+
+#efTenantProfileModal .ef-popup-modal-box {
+  background: #ffffff !important;
+  border-radius: 16px !important;
+  width: 92% !important;
+  max-width: 900px !important;
+  box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04) !important;
+  padding: 28px !important;
+  position: relative !important;
+  max-height: 90vh !important;
+  overflow-y: auto !important;
+}
+
+#efWorkspaceDynamicScreen {
+  background: #fff;
+  border-radius: 12px;
+  padding: 0;
 }
 @media (max-width: 768px) {
   .atc-modal,
@@ -2244,6 +2245,11 @@ body.ef-no-scroll {
     border-radius: 12px !important;
     box-sizing: border-box !important;
     margin: auto !important;
+  }
+
+  #efTenantProfileModal .ef-popup-modal-box {
+    max-width: 92% !important;
+    width: 92% !important;
   }
 
   .atc-row,
