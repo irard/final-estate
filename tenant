@@ -537,8 +537,8 @@ add_shortcode('student_list', $tenant_list_logic);
 add_shortcode('tenant_profile', function() { 
     ob_start(); ?> 
      
-    <div id="efTenantProfileModal" class="ef-popup-modal-container" style="display:none; position: fixed; inset: 0; background: rgba(15,23,42,0.6); z-index: 99999; justify-content: center; align-items: center; padding: 20px; overflow-y: auto;" onclick="if(event.target === this) { efCloseTenantProfile(); }">
-        <div class="ef-popup-modal-box" style="max-width: 900px; width: 92%; position: relative; background: #ffffff; border-radius: 16px; padding: 28px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04); max-height: 90vh; overflow-y: auto;">
+    <div id="efTenantProfileModal" class="ef-popup-modal-container" style="display:none;">
+        <div class="ef-popup-modal-box" style="position: relative; background: #ffffff; border-radius: 16px; padding: 28px; width: 100%;">
             <div id="efWorkspaceDynamicScreen" style="width:100%;">
                 <div style="text-align:center; padding: 40px; color: #64748b;">Select a tenant to view profile.</div>
             </div>
@@ -901,10 +901,6 @@ add_shortcode('tenant_profile', function() {
         };
 
         document.addEventListener('DOMContentLoaded', function() {
-            const modal = document.getElementById('efTenantProfileModal');
-            if (modal && modal.parentNode !== document.body) {
-                document.body.appendChild(modal);
-            }
             const editModal = document.getElementById('efGlobalRightEditModal');
             if (editModal && editModal.parentNode !== document.body) {
                 document.body.appendChild(editModal);
@@ -929,23 +925,10 @@ add_shortcode('tenant_profile', function() {
             if (splitContainer) splitContainer.style.gridTemplateColumns = '1fr';
 
             let modal = document.getElementById('efTenantProfileModal');
-            if (!modal) {
-                modal = document.createElement('div');
-                modal.id = 'efTenantProfileModal';
-                modal.className = 'ef-popup-modal-container active ef-show';
-                modal.style.cssText = 'display:flex !important; position: fixed !important; inset: 0 !important; background: rgba(15,23,42,0.6) !important; z-index: 999999 !important; justify-content: center !important; align-items: center !important; padding: 20px !important; overflow-y: auto !important;';
-                modal.onclick = function(event) { if (event.target === modal) { efCloseTenantProfile(); } };
-                modal.innerHTML = '<div class="ef-popup-modal-box" style="max-width: 900px; width: 92%; position: relative; background: #ffffff; border-radius: 16px; padding: 28px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04); max-height: 90vh; overflow-y: auto;"><div id="efWorkspaceDynamicScreen" style="width:100%;"></div></div>';
-                document.body.appendChild(modal);
-            } else {
-                if (modal.parentNode !== document.body) {
-                    document.body.appendChild(modal);
-                }
+            if (modal) {
                 modal.classList.add('active', 'ef-show');
-                modal.style.display = 'flex';
+                modal.style.display = 'block';
             }
-
-            efToggleScrollLock();
 
             const screen = document.getElementById('efWorkspaceDynamicScreen');
             if (page === 1 && screen) screen.innerHTML = '<div style="text-align:center; padding:40px;">Loading profile...</div>';
@@ -956,7 +939,7 @@ add_shortcode('tenant_profile', function() {
             fd.append('paged', page);
             
             fetch(ajax, { method: 'POST', body: fd }).then(r => r.text()).then(html => { 
-                screen.innerHTML = html; attachReceiptEvents(); 
+                if (screen) screen.innerHTML = html; attachReceiptEvents();
             }); 
         };
 
