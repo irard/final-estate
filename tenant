@@ -663,6 +663,19 @@ add_shortcode('tenant_profile', function() {
         window.efCloseTenantProfile = function() {
             const profile = document.getElementById('efTenantProfileModal');
             if (profile) profile.style.display = 'none';
+
+            const listContainer = document.getElementById('efTenantListContainer');
+            if (listContainer) listContainer.style.display = '';
+
+            const leftPanel = document.querySelector('.ef-left-panel');
+            if (leftPanel) leftPanel.style.display = '';
+
+            const rightPanel = document.querySelector('.ef-right-panel');
+            if (rightPanel) rightPanel.style.display = '';
+
+            const splitContainer = document.querySelector('.ef-split-container');
+            if (splitContainer) splitContainer.style.gridTemplateColumns = '';
+
             efToggleScrollLock();
             document.querySelectorAll('.ef-tenant-card-item').forEach(c => c.classList.remove('ef-active-tenant'));
         };
@@ -900,6 +913,18 @@ add_shortcode('tenant_profile', function() {
         }); 
 
         window.efLoadTenantLedgerPage = function(tid, page) {
+            const listContainer = document.getElementById('efTenantListContainer');
+            if (listContainer) listContainer.style.display = 'none';
+
+            const leftPanel = document.querySelector('.ef-left-panel');
+            if (leftPanel) leftPanel.style.display = 'none';
+
+            const rightPanel = document.querySelector('.ef-right-panel');
+            if (rightPanel) rightPanel.style.display = 'block';
+
+            const splitContainer = document.querySelector('.ef-split-container');
+            if (splitContainer) splitContainer.style.gridTemplateColumns = '1fr';
+
             let modal = document.getElementById('efTenantProfileModal');
             if (!modal) {
                 modal = document.createElement('div');
