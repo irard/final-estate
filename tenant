@@ -1438,6 +1438,9 @@ function eftm_handle_ajax_tenant_breakdown() {
             <button class="ef-btn-action" title="Finish" onclick="void(0)" style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:6px 14px; font-size:13px; color:#0f172a; font-weight:500; display:inline-flex; align-items:center; gap:6px; cursor:pointer;">
                 ✔ <span class="ef-btn-text">Finish</span>
             </button>
+            <button class="ef-btn-action ef-btn-icon-only" title="Download PDF" onclick="efDownloadTenantPDF('<?php echo esc_js($tenant_name); ?>')" style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:6px 12px; font-size:13px; color:#0f172a; font-weight:500; display:inline-flex; align-items:center; cursor:pointer;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            </button>
             <?php if (is_user_logged_in()) : ?>
             <button class="ef-btn-action" 
                     data-id="<?php echo $tenant_id; ?>" data-name="<?php echo esc_attr($tenant_name); ?>" data-property-id="<?php echo $propId; ?>" 
@@ -1451,7 +1454,7 @@ function eftm_handle_ajax_tenant_breakdown() {
             </button>
             <button class="ef-btn-action ef-btn-delete-icon" onclick="efLiveDeleteTenant(<?php echo $tenant_id; ?>, '<?php echo esc_js($tenant_name); ?>')" style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:6px 12px; font-size:13px; color:#059669; font-weight:500; display:inline-flex; align-items:center; cursor:pointer;">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-            </button> 
+            </button>
             <?php endif; ?>
             <button class="ef-btn-action" title="Close Profile" onclick="efCloseTenantProfile()" style="background:transparent; border:none; padding:6px 10px; font-size:18px; color:#64748b; font-weight:400; cursor:pointer; margin-left:4px;">
                 ✕
