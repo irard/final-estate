@@ -537,9 +537,11 @@ add_shortcode('student_list', $tenant_list_logic);
 add_shortcode('tenant_profile', function() { 
     ob_start(); ?> 
      
-    <div id="efTenantProfileModal" style="display:none; width:100%; flex:1;">
-        <div id="efWorkspaceDynamicScreen" style="width:100%;">
-            <div style="text-align:center; padding: 40px; color: #64748b;">Select a tenant to view profile.</div>
+    <div id="efTenantProfileModal" class="ef-popup-modal-container" style="display:none; position: fixed; inset: 0; background: rgba(15,23,42,0.6); z-index: 99999; justify-content: center; align-items: center; padding: 20px; overflow-y: auto;" onclick="if(event.target === this) { efCloseTenantProfile(); }">
+        <div class="ef-popup-modal-box" style="max-width: 900px; width: 92%; position: relative; background: #ffffff; border-radius: 16px; padding: 28px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04); max-height: 90vh; overflow-y: auto;">
+            <div id="efWorkspaceDynamicScreen" style="width:100%;">
+                <div style="text-align:center; padding: 40px; color: #64748b;">Select a tenant to view profile.</div>
+            </div>
         </div> 
     </div> 
     <div id="efGlobalRightEditModal" class="ef-popup-modal-container" style="display:none;" onclick="if(event.target === this) { efCloseEditModal(); }"> 
@@ -642,10 +644,11 @@ add_shortcode('tenant_profile', function() {
         const ajax = '<?php echo admin_url('admin-ajax.php'); ?>'; 
 
         window.efToggleScrollLock = function() {
-            const editVisible = document.getElementById('efGlobalRightEditModal').style.display === 'flex';
+            const profileVisible = document.getElementById('efTenantProfileModal') ? document.getElementById('efTenantProfileModal').style.display === 'flex' : false;
+            const editVisible = document.getElementById('efGlobalRightEditModal') ? document.getElementById('efGlobalRightEditModal').style.display === 'flex' : false;
             const addVisible = document.getElementById('atc-modal') ? document.getElementById('atc-modal').style.display === 'flex' : false;
             
-            if (editVisible || addVisible) {
+            if (profileVisible || editVisible || addVisible) {
                 document.body.classList.add('ef-no-scroll');
             } else {
                 document.body.classList.remove('ef-no-scroll');
@@ -658,10 +661,9 @@ add_shortcode('tenant_profile', function() {
         };
 
         window.efCloseTenantProfile = function() {
-            const list = document.getElementById('efTenantListContainer');
             const profile = document.getElementById('efTenantProfileModal');
             if (profile) profile.style.display = 'none';
-            if (list) list.style.display = 'block';
+            efToggleScrollLock();
             document.querySelectorAll('.ef-tenant-card-item').forEach(c => c.classList.remove('ef-active-tenant'));
         };
 
@@ -889,10 +891,11 @@ add_shortcode('tenant_profile', function() {
         window.efLoadTenantLedgerPage = function(tid, page) {
             const screen = document.getElementById('efWorkspaceDynamicScreen'); 
             const modal = document.getElementById('efTenantProfileModal'); 
-            const list = document.getElementById('efTenantListContainer');
 
-            if (list) list.style.display = 'none';
-            if (modal) modal.style.display = 'block';
+            if (modal && modal.style.display !== 'flex') {
+                modal.style.display = 'flex';
+                efToggleScrollLock();
+            }
             
             if (page === 1) screen.innerHTML = '<div style="text-align:center; padding:40px;">Loading profile...</div>'; 
             
