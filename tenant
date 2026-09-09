@@ -884,6 +884,17 @@ add_shortcode('tenant_profile', function() {
             });
         };
 
+        document.addEventListener('DOMContentLoaded', function() {
+            const modal = document.getElementById('efTenantProfileModal');
+            if (modal && modal.parentNode !== document.body) {
+                document.body.appendChild(modal);
+            }
+            const editModal = document.getElementById('efGlobalRightEditModal');
+            if (editModal && editModal.parentNode !== document.body) {
+                document.body.appendChild(editModal);
+            }
+        });
+
         window.addEventListener('ef_load_tenant', e => { 
             efLoadTenantLedgerPage(e.detail.id, 1);
         }); 
@@ -892,9 +903,14 @@ add_shortcode('tenant_profile', function() {
             const screen = document.getElementById('efWorkspaceDynamicScreen'); 
             const modal = document.getElementById('efTenantProfileModal'); 
 
-            if (modal && modal.style.display !== 'flex') {
-                modal.style.display = 'flex';
-                efToggleScrollLock();
+            if (modal) {
+                if (modal.parentNode !== document.body) {
+                    document.body.appendChild(modal);
+                }
+                if (modal.style.display !== 'flex') {
+                    modal.style.display = 'flex';
+                    efToggleScrollLock();
+                }
             }
             
             if (page === 1) screen.innerHTML = '<div style="text-align:center; padding:40px;">Loading profile...</div>'; 
