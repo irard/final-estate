@@ -743,25 +743,21 @@ add_shortcode('tenant_profile', function() {
                     </div>
 
                     <!-- Meta Cards Grid -->
-                    <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-bottom: 28px;">
-                        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 10px;">
-                            <div style="color: #64748b; font-size: 11px; font-weight: 600; margin-bottom: 6px;">Monthly rent</div>
-                            <div style="color: #059669; font-size: 15px; font-weight: 800;">AED ${monthlyRent}</div>
-                        </div>
+                    <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 28px;">
                         <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 10px;">
                             <div style="color: #64748b; font-size: 11px; font-weight: 600; margin-bottom: 6px;">Contract amount</div>
                             <div style="color: #0f172a; font-size: 15px; font-weight: 800;">AED ${totalContract}</div>
+                        </div>
+                        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 10px;">
+                            <div style="color: #64748b; font-size: 11px; font-weight: 600; margin-bottom: 6px;">Monthly rent</div>
+                            <div style="color: #059669; font-size: 15px; font-weight: 800;">AED ${monthlyRent}</div>
                         </div>
                         <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 10px;">
                             <div style="color: #64748b; font-size: 11px; font-weight: 600; margin-bottom: 6px;">Total paid</div>
                             <div style="color: #059669; font-size: 15px; font-weight: 800;">AED ${totalPaid}</div>
                         </div>
                         <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 10px;">
-                            <div style="color: #64748b; font-size: 11px; font-weight: 600; margin-bottom: 6px;">Expected total</div>
-                            <div style="color: #0f172a; font-size: 15px; font-weight: 800;">AED ${expectedTotal}</div>
-                        </div>
-                        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 10px;">
-                            <div style="color: #64748b; font-size: 11px; font-weight: 600; margin-bottom: 6px;">Remaining</div>
+                            <div style="color: #64748b; font-size: 11px; font-weight: 600; margin-bottom: 6px;">Remaining balance</div>
                             <div style="color: #059669; font-size: 15px; font-weight: 800;">AED ${remainingBalance}</div>
                         </div>
                         <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 10px;">
@@ -1509,12 +1505,11 @@ function eftm_handle_ajax_tenant_breakdown() {
     $remaining_balance_formatted = (floor($remaining_balance) == $remaining_balance) ? number_format($remaining_balance) : number_format($remaining_balance, 2);
     ?>
     <div class="ef-meta-grid-3col"> 
-        <div class="ef-meta-info-card"><div class="ef-meta-card-label">Monthly rent</div><div class="ef-meta-card-value ef-text-green">AED <?php echo number_format($monthly_rent, 2); ?></div></div>
         <div class="ef-meta-info-card"><div class="ef-meta-card-label">Contract amount</div><div class="ef-meta-card-value">AED <?php echo $total_contract_formatted; ?></div></div>
+        <div class="ef-meta-info-card"><div class="ef-meta-card-label">Monthly rent</div><div class="ef-meta-card-value ef-text-green">AED <?php echo number_format($monthly_rent, 2); ?></div></div>
         <div class="ef-meta-info-card"><div class="ef-meta-card-label">Total paid</div><div class="ef-meta-card-value ef-text-green">AED <?php echo $total_paid_formatted; ?></div></div>
-        <div class="ef-meta-info-card"><div class="ef-meta-card-label">Expected total</div><div class="ef-meta-card-value">AED <?php echo $expected_total_formatted; ?></div></div>
-        <div class="ef-meta-info-card"><div class="ef-meta-card-label">Payments</div><div class="ef-meta-card-value"><?php echo $fully_paid_months_count; ?></div></div> 
         <div class="ef-meta-info-card"><div class="ef-meta-card-label">Remaining balance</div><div class="ef-meta-card-value ef-text-green">AED <?php echo $remaining_balance_formatted; ?></div></div>
+        <div class="ef-meta-info-card"><div class="ef-meta-card-label">Payments</div><div class="ef-meta-card-value"><?php echo $fully_paid_months_count; ?></div></div>
     </div> 
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; margin-top: 24px; margin-bottom: 24px;">
         <div>
