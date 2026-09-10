@@ -1150,10 +1150,7 @@ html.ef-dark-theme #content {
   justify-content: center !important;
 }
 .ef-btn-delete-icon {
-  padding: 8px !important;
-  width: 36px !important;
-  height: 36px !important;
-  justify-content: center !important;
+  border-radius: 12px;
 }
 .ef-profile-avatar-big {
   width: 56px;
@@ -2468,19 +2465,19 @@ body.ef-no-scroll {
   }
 
   .ef-action-btn-group .ef-btn-text {
-    display: inline !important;
+    display: none !important;
   }
 
   .ef-action-btn-group .ef-btn-action {
-    padding: 6px 10px !important;
-    width: 100% !important;
-    height: auto !important;
+    padding: 8px !important;
+    width: 36px !important;
+    height: 36px !important;
     justify-content: center !important;
     box-sizing: border-box !important;
   }
 
   .ef-meta-grid-3col {
-    grid-template-columns: repeat(2, 1fr) !important;
+    grid-template-columns: 1fr !important;
     gap: 10px !important;
   }
 }

@@ -1461,7 +1461,8 @@ function eftm_handle_ajax_tenant_breakdown() {
             <div class="ef-profile-avatar-big"><?php echo esc_html($initials); ?></div> 
             <div> 
                 <h2 style="margin: 0 0 2px 0; font-size: 22px; color: #0f172a; font-weight: 700;"><?php echo esc_html($tenant_name); ?></h2> 
-                <div style="color: #64748b; font-size: 14px; font-weight: 500;"><?php echo esc_html($property_display); ?></div> 
+                <div style="color: #64748b; font-size: 14px; font-weight: 500; margin-bottom: 6px;"><?php echo esc_html($property_display); ?> — Unit <?php echo esc_html($unit ?: '1A'); ?></div>
+                <span style="display: inline-block; padding: 3px 10px; border-radius: 12px; border: 1px solid #a7f3d0; background: #ecfdf5; color: #059669; font-size: 12px; font-weight: 600;">Contract active</span>
             </div> 
         </div> 
         <div class="ef-action-btn-group" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
