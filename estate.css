@@ -1044,9 +1044,9 @@ html.ef-dark-theme #content {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 12px;
+  padding: 10px 12px;
   border-radius: 8px;
-  margin-bottom: 8px;
+  margin-bottom: 5px;
   cursor: pointer;
   border: 1px solid #f1f5f9;
   transition: 0.2s;
@@ -2085,9 +2085,9 @@ body.ef-no-scroll {
 .properties-dashboard-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 20px;
-  margin-top: 20px;
-  margin-bottom: 30px;
+  gap: 5px;
+  margin-top: 10px;
+  margin-bottom: 10px;
 }
 .properties-dashboard-card {
   background: #fff;
