@@ -397,50 +397,70 @@ $tenant_list_logic = function() {
         <input type="text" class="ef-search-box" placeholder="Search tenants..." id="efTenantSearch"> 
         <div id="properties-dashboard-wrapper">
             <div id="properties-dashboard-grid" class="properties-dashboard-grid"> 
-                <?php if ($q->have_posts()) : while ($q->have_posts()) : $q->the_post(); 
-                    $tid=get_the_ID(); $rent=get_field('monthly_rent', $tid) ?: get_post_meta($tid, 'monthly_rent', true); $name=get_the_title(); 
-                    $pid=get_field('property_id', $tid) ?: get_post_meta($tid, 'property_id', true); 
-                    $addr=$pid?(get_field('add_address',$pid)?:get_post_meta($pid,'add_address',true)?:get_the_title($pid)):'No Address'; 
-                    $current_month = date('m'); $current_year = date('Y');
-                    if (function_exists('ef_get_dashboard_period')) {
-                        $period = ef_get_dashboard_period();
-                        $current_month = $period['m'];
-                        $current_year = $period['y'];
-                    }
-                    $status = ['paid' => 0, 'rent' => floatval($rent), 'is_fully_paid' => false];
-                    if (function_exists('ef_get_tenant_monthly_status')) {
-                        $status = ef_get_tenant_monthly_status($tid, $current_month, $current_year);
-                    } else {
-                        $paid_this_month = 0.00;
-                        $p_query = new WP_Query([
-                            'post_type' => 'payment',
-                            'post_status' => ['publish', 'future'],
-                            'posts_per_page' => -1,
-                            'meta_query' => [['key' => 'associated_tenant', 'value' => $tid, 'compare' => '=' ]]
-                        ]);
-                        if($p_query->have_posts()){ 
-                            while($p_query->have_posts()){
-                                $p_query->the_post(); 
-                                $p_id = get_the_ID();
-                                $p_period = get_field('payment_period', $p_id) ?: get_post_meta($p_id, 'payment_period', true) ?: get_the_date('Y-m', $p_id);
-                                if (strpos($p_period, "$current_year-$current_month") === 0) {
-                                    $paid_this_month += floatval(get_field('amount_paid',$p_id) ?: get_post_meta($p_id, 'amount_paid', true));
-                                }
+                <?php
+                $active_tenants_list = [];
+                $ended_tenants_list = [];
+                $today_str = date('Y-m-d');
+
+                if ($q->have_posts()) {
+                    while ($q->have_posts()) {
+                        $q->the_post();
+                        $tid = get_the_ID();
+                        $rent = get_field('monthly_rent', $tid) ?: get_post_meta($tid, 'monthly_rent', true);
+                        $name = get_the_title();
+                        $pid = get_field('property_id', $tid) ?: get_post_meta($tid, 'property_id', true);
+                        $addr = $pid ? (get_field('add_address', $pid) ?: get_post_meta($pid, 'add_address', true) ?: get_the_title($pid)) : 'No Address';
+                        $end_date_str = get_field('tenant_end', $tid) ?: get_post_meta($tid, 'tenant_end', true);
+
+                        $is_ended = false;
+                        if (!empty($end_date_str)) {
+                            $end_ymd = date('Y-m-d', strtotime($end_date_str));
+                            if ($end_ymd < $today_str) {
+                                $is_ended = true;
                             }
-                            wp_reset_postdata();
                         }
-                        $status['paid'] = $paid_this_month;
-                        $status['is_fully_paid'] = ($status['rent'] > 0) ? ($paid_this_month >= $status['rent']) : ($paid_this_month > 0);
+
+                        $initials = '';
+                        $words = explode(' ', $name);
+                        foreach ($words as $w) $initials .= strtoupper(substr($w, 0, 1));
+
+                        $item_data = [
+                            'tid' => $tid,
+                            'name' => $name,
+                            'addr' => $addr,
+                            'initials' => substr($initials, 0, 2),
+                            'is_ended' => $is_ended
+                        ];
+
+                        if ($is_ended) {
+                            $ended_tenants_list[] = $item_data;
+                        } else {
+                            $active_tenants_list[] = $item_data;
+                        }
                     }
-                    $initials=''; $words=explode(' ', $name); foreach($words as $w) $initials.=strtoupper(substr($w,0,1)); 
-                ?> 
+                    wp_reset_postdata();
+                }
+
+                $sorted_tenants_list = array_merge($active_tenants_list, $ended_tenants_list);
+
+                if (!empty($sorted_tenants_list)) :
+                    foreach ($sorted_tenants_list as $t_item) :
+                        $tid = $t_item['tid'];
+                        $name = $t_item['name'];
+                        $addr = $t_item['addr'];
+                        $initials = $t_item['initials'];
+                        $is_ended = $t_item['is_ended'];
+                        $name_style = $is_ended ? 'color: #dc2626 !important;' : '';
+                ?>
                     <div class="ef-tenant-card-item" data-id="<?php echo $tid; ?>" id="tenant-row-<?php echo $tid; ?>" onclick="efDispatchGlobalView(<?php echo $tid; ?>)"> 
-                        <div class="ef-tenant-meta"><div class="ef-avatar-circle"><?php echo substr($initials,0,2); ?></div> 
-                            <div class="ef-tenant-info-text"><div class="ef-tenant-name"><?php echo esc_html($name); ?></div><div class="ef-tenant-location"><?php echo esc_html($addr); ?></div></div> 
+                        <div class="ef-tenant-meta"><div class="ef-avatar-circle" <?php echo $is_ended ? 'style="background:#dc2626;"' : ''; ?>><?php echo esc_html($initials); ?></div>
+                            <div class="ef-tenant-info-text"><div class="ef-tenant-name" style="<?php echo $name_style; ?>"><?php echo esc_html($name); ?></div><div class="ef-tenant-location"><?php echo esc_html($addr); ?></div></div>
                         </div> 
-                      
                     </div> 
-                <?php endwhile; wp_reset_postdata(); endif; ?> 
+                <?php
+                    endforeach;
+                endif;
+                ?>
             </div>
             <div class="properties-dashboard-nav" id="efTenantNavWrapper" style="display: flex; gap: 6px; align-items: center; justify-content: center; flex-wrap: wrap; margin-top: 15px;">
                 <button class="prop-nav-btn" id="ef-tenant-first">&laquo;</button>
@@ -668,23 +688,30 @@ add_shortcode('tenant_profile', function() {
             const splitContainer = document.querySelector('.ef-split-container');
 
             if (profile) {
+                profile.style.transition = 'opacity 0.25s ease, transform 0.25s ease';
                 profile.style.opacity = '0';
-                profile.style.transform = 'translateY(10px)';
+                profile.style.transform = 'translateX(30px)';
                 setTimeout(() => {
                     profile.style.display = 'none';
                     profile.classList.remove('active', 'ef-show');
 
                     if (listContainer) {
                         listContainer.style.display = '';
-                        setTimeout(() => { listContainer.style.opacity = '1'; listContainer.style.transform = 'none'; }, 20);
+                        listContainer.style.transition = 'opacity 0.25s ease, transform 0.25s ease';
+                        listContainer.style.opacity = '0';
+                        listContainer.style.transform = 'translateX(-30px)';
+                        setTimeout(() => { listContainer.style.opacity = '1'; listContainer.style.transform = 'translateX(0)'; }, 20);
                     }
                     if (leftPanel) {
                         leftPanel.style.display = '';
-                        setTimeout(() => { leftPanel.style.opacity = '1'; leftPanel.style.transform = 'none'; }, 20);
+                        leftPanel.style.transition = 'opacity 0.25s ease, transform 0.25s ease';
+                        leftPanel.style.opacity = '0';
+                        leftPanel.style.transform = 'translateX(-30px)';
+                        setTimeout(() => { leftPanel.style.opacity = '1'; leftPanel.style.transform = 'translateX(0)'; }, 20);
                     }
                     if (rightPanel) rightPanel.style.display = '';
                     if (splitContainer) splitContainer.style.gridTemplateColumns = '';
-                }, 200);
+                }, 220);
             } else {
                 if (listContainer) listContainer.style.display = '';
                 if (leftPanel) leftPanel.style.display = '';
@@ -928,14 +955,14 @@ add_shortcode('tenant_profile', function() {
             let modal = document.getElementById('efTenantProfileModal');
 
             if (listContainer) {
-                listContainer.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
+                listContainer.style.transition = 'opacity 0.25s ease, transform 0.25s ease';
                 listContainer.style.opacity = '0';
-                listContainer.style.transform = 'translateY(-10px)';
+                listContainer.style.transform = 'translateX(-30px)';
             }
             if (leftPanel) {
-                leftPanel.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
+                leftPanel.style.transition = 'opacity 0.25s ease, transform 0.25s ease';
                 leftPanel.style.opacity = '0';
-                leftPanel.style.transform = 'translateY(-10px)';
+                leftPanel.style.transform = 'translateX(-30px)';
             }
 
             setTimeout(() => {
@@ -947,15 +974,15 @@ add_shortcode('tenant_profile', function() {
                 if (modal) {
                     modal.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
                     modal.style.opacity = '0';
-                    modal.style.transform = 'translateY(10px)';
+                    modal.style.transform = 'translateX(30px)';
                     modal.classList.add('active', 'ef-show');
                     modal.style.display = 'block';
                     setTimeout(() => {
                         modal.style.opacity = '1';
-                        modal.style.transform = 'translateY(0)';
+                        modal.style.transform = 'translateX(0)';
                     }, 20);
                 }
-            }, 150);
+            }, 180);
 
             const screen = document.getElementById('efWorkspaceDynamicScreen');
             if (page === 1 && screen) screen.innerHTML = '<div style="text-align:center; padding:40px;">Loading profile...</div>';
@@ -1493,7 +1520,13 @@ function eftm_handle_ajax_tenant_breakdown() {
             <div> 
                 <h2 style="margin: 0 0 2px 0; font-size: 22px; color: #0f172a; font-weight: 700;"><?php echo esc_html($tenant_name); ?></h2> 
                 <div style="color: #64748b; font-size: 14px; font-weight: 500; margin-bottom: 6px;"><?php echo esc_html($property_display); ?> — Unit <?php echo esc_html($unit ?: '1A'); ?></div>
-                <span style="display: inline-block; padding: 3px 10px; border-radius: 12px; border: 1px solid #a7f3d0; background: #ecfdf5; color: #059669; font-size: 12px; font-weight: 600;">Contract active</span>
+                <?php
+                $is_contract_ended = (!empty($contract_end) && date('Y-m-d', strtotime($contract_end)) < date('Y-m-d'));
+                if ($is_contract_ended) : ?>
+                    <span style="display: inline-block; padding: 3px 10px; border-radius: 12px; border: 1px solid #fca5a5; background: #fef2f2; color: #dc2626; font-size: 12px; font-weight: 600;">Contract ended</span>
+                <?php else : ?>
+                    <span style="display: inline-block; padding: 3px 10px; border-radius: 12px; border: 1px solid #a7f3d0; background: #ecfdf5; color: #059669; font-size: 12px; font-weight: 600;">Contract active</span>
+                <?php endif; ?>
             </div> 
         </div> 
         <div class="ef-action-btn-group" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
