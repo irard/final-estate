@@ -1138,6 +1138,26 @@ html.ef-dark-theme #content {
   min-width: 300px;
   font-family: system-ui, sans-serif;
 }
+.ef-tenant-profile-close-btn {
+  position: absolute;
+  top: -8px;
+  right: 0px;
+  background: transparent;
+  border: none;
+  font-size: 22px;
+  color: #64748b;
+  font-weight: 400;
+  cursor: pointer;
+  z-index: 10;
+  padding: 4px;
+}
+.ef-tenant-profile-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 24px;
+  padding-right: 32px;
+}
 .ef-action-btn-group {
   display: flex;
   gap: 10px;
@@ -2457,13 +2477,21 @@ body.ef-no-scroll {
     width: 100%;
   }
 
+  .ef-tenant-profile-header-row {
+    padding-right: 0 !important;
+  }
+  .ef-tenant-profile-close-btn {
+    top: 0px !important;
+    right: 0px !important;
+  }
   .ef-action-btn-group {
     display: grid !important;
     grid-template-columns: repeat(2, 36px) !important;
     gap: 8px !important;
     margin-top: 36px !important;
     margin-left: auto !important;
-    justify-content: flex-end !important;
+    margin-right: 0 !important;
+    justify-content: end !important;
     justify-items: end !important;
   }
 

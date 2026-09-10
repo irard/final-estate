@@ -1511,10 +1511,10 @@ function eftm_handle_ajax_tenant_breakdown() {
          data-contract-start-fmt="<?php echo esc_attr($contract_start_fmt); ?>"
          data-contract-end-fmt="<?php echo esc_attr($contract_end_fmt); ?>"
          data-payments="<?php echo $pdf_payments_json; ?>">
-        <button type="button" title="Close Profile" onclick="efCloseTenantProfile()" style="position: absolute; top: -8px; right: 0px; background: transparent; border: none; font-size: 22px; color: #64748b; font-weight: 400; cursor: pointer; z-index: 10; padding: 4px;">
+        <button type="button" class="ef-tenant-profile-close-btn" title="Close Profile" onclick="efCloseTenantProfile()">
             ✕
         </button>
-    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; padding-right: 32px;">
+    <div class="ef-tenant-profile-header-row">
         <div class="ef-header-profile-block"> 
             <div class="ef-profile-avatar-big"><?php echo esc_html($initials); ?></div> 
             <div> 
