@@ -662,22 +662,35 @@ add_shortcode('tenant_profile', function() {
 
         window.efCloseTenantProfile = function() {
             const profile = document.getElementById('efTenantProfileModal');
-            if (profile) {
-                profile.style.display = 'none';
-                profile.classList.remove('active', 'ef-show');
-            }
-
             const listContainer = document.getElementById('efTenantListContainer');
-            if (listContainer) listContainer.style.display = '';
-
             const leftPanel = document.querySelector('.ef-left-panel');
-            if (leftPanel) leftPanel.style.display = '';
-
             const rightPanel = document.querySelector('.ef-right-panel');
-            if (rightPanel) rightPanel.style.display = '';
-
             const splitContainer = document.querySelector('.ef-split-container');
-            if (splitContainer) splitContainer.style.gridTemplateColumns = '';
+
+            if (profile) {
+                profile.style.opacity = '0';
+                profile.style.transform = 'translateY(10px)';
+                setTimeout(() => {
+                    profile.style.display = 'none';
+                    profile.classList.remove('active', 'ef-show');
+
+                    if (listContainer) {
+                        listContainer.style.display = '';
+                        setTimeout(() => { listContainer.style.opacity = '1'; listContainer.style.transform = 'none'; }, 20);
+                    }
+                    if (leftPanel) {
+                        leftPanel.style.display = '';
+                        setTimeout(() => { leftPanel.style.opacity = '1'; leftPanel.style.transform = 'none'; }, 20);
+                    }
+                    if (rightPanel) rightPanel.style.display = '';
+                    if (splitContainer) splitContainer.style.gridTemplateColumns = '';
+                }, 200);
+            } else {
+                if (listContainer) listContainer.style.display = '';
+                if (leftPanel) leftPanel.style.display = '';
+                if (rightPanel) rightPanel.style.display = '';
+                if (splitContainer) splitContainer.style.gridTemplateColumns = '';
+            }
 
             efToggleScrollLock();
             document.querySelectorAll('.ef-tenant-card-item').forEach(c => c.classList.remove('ef-active-tenant'));
@@ -909,22 +922,40 @@ add_shortcode('tenant_profile', function() {
 
         window.efLoadTenantLedgerPage = function(tid, page) {
             const listContainer = document.getElementById('efTenantListContainer');
-            if (listContainer) listContainer.style.display = 'none';
-
             const leftPanel = document.querySelector('.ef-left-panel');
-            if (leftPanel) leftPanel.style.display = 'none';
-
             const rightPanel = document.querySelector('.ef-right-panel');
-            if (rightPanel) rightPanel.style.display = 'block';
-
             const splitContainer = document.querySelector('.ef-split-container');
-            if (splitContainer) splitContainer.style.gridTemplateColumns = '1fr';
-
             let modal = document.getElementById('efTenantProfileModal');
-            if (modal) {
-                modal.classList.add('active', 'ef-show');
-                modal.style.display = 'block';
+
+            if (listContainer) {
+                listContainer.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
+                listContainer.style.opacity = '0';
+                listContainer.style.transform = 'translateY(-10px)';
             }
+            if (leftPanel) {
+                leftPanel.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
+                leftPanel.style.opacity = '0';
+                leftPanel.style.transform = 'translateY(-10px)';
+            }
+
+            setTimeout(() => {
+                if (listContainer) listContainer.style.display = 'none';
+                if (leftPanel) leftPanel.style.display = 'none';
+                if (rightPanel) rightPanel.style.display = 'block';
+                if (splitContainer) splitContainer.style.gridTemplateColumns = '1fr';
+
+                if (modal) {
+                    modal.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+                    modal.style.opacity = '0';
+                    modal.style.transform = 'translateY(10px)';
+                    modal.classList.add('active', 'ef-show');
+                    modal.style.display = 'block';
+                    setTimeout(() => {
+                        modal.style.opacity = '1';
+                        modal.style.transform = 'translateY(0)';
+                    }, 20);
+                }
+            }, 150);
 
             const screen = document.getElementById('efWorkspaceDynamicScreen');
             if (page === 1 && screen) screen.innerHTML = '<div style="text-align:center; padding:40px;">Loading profile...</div>';
