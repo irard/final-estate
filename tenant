@@ -406,6 +406,10 @@ $tenant_list_logic = function() {
                     while ($q->have_posts()) {
                         $q->the_post();
                         $tid = get_the_ID();
+                        $t_status = get_field('tenant_status', $tid) ?: get_post_meta($tid, 'tenant_status', true);
+                        if ($t_status === 'finished') {
+                            continue;
+                        }
                         $rent = get_field('monthly_rent', $tid) ?: get_post_meta($tid, 'monthly_rent', true);
                         $name = get_the_title();
                         $pid = get_field('property_id', $tid) ?: get_post_meta($tid, 'property_id', true);
@@ -1300,6 +1304,25 @@ add_shortcode('tenant_profile', function() {
             }).catch(err => { console.error(err); b.disabled=false; });
         };
 
+        window.efFinishTenantContract = function(id, name) {
+            if (confirm(`Mark contract as finished for ${name}? This will move the tenant to property history.`)) {
+                const fd = new FormData();
+                fd.append('action', 'eftm_finish_tenant_contract');
+                fd.append('tenant_id', id);
+                fd.append('security', '<?php echo wp_create_nonce("finish_tenant_nonce"); ?>');
+                fetch(ajax, { method: 'POST', body: fd })
+                .then(r => r.json())
+                .then(res => {
+                    if (res.success) {
+                        alert('Contract marked as finished!');
+                        location.reload();
+                    } else {
+                        alert(res.data || 'Failed to finish contract');
+                    }
+                }).catch(err => { console.error(err); });
+            }
+        };
+
         window.efLiveDeleteTenant = function(id, name) { 
             if (confirm(`Delete ${name}?`)) { 
                 const fd = new FormData(); fd.append('action', 'eftm_delete_tenant'); fd.append('tenant_id', id); fd.append('security', '<?php echo wp_create_nonce("delete_tenant_nonce"); ?>'); 
@@ -1326,8 +1349,27 @@ add_action('wp_ajax_eftm_render_tenant_profile', 'eftm_handle_ajax_tenant_breakd
 add_action('wp_ajax_nopriv_eftm_render_tenant_profile', 'eftm_handle_ajax_tenant_breakdown'); 
 add_action('wp_ajax_eftm_edit_tenant', 'eftm_execute_ajax_tenant_modification'); 
 add_action('wp_ajax_eftm_renew_tenant_contract', 'eftm_execute_ajax_tenant_renewal');
+add_action('wp_ajax_eftm_finish_tenant_contract', 'eftm_execute_ajax_tenant_finish');
 add_action('wp_ajax_eftm_delete_tenant', 'eftm_execute_ajax_tenant_deletion'); 
 add_action('wp_ajax_eftm_get_properties', 'eftm_global_execute_properties_fetch'); 
+
+function eftm_execute_ajax_tenant_finish() {
+    if (!isset($_POST['security']) || !wp_verify_nonce($_POST['security'], 'finish_tenant_nonce')) {
+        wp_send_json_error('Invalid security check.', 403);
+    }
+    if (!is_user_logged_in()) {
+        wp_send_json_error('Unauthorized.', 403);
+    }
+    $tid = intval($_POST['tenant_id'] ?? 0);
+    if (!$tid) wp_send_json_error('Tenant ID is required.');
+
+    if (function_exists('update_field')) {
+        update_field('tenant_status', 'finished', $tid);
+    } else {
+        update_post_meta($tid, 'tenant_status', 'finished');
+    }
+    wp_send_json_success();
+}
 
 function eftm_execute_ajax_tenant_renewal() {
     if (!isset($_POST['security']) || !wp_verify_nonce($_POST['security'], 'renew_tenant_nonce')) {
@@ -1413,7 +1455,14 @@ if ( ! function_exists('eftm_get_occupied_count') ) {
             $args['post__not_in'] = [$exclude_tenant_id]; 
         } 
         $tenants = get_posts($args); 
-        return count($tenants); 
+        $active_count = 0;
+        foreach ($tenants as $tid) {
+            $st = get_field('tenant_status', $tid) ?: get_post_meta($tid, 'tenant_status', true);
+            if ($st !== 'finished') {
+                $active_count++;
+            }
+        }
+        return $active_count;
     } 
 } 
 
@@ -1677,7 +1726,8 @@ function eftm_handle_ajax_tenant_breakdown() {
                 <h2 style="margin: 0 0 2px 0; font-size: 22px; color: #0f172a; font-weight: 700;"><?php echo esc_html($tenant_name); ?></h2> 
                 <div style="color: #64748b; font-size: 14px; font-weight: 500; margin-bottom: 6px;"><?php echo esc_html($property_display); ?> — Unit <?php echo esc_html($unit ?: '1A'); ?></div>
                 <?php
-                $is_contract_ended = (!empty($contract_end) && date('Y-m-d', strtotime($contract_end)) < date('Y-m-d'));
+                $t_status = get_field('tenant_status', $tenant_id) ?: get_post_meta($tenant_id, 'tenant_status', true);
+                $is_contract_ended = ($t_status === 'finished') || (!empty($contract_end) && date('Y-m-d', strtotime($contract_end)) < date('Y-m-d'));
                 if ($is_contract_ended) : ?>
                     <span style="display: inline-block; padding: 3px 10px; border-radius: 12px; border: 1px solid #fca5a5; background: #fef2f2; color: #dc2626; font-size: 12px; font-weight: 600;">Contract ended</span>
                 <?php else : ?>
@@ -1700,7 +1750,7 @@ function eftm_handle_ajax_tenant_breakdown() {
                     onclick="efTriggerRenewPopup(this)" style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:6px 14px; font-size:13px; color:#0f172a; font-weight:500; display:inline-flex; align-items:center; gap:6px; cursor:pointer;">
                 🔄 <span class="ef-btn-text">Renew</span>
             </button>
-            <button class="ef-btn-action" title="Finish" onclick="void(0)" style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:6px 14px; font-size:13px; color:#0f172a; font-weight:500; display:inline-flex; align-items:center; gap:6px; cursor:pointer;">
+            <button class="ef-btn-action" title="Finish" onclick="efFinishTenantContract(<?php echo $tenant_id; ?>, '<?php echo esc_js($tenant_name); ?>')" style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:6px 14px; font-size:13px; color:#0f172a; font-weight:500; display:inline-flex; align-items:center; gap:6px; cursor:pointer;">
                 ✔ <span class="ef-btn-text">Finish</span>
             </button>
             <button class="ef-btn-action" title="Download PDF" onclick="efDownloadTenantPDF('<?php echo esc_js($tenant_name); ?>')" style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:6px 14px; font-size:13px; color:#0f172a; font-weight:500; display:inline-flex; align-items:center; gap:6px; cursor:pointer;">
