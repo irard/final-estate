@@ -888,7 +888,7 @@ add_action('wp_footer', function() { ?>
 
             const historyTenantsHtml = historyTenants.length
                 ? historyTenants.map(t => `
-                    <div style="padding:14px 16px; background:#ffffff; border-radius:12px; margin-bottom:10px; border:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="if(typeof efDispatchGlobalView==='function') efDispatchGlobalView(${t.id});">
+                    <div style="padding:14px 16px; background:#ffffff; border-radius:12px; margin-bottom:10px; border:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center;">
                         <div style="display:flex; align-items:center; gap:12px;">
                             <div style="width:40px; height:40px; border-radius:10px; background:#f1f5f9; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
