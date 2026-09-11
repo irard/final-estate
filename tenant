@@ -567,7 +567,10 @@ add_shortcode('tenant_profile', function() {
     <div id="efRenewContractModal" class="ef-popup-modal-container" style="display:none;" onclick="if(event.target === this) { efCloseRenewModal(); }">
         <div class="ef-popup-modal-box" style="position: relative; max-width: 520px; border-radius: 16px; padding: 28px;">
             <button onclick="efCloseRenewModal()" style="position: absolute; top: 18px; right: 20px; border: none; background: transparent; font-size: 20px; cursor: pointer; color: #64748b;">✕</button>
-            <h3 style="margin-top:0; font-size: 20px; font-weight: 700; color: #0f172a; margin-bottom: 24px;">Renew contract <span style="font-weight: 400; color: #64748b;">— <span id="renew_tenant_name_display"></span></span></h3>
+            <div style="margin-bottom: 20px;">
+                <h3 style="margin:0 0 4px 0; font-size: 20px; font-weight: 800; color: #0f172a;">Renew contract</h3>
+                <div style="font-size: 16px; font-weight: 500; color: #64748b;" id="renew_tenant_name_display"></div>
+            </div>
             <form id="efRenewContractForm">
                 <input type="hidden" id="renew_tenant_id">
                 <div class="ef-grid-modal-2col">
