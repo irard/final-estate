@@ -323,6 +323,10 @@ function ef_handle_get_properties_dashboard() {
     $tenants_by_property = []; 
     $all_tenant_ids = []; 
     foreach ($all_tenants as $t) { 
+        $t_status = function_exists('get_field') ? get_field('tenant_status', $t->ID) : get_post_meta($t->ID, 'tenant_status', true);
+        if ($t_status === 'finished') {
+            continue;
+        }
         $p_id = ef_get_tenant_property_id($t->ID);
         if ($p_id && in_array($p_id, $property_ids)) {
             $tenants_by_property[$p_id][] = $t; 
