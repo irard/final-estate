@@ -788,6 +788,214 @@ add_action('wp_footer', function() { ?>
     </div>
 
     <script> 
+    if (typeof window.efDownloadTenantPDF !== 'function') {
+        window.efDownloadTenantPDF = function(tenantName, tenantData) {
+            const fmtMoney = amount => (parseFloat(amount) || 0).toLocaleString('en-AE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            let tName = tenantName || 'Tenant';
+            let prop = '';
+            let unit = '1A';
+            let monthlyRent = '0.00';
+            let totalContract = '0.00';
+            let totalPaid = '0.00';
+            let remainingBalance = '0.00';
+            let paymentsCount = '0';
+            let email = 'None';
+            let phone = 'None';
+            let address = 'No Address Provided';
+            let contractStart = 'N/A';
+            let contractEnd = 'N/A';
+            let statusLabel = 'Contract active';
+            let payments = [];
+
+            if (tenantData) {
+                tName = tenantData.name || tName;
+                prop = tenantData.property_name || '';
+                unit = tenantData.unit || '1A';
+                monthlyRent = fmtMoney(tenantData.monthly_rent);
+                totalContract = fmtMoney(tenantData.total_contract);
+                totalPaid = fmtMoney(tenantData.total_paid);
+                remainingBalance = fmtMoney(tenantData.balance);
+                email = tenantData.email || 'None';
+                phone = tenantData.phone || 'None';
+                address = tenantData.address || 'No Address Provided';
+                contractStart = tenantData.start_date || 'N/A';
+                contractEnd = tenantData.end_date || 'N/A';
+                statusLabel = (tenantData.status === 'finished') ? 'Contract ended' : 'Contract active';
+                payments = tenantData.payments || [];
+                paymentsCount = String(payments.length);
+            }
+
+            const initials = tName.split(' ').map(w => w.charAt(0).toUpperCase()).join('').substring(0, 2) || 'SR';
+
+            let rowsHtml = '';
+            if (payments.length > 0) {
+                payments.forEach((p) => {
+                    const statusStr = p.status || 'Paid';
+                    const statusClass = (statusStr === 'Paid') ? 'color: #059669; background: #ecfdf5;' : 'color: #d97706; background: #fef3c7;';
+                    const amtStr = (typeof p.amount === 'number') ? fmtMoney(p.amount) : p.amount;
+                    const methodStr = p.method ? (p.cheque ? `${p.method} (${p.cheque})` : p.method) : 'Cash';
+                    rowsHtml += `
+                        <tr style="border-bottom: 1px solid #f1f5f9; font-size: 13px;">
+                            <td style="padding: 12px 14px; color: #0f172a; font-weight: 500;">${p.period || p.date}</td>
+                            <td style="padding: 12px 14px; color: #475569;">${methodStr}</td>
+                            <td style="padding: 12px 14px; color: #64748b;">${p.date}</td>
+                            <td style="padding: 12px 14px; color: #059669; font-weight: 700;">AED ${amtStr}</td>
+                            <td style="padding: 12px 14px; text-align: right;"><span style="padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; ${statusClass}">${statusStr}</span></td>
+                        </tr>
+                    `;
+                });
+            } else {
+                rowsHtml = `<tr><td colspan="5" style="padding: 20px; text-align: center; color: #64748b;">No recorded payments found.</td></tr>`;
+            }
+
+            const statusBadgeHtml = (statusLabel === 'Contract ended')
+                ? `<span style="display: inline-block; padding: 3px 10px; border-radius: 12px; background: #fef2f2; color: #dc2626; border: 1px solid #fca5a5; font-size: 12px; font-weight: 600;">Contract ended</span>`
+                : `<span style="display: inline-block; padding: 3px 10px; border-radius: 12px; background: #ecfdf5; color: #059669; font-size: 12px; font-weight: 600;">Contract active</span>`;
+
+            const pdfHtml = `
+                <div style="font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding: 32px; background: #ffffff; color: #0f172a; width: 740px; box-sizing: border-box; border: 1px solid #e2e8f0; border-radius: 12px;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px;">
+                        <div style="display: flex; align-items: center; gap: 16px;">
+                            <div style="width: 56px; height: 56px; border-radius: 50%; background: #00a86b; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 700;">${initials}</div>
+                            <div>
+                                <h1 style="margin: 0 0 4px 0; font-size: 24px; font-weight: 800; color: #0f172a;">${tName}</h1>
+                                <div style="color: #64748b; font-size: 14px; font-weight: 500; margin-bottom: 6px;">${prop} — Unit ${unit}</div>
+                                ${statusBadgeHtml}
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 28px;">
+                        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 10px;">
+                            <div style="color: #64748b; font-size: 11px; font-weight: 600; margin-bottom: 6px;">Contract amount</div>
+                            <div style="color: #0f172a; font-size: 15px; font-weight: 800;">AED ${totalContract}</div>
+                        </div>
+                        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 10px;">
+                            <div style="color: #64748b; font-size: 11px; font-weight: 600; margin-bottom: 6px;">Monthly rent</div>
+                            <div style="color: #059669; font-size: 15px; font-weight: 800;">AED ${monthlyRent}</div>
+                        </div>
+                        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 10px;">
+                            <div style="color: #64748b; font-size: 11px; font-weight: 600; margin-bottom: 6px;">Total paid</div>
+                            <div style="color: #059669; font-size: 15px; font-weight: 800;">AED ${totalPaid}</div>
+                        </div>
+                        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 10px;">
+                            <div style="color: #64748b; font-size: 11px; font-weight: 600; margin-bottom: 6px;">Remaining balance</div>
+                            <div style="color: #059669; font-size: 15px; font-weight: 800;">AED ${remainingBalance}</div>
+                        </div>
+                        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 10px;">
+                            <div style="color: #64748b; font-size: 11px; font-weight: 600; margin-bottom: 6px;">Payments</div>
+                            <div style="color: #0f172a; font-size: 15px; font-weight: 800;">${paymentsCount}</div>
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 28px;">
+                        <div>
+                            <div style="color: #64748b; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px;">CONTACT DETAILS</div>
+                            <div style="display: flex; flex-direction: column; gap: 8px;">
+                                <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; font-size: 13px; color: #1e293b; display: flex; align-items: center; gap: 8px;">
+                                    <span style="color: #64748b;">✉️</span> <span>${email}</span>
+                                </div>
+                                <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; font-size: 13px; color: #1e293b; display: flex; align-items: center; gap: 8px;">
+                                    <span style="color: #64748b;">📞</span> <span>${phone}</span>
+                                </div>
+                                <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; font-size: 13px; color: #1e293b; display: flex; align-items: center; gap: 8px;">
+                                    <span style="color: #64748b;">📍</span> <span>${address}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div>
+                            <div style="color: #64748b; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px;">CONTRACT DETAILS</div>
+                            <div style="display: flex; flex-direction: column; gap: 8px;">
+                                <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; font-size: 13px; display: flex; justify-content: space-between; align-items: center;">
+                                    <span style="color: #64748b;">Start date</span>
+                                    <span style="color: #0f172a; font-weight: 700; font-family: monospace;">${contractStart}</span>
+                                </div>
+                                <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; font-size: 13px; display: flex; justify-content: space-between; align-items: center;">
+                                    <span style="color: #64748b;">End date</span>
+                                    <span style="color: #0f172a; font-weight: 700; font-family: monospace;">${contractEnd}</span>
+                                </div>
+                                <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; font-size: 13px; display: flex; justify-content: space-between; align-items: center;">
+                                    <span style="color: #64748b;">Duration</span>
+                                    <span style="color: #0f172a; font-weight: 700;">—</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <div style="color: #64748b; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;">PAYMENT HISTORY</div>
+                        <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                            <thead>
+                                <tr style="border-bottom: 1px solid #e2e8f0; background: #f8fafc;">
+                                    <th style="padding: 10px 14px; color: #64748b; font-size: 11px; text-transform: uppercase;">Period / Allocation</th>
+                                    <th style="padding: 10px 14px; color: #64748b; font-size: 11px; text-transform: uppercase;">Method</th>
+                                    <th style="padding: 10px 14px; color: #64748b; font-size: 11px; text-transform: uppercase;">Date</th>
+                                    <th style="padding: 10px 14px; color: #64748b; font-size: 11px; text-transform: uppercase;">Amount</th>
+                                    <th style="padding: 10px 14px; color: #64748b; font-size: 11px; text-transform: uppercase; text-align: right;">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>${rowsHtml}</tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+
+            const wrapper = document.createElement('div');
+            wrapper.style.position = 'fixed';
+            wrapper.style.left = '-10000px';
+            wrapper.style.top = '-10000px';
+            wrapper.style.width = '800px';
+            wrapper.style.zIndex = '-9999';
+            wrapper.style.display = 'block';
+            wrapper.innerHTML = pdfHtml;
+            document.body.appendChild(wrapper);
+
+            const safeName = (tName || 'Tenant').replace(/[^a-zA-Z0-9_\-\s]/g, '').trim();
+            const filename = `${safeName || 'Tenant'}-Profile.pdf`;
+
+            const options = {
+                margin: [0.3, 0.3, 0.3, 0.3],
+                filename: filename,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, logging: false, useCORS: true, windowWidth: 800, width: 800, x: 0, y: 0, scrollY: 0, scrollX: 0 },
+                jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+            };
+
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+            let pdfWindow;
+            if (isIOS) {
+                pdfWindow = window.open('', '_blank');
+                if (pdfWindow) pdfWindow.document.write('Generating PDF... Please wait.');
+            }
+
+            if (typeof html2pdf === 'function') {
+                html2pdf().set(options).from(wrapper.firstElementChild).outputPdf('blob').then(function(blob) {
+                    const url = URL.createObjectURL(blob);
+                    if (isIOS) {
+                        if (pdfWindow) pdfWindow.location.href = url;
+                        else window.location.href = url;
+                    } else {
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = filename;
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                    }
+                    setTimeout(() => {
+                        URL.revokeObjectURL(url);
+                        if (document.body.contains(wrapper)) document.body.removeChild(wrapper);
+                    }, 2000);
+                }).catch(err => {
+                    console.error('Tenant Profile PDF Generation Error:', err);
+                    if (pdfWindow) pdfWindow.close();
+                    if (document.body.contains(wrapper)) document.body.removeChild(wrapper);
+                });
+            } else {
+                alert('PDF generation library is loading, please try again.');
+                if (pdfWindow) pdfWindow.close();
+                if (document.body.contains(wrapper)) document.body.removeChild(wrapper);
+            }
+        };
+    }
+
     window.efOpenTenantHistoryModal = function(tenantId) {
         const modal = document.getElementById('efTenantHistoryModal');
         if (!modal) return;
@@ -865,9 +1073,7 @@ add_action('wp_footer', function() { ?>
             const reportBtn = document.getElementById('efHistModalReportBtn');
             reportBtn.onclick = function() {
                 if (typeof window.efDownloadTenantPDF === 'function') {
-                    window.efDownloadTenantPDF(data.name);
-                } else {
-                    alert('Report generation feature is available on the Tenants page.');
+                    window.efDownloadTenantPDF(data.name, data);
                 }
             };
 

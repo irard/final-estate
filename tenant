@@ -820,50 +820,90 @@ add_shortcode('tenant_profile', function() {
             document.querySelectorAll('.ef-tenant-card-item').forEach(c => c.classList.remove('ef-active-tenant'));
         };
 
-        window.efDownloadTenantPDF = function(tenantName) {
-            const screen = document.getElementById('efWorkspaceDynamicScreen');
-            if (!screen) return;
-            const content = screen.querySelector('#efTenantProfileContent') || screen;
-
-            const tName = content.getAttribute('data-tenant-name') || tenantName || 'Tenant';
-            const prop = content.getAttribute('data-property') || '';
-            const unit = content.getAttribute('data-unit') || '1A';
-            const monthlyRent = content.getAttribute('data-monthly-rent') || '0.00';
-            const totalContract = content.getAttribute('data-total-contract') || '0.00';
-            const totalPaid = content.getAttribute('data-total-paid') || '0.00';
-            const expectedTotal = content.getAttribute('data-expected-total') || '0.00';
-            const remainingBalance = content.getAttribute('data-remaining-balance') || '0.00';
-            const paymentsCount = content.getAttribute('data-payments-count') || '0';
-            const email = content.getAttribute('data-email') || 'None';
-            const phone = content.getAttribute('data-phone') || 'None';
-            const address = content.getAttribute('data-address') || 'No Address Provided';
-            const contractStart = content.getAttribute('data-contract-start') || 'N/A';
-            const contractEnd = content.getAttribute('data-contract-end') || 'N/A';
-            
+        window.efDownloadTenantPDF = function(tenantName, tenantData) {
+            const fmtMoney = amount => (parseFloat(amount) || 0).toLocaleString('en-AE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            let tName = tenantName || 'Tenant';
+            let prop = '';
+            let unit = '1A';
+            let monthlyRent = '0.00';
+            let totalContract = '0.00';
+            let totalPaid = '0.00';
+            let remainingBalance = '0.00';
+            let paymentsCount = '0';
+            let email = 'None';
+            let phone = 'None';
+            let address = 'No Address Provided';
+            let contractStart = 'N/A';
+            let contractEnd = 'N/A';
+            let statusLabel = 'Contract active';
             let payments = [];
-            try {
-                payments = JSON.parse(content.getAttribute('data-payments') || '[]');
-            } catch(e) {}
+
+            if (tenantData) {
+                tName = tenantData.name || tName;
+                prop = tenantData.property_name || '';
+                unit = tenantData.unit || '1A';
+                monthlyRent = fmtMoney(tenantData.monthly_rent);
+                totalContract = fmtMoney(tenantData.total_contract);
+                totalPaid = fmtMoney(tenantData.total_paid);
+                remainingBalance = fmtMoney(tenantData.balance);
+                email = tenantData.email || 'None';
+                phone = tenantData.phone || 'None';
+                address = tenantData.address || 'No Address Provided';
+                contractStart = tenantData.start_date || 'N/A';
+                contractEnd = tenantData.end_date || 'N/A';
+                statusLabel = (tenantData.status === 'finished') ? 'Contract ended' : 'Contract active';
+                payments = tenantData.payments || [];
+                paymentsCount = String(payments.length);
+            } else {
+                const screen = document.getElementById('efWorkspaceDynamicScreen');
+                const content = screen ? (screen.querySelector('#efTenantProfileContent') || screen) : document.getElementById('efTenantProfileContent');
+                if (!content) return;
+
+                tName = content.getAttribute('data-tenant-name') || tName;
+                prop = content.getAttribute('data-property') || '';
+                unit = content.getAttribute('data-unit') || '1A';
+                monthlyRent = content.getAttribute('data-monthly-rent') || '0.00';
+                totalContract = content.getAttribute('data-total-contract') || '0.00';
+                totalPaid = content.getAttribute('data-total-paid') || '0.00';
+                remainingBalance = content.getAttribute('data-remaining-balance') || '0.00';
+                paymentsCount = content.getAttribute('data-payments-count') || '0';
+                email = content.getAttribute('data-email') || 'None';
+                phone = content.getAttribute('data-phone') || 'None';
+                address = content.getAttribute('data-address') || 'No Address Provided';
+                contractStart = content.getAttribute('data-contract-start') || 'N/A';
+                contractEnd = content.getAttribute('data-contract-end') || 'N/A';
+
+                try {
+                    payments = JSON.parse(content.getAttribute('data-payments') || '[]');
+                } catch(e) {}
+            }
 
             const initials = tName.split(' ').map(w => w.charAt(0).toUpperCase()).join('').substring(0, 2) || 'SR';
 
             let rowsHtml = '';
             if (payments.length > 0) {
-                payments.forEach((p, index) => {
-                    const statusClass = (p.status === 'Paid') ? 'color: #059669; background: #ecfdf5;' : 'color: #d97706; background: #fef3c7;';
+                payments.forEach((p) => {
+                    const statusStr = p.status || 'Paid';
+                    const statusClass = (statusStr === 'Paid') ? 'color: #059669; background: #ecfdf5;' : 'color: #d97706; background: #fef3c7;';
+                    const amtStr = (typeof p.amount === 'number') ? fmtMoney(p.amount) : p.amount;
+                    const methodStr = p.method ? (p.cheque ? `${p.method} (${p.cheque})` : p.method) : 'Cash';
                     rowsHtml += `
                         <tr style="border-bottom: 1px solid #f1f5f9; font-size: 13px;">
                             <td style="padding: 12px 14px; color: #0f172a; font-weight: 500;">${p.period || p.date}</td>
-                            <td style="padding: 12px 14px; color: #475569;">${p.method}</td>
+                            <td style="padding: 12px 14px; color: #475569;">${methodStr}</td>
                             <td style="padding: 12px 14px; color: #64748b;">${p.date}</td>
-                            <td style="padding: 12px 14px; color: #059669; font-weight: 700;">AED ${p.amount}</td>
-                            <td style="padding: 12px 14px; text-align: right;"><span style="padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; ${statusClass}">${p.status}</span></td>
+                            <td style="padding: 12px 14px; color: #059669; font-weight: 700;">AED ${amtStr}</td>
+                            <td style="padding: 12px 14px; text-align: right;"><span style="padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; ${statusClass}">${statusStr}</span></td>
                         </tr>
                     `;
                 });
             } else {
                 rowsHtml = `<tr><td colspan="5" style="padding: 20px; text-align: center; color: #64748b;">No recorded payments found.</td></tr>`;
             }
+
+            const statusBadgeHtml = (statusLabel === 'Contract ended')
+                ? `<span style="display: inline-block; padding: 3px 10px; border-radius: 12px; background: #fef2f2; color: #dc2626; border: 1px solid #fca5a5; font-size: 12px; font-weight: 600;">Contract ended</span>`
+                : `<span style="display: inline-block; padding: 3px 10px; border-radius: 12px; background: #ecfdf5; color: #059669; font-size: 12px; font-weight: 600;">Contract active</span>`;
 
             const pdfHtml = `
                 <div style="font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding: 32px; background: #ffffff; color: #0f172a; width: 740px; box-sizing: border-box; border: 1px solid #e2e8f0; border-radius: 12px;">
@@ -874,7 +914,7 @@ add_shortcode('tenant_profile', function() {
                             <div>
                                 <h1 style="margin: 0 0 4px 0; font-size: 24px; font-weight: 800; color: #0f172a;">${tName}</h1>
                                 <div style="color: #64748b; font-size: 14px; font-weight: 500; margin-bottom: 6px;">${prop} — Unit ${unit}</div>
-                                <span style="display: inline-block; padding: 3px 10px; border-radius: 12px; background: #ecfdf5; color: #059669; font-size: 12px; font-weight: 600;">Contract active</span>
+                                ${statusBadgeHtml}
                             </div>
                         </div>
                     </div>
