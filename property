@@ -323,6 +323,10 @@ function ef_handle_get_properties_dashboard() {
     $tenants_by_property = []; 
     $all_tenant_ids = []; 
     foreach ($all_tenants as $t) { 
+        $t_status = function_exists('get_field') ? get_field('tenant_status', $t->ID) : get_post_meta($t->ID, 'tenant_status', true);
+        if ($t_status === 'finished') {
+            continue;
+        }
         $p_id = ef_get_tenant_property_id($t->ID);
         if ($p_id && in_array($p_id, $property_ids)) {
             $tenants_by_property[$p_id][] = $t; 
@@ -471,23 +475,41 @@ function ef_handle_get_property_tenants_simple() {
         ] 
     ]); 
  
-    $data = []; 
+    $active_data = []; 
+    $history_data = [];
     foreach ($tenants as $t) { 
         $tid = $t->ID; 
         $rent = function_exists('get_field') ? get_field('monthly_rent', $tid) : get_post_meta($tid, 'monthly_rent', true); 
         $unit = function_exists('get_field') ? get_field('tenant_unit', $tid) : get_post_meta($tid, 'tenant_unit', true); 
- 
         $address = function_exists('get_field') ? get_field('tenant_address', $tid) : get_post_meta($tid, 'tenant_address', true); 
- 
-        $data[] = [ 
+        $status = function_exists('get_field') ? get_field('tenant_status', $tid) : get_post_meta($tid, 'tenant_status', true);
+        $start_date = function_exists('get_field') ? get_field('tenant_start', $tid) : get_post_meta($tid, 'tenant_start', true);
+        $end_date = function_exists('get_field') ? get_field('tenant_end', $tid) : get_post_meta($tid, 'tenant_end', true);
+
+        $start_fmt = $start_date ? date('n/j/Y', strtotime($start_date)) : '';
+        $end_fmt = $end_date ? date('n/j/Y', strtotime($end_date)) : '';
+        $date_range = ($start_fmt && $end_fmt) ? ($start_fmt . ' - ' . $end_fmt) : ($start_fmt ?: $end_fmt);
+
+        $item = [ 
             'id'          => $tid, 
             'name'        => $t->post_title, 
-            'unit'        => $unit ?: 'N/A', 
+            'unit'        => $unit ?: '1A', 
             'address'     => $address ?: 'N/A', 
-            'rent'        => floatval($rent) 
+            'rent'        => floatval($rent),
+            'status'      => $status,
+            'date_range'  => $date_range
         ]; 
+
+        if ($status === 'finished') {
+            $history_data[] = $item;
+        } else {
+            $active_data[] = $item;
+        }
     } 
-    wp_send_json_success($data); 
+    wp_send_json_success([
+        'active' => $active_data,
+        'history' => $history_data
+    ]); 
 } 
 } 
  
@@ -846,24 +868,51 @@ add_action('wp_footer', function() { ?>
             } 
             tenantData.append('property_id', prop.id); 
  
-            const tenants = await fetch(ajaxUrl, { method: 'POST', body: tenantData }) 
-                            .then(r => r.json()).then(res => res.success ? res.data : []) 
-                            .catch(() => []); 
+            const tenantRes = await fetch(ajaxUrl, { method: 'POST', body: tenantData }) 
+                            .then(r => r.json()).then(res => res.success ? res.data : { active: [], history: [] }) 
+                            .catch(() => ({ active: [], history: [] })); 
+
+            const activeTenants = Array.isArray(tenantRes) ? tenantRes : (tenantRes.active || []);
+            const historyTenants = Array.isArray(tenantRes) ? [] : (tenantRes.history || []);
  
             const available = Math.max(0, prop.units - prop.occupied); 
             const isAvailable = prop.occupied < prop.units; 
  
-            const tenantsHtml = tenants.length 
-                ? tenants.map(t => ` 
-                    <div style="padding:12px;background:#f9fafb;border-radius:8px;margin-bottom:10px;border:1px solid #e5e7eb;"> 
-                        <div style="display:flex; justify-content:space-between;"> 
-                            <div><strong>${t.name}</strong><br><span style="font-size:12px;color:#6b7280;">${t.address}</span></div> 
-                            <div style="text-align:right;"><span style="color:#0a8a4f;font-weight:600;">${fmtMoney(t.rent)}</span></div> 
+            const activeTenantsHtml = activeTenants.length 
+                ? activeTenants.map(t => ` 
+                    <div style="padding:14px 16px; background:#ffffff; border-radius:12px; margin-bottom:10px; border:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="if(typeof efDispatchGlobalView==='function') efDispatchGlobalView(${t.id});"> 
+                        <div>
+                            <div style="font-size:15px; font-weight:700; color:#0f172a;">${t.name}</div> 
+                            <div style="font-size:13px; color:#64748b; margin-top:2px;">${t.unit} · ${fmtMoney(t.rent)}/mo</div>
                         </div> 
+                        <div style="color:#94a3b8; font-size:16px;">›</div> 
                     </div> 
                 `).join('') 
-                : `<div style="padding:20px;text-align:center;color:#9ca3af;font-size:14px;">No tenants</div>`; 
- 
+                : `<div style="padding:12px 0; color:#9ca3af; font-size:13px;">No active tenants</div>`; 
+
+            const historyTenantsHtml = historyTenants.length
+                ? historyTenants.map(t => `
+                    <div onclick="if(typeof efDispatchGlobalView==='function') efDispatchGlobalView(${t.id});" style="padding:14px 16px; background:#ffffff; border-radius:12px; margin-bottom:10px; border:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; cursor:pointer;">
+                        <div style="display:flex; align-items:center; gap:12px;">
+                            <div style="width:40px; height:40px; border-radius:10px; background:#f1f5f9; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                                    <path d="M3 3v5h5"></path>
+                                    <path d="M12 7v5l4 2"></path>
+                                </svg>
+                            </div>
+                            <div>
+                                <div style="font-size:15px; font-weight:700; color:#0f172a; line-height:1.2;">${t.name}</div>
+                                <div style="font-size:13px; color:#64748b; margin-top:3px; font-weight:500;">${t.unit}${t.date_range ? (' · ' + t.date_range) : ''}</div>
+                            </div>
+                        </div>
+                        <div>
+                            <span style="border:1px solid #cbd5e1; background:#ffffff; color:#0f172a; padding:4px 12px; border-radius:20px; font-size:13px; font-weight:600; display:inline-block;">Finished</span>
+                        </div>
+                    </div>
+                `).join('')
+                : `<div style="padding:12px 0; color:#9ca3af; font-size:13px;">No tenant history</div>`;
+
             detailsContainer.innerHTML = ` 
                 <h2 style="margin:0 0 5px 0;font-size:22px;">${prop.name}</h2> 
                 <p style="margin:0 0 20px 0;font-size:14px;color:#6b7280;">${prop.address || 'No address'}</p> 
@@ -894,8 +943,17 @@ add_action('wp_footer', function() { ?>
                     </div> 
                 </div> 
  
-                <h3 style="font-size:16px;margin-bottom:10px;">Tenants (${prop.occupied})</h3> 
-                <div style="max-height:300px;overflow-y:auto;">${tenantsHtml}</div> 
+                <div style="margin-top:24px;">
+                    <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:#64748b; margin-bottom:10px;">TENANTS</div>
+                    <div style="max-height:220px; overflow-y:auto;">${activeTenantsHtml}</div>
+                </div>
+
+                ${historyTenants.length > 0 ? `
+                <div style="margin-top:24px;">
+                    <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:#64748b; margin-bottom:10px;">TENANT HISTORY</div>
+                    <div style="max-height:220px; overflow-y:auto;">${historyTenantsHtml}</div>
+                </div>
+                ` : ''}
             `; 
         }); 
     }); 
