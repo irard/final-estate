@@ -510,6 +510,28 @@ function ef_handle_get_property_tenants_simple() {
         } else {
             $active_data[] = $item;
         }
+
+        // Add past contracts from contract_history backlog if available
+        $raw_ch = get_post_meta($tid, 'contract_history', true);
+        $ch_list = is_array($raw_ch) ? $raw_ch : (json_decode($raw_ch, true) ?: []);
+        if (!empty($ch_list)) {
+            foreach ($ch_list as $ch) {
+                $ch_start = !empty($ch['tenant_start']) ? date('n/j/Y', strtotime($ch['tenant_start'])) : '';
+                $ch_end = !empty($ch['tenant_end']) ? date('n/j/Y', strtotime($ch['tenant_end'])) : '';
+                $ch_range = ($ch_start && $ch_end) ? ($ch_start . ' - ' . $ch_end) : ($ch_start ?: $ch_end);
+                $ch_rent = floatval($ch['monthly_rent'] ?? $rent);
+
+                $history_data[] = [
+                    'id'         => $tid,
+                    'name'       => $t->post_title,
+                    'unit'       => $unit ?: '1A',
+                    'address'    => $address ?: 'N/A',
+                    'rent'       => $ch_rent,
+                    'status'     => 'finished',
+                    'date_range' => $ch_range
+                ];
+            }
+        }
     } 
     wp_send_json_success([
         'active' => $active_data,

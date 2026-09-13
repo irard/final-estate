@@ -181,6 +181,10 @@ add_shortcode('ef_log_payment_btn', function() {
                         while ($tenants_query->have_posts()) {   
                             $tenants_query->the_post();   
                             $tid = get_the_ID();
+                            $t_status = get_post_meta($tid, 'tenant_status', true) ?: (function_exists('get_field') ? get_field('tenant_status', $tid) : '');
+                            if ($t_status === 'finished') {
+                                continue;
+                            }
                             $rent = get_field('monthly_rent', $tid) ?: get_post_meta($tid, 'monthly_rent', true);
                             $due  = get_field('rent_due_day', $tid) ?: get_post_meta($tid, 'rent_due_day', true);
                             echo '<option value="'.$tid.'" data-rent="'.esc_attr($rent).'" data-due="'.esc_attr($due).'">'.get_the_title().'</option>';   
@@ -533,8 +537,21 @@ add_shortcode('ef_payments_stats', function() {
     $count_payments = wp_count_posts('payment');   
     $total_payments_logged = isset($count_payments->publish) ? intval($count_payments->publish) : 0;   
    
-    $count_tenants = wp_count_posts('ef_tenant');   
-    $active_tenants_count = isset($count_tenants->publish) ? intval($count_tenants->publish) : 0;   
+    $tenants_q = new WP_Query([
+        'post_type'      => 'ef_tenant',
+        'post_status'    => 'publish',
+        'posts_per_page' => -1,
+        'fields'         => 'ids'
+    ]);
+    $active_tenants_count = 0;
+    if (!empty($tenants_q->posts)) {
+        foreach ($tenants_q->posts as $tid) {
+            $t_st = get_post_meta($tid, 'tenant_status', true) ?: (function_exists('get_field') ? get_field('tenant_status', $tid) : '');
+            if ($t_st !== 'finished') {
+                $active_tenants_count++;
+            }
+        }
+    }
    
     ob_start();   
     ?>   
