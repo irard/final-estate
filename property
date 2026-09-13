@@ -323,7 +323,7 @@ function ef_handle_get_properties_dashboard() {
     $tenants_by_property = []; 
     $all_tenant_ids = []; 
     foreach ($all_tenants as $t) { 
-        $t_status = function_exists('get_field') ? get_field('tenant_status', $t->ID) : get_post_meta($t->ID, 'tenant_status', true);
+        $t_status = get_post_meta($t->ID, 'tenant_status', true) ?: (function_exists('get_field') ? get_field('tenant_status', $t->ID) : '');
         if ($t_status === 'finished') {
             continue;
         }
@@ -480,7 +480,7 @@ function ef_handle_get_property_tenants_simple() {
         $rent = function_exists('get_field') ? get_field('monthly_rent', $tid) : get_post_meta($tid, 'monthly_rent', true); 
         $unit = function_exists('get_field') ? get_field('tenant_unit', $tid) : get_post_meta($tid, 'tenant_unit', true); 
         $address = function_exists('get_field') ? get_field('tenant_address', $tid) : get_post_meta($tid, 'tenant_address', true); 
-        $status = function_exists('get_field') ? get_field('tenant_status', $tid) : get_post_meta($tid, 'tenant_status', true);
+        $status = get_post_meta($tid, 'tenant_status', true) ?: (function_exists('get_field') ? get_field('tenant_status', $tid) : '');
         $start_date = function_exists('get_field') ? get_field('tenant_start', $tid) : get_post_meta($tid, 'tenant_start', true);
         $end_date = function_exists('get_field') ? get_field('tenant_end', $tid) : get_post_meta($tid, 'tenant_end', true);
 
@@ -530,7 +530,7 @@ function ef_handle_get_tenant_modal_details() {
     }
 
     $tenant_name = $tenant->post_title;
-    $status = function_exists('get_field') ? get_field('tenant_status', $tenant_id) : get_post_meta($tenant_id, 'tenant_status', true);
+    $status = get_post_meta($tenant_id, 'tenant_status', true) ?: (function_exists('get_field') ? get_field('tenant_status', $tenant_id) : '');
     $monthly_rent = floatval(function_exists('get_field') ? get_field('monthly_rent', $tenant_id) : get_post_meta($tenant_id, 'monthly_rent', true));
     $total_rent_cost = floatval((function_exists('get_field') ? get_field('total_rent_cost', $tenant_id) : null) ?: get_post_meta($tenant_id, 'total_rent_cost', true) ?: (function_exists('get_field') ? get_field('total_contract_amount', $tenant_id) : null) ?: get_post_meta($tenant_id, 'total_contract_amount', true));
     $contract_months = (function_exists('get_field') ? get_field('contract_months', $tenant_id) : null) ?: get_post_meta($tenant_id, 'contract_months', true) ?: (function_exists('get_field') ? get_field('tenant_contract_months', $tenant_id) : null) ?: get_post_meta($tenant_id, 'tenant_contract_months', true) ?: 12;

@@ -256,8 +256,7 @@ add_shortcode('ef_total_outstanding', function() {
         while ($t_query->have_posts()) {  
             $t_query->the_post();  
             $t_id = get_the_ID();
-            $st = function_exists('get_field') ? get_field('tenant_status', $t_id) : get_post_meta($t_id, 'tenant_status', true);
-            if (!$st) $st = get_post_meta($t_id, 'tenant_status', true);
+            $st = get_post_meta($t_id, 'tenant_status', true) ?: (function_exists('get_field') ? get_field('tenant_status', $t_id) : '');
             if ($st === 'finished') continue;
 
             if (function_exists('ef_is_tenant_billable') && !ef_is_tenant_billable($t_id, $m, $y)) continue;
@@ -781,8 +780,7 @@ add_shortcode('ef_outstanding_tenants_widget', function() {
     $outstanding_items = []; 
     foreach ($tenants as $tenant) { 
         $tid = $tenant->ID; 
-        $st = function_exists('get_field') ? get_field('tenant_status', $tid) : get_post_meta($tid, 'tenant_status', true);
-        if (!$st) $st = get_post_meta($tid, 'tenant_status', true);
+        $st = get_post_meta($tid, 'tenant_status', true) ?: (function_exists('get_field') ? get_field('tenant_status', $tid) : '');
         if ($st === 'finished') continue;
 
         if (function_exists('ef_is_tenant_billable') && !ef_is_tenant_billable($tid, $m, $y)) continue;

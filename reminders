@@ -159,8 +159,7 @@ if (!function_exists('ef_parse_date_to_ymd')) {
 
 if (!function_exists('ef_get_tenant_last_payment_end_date')) {
     function ef_get_tenant_last_payment_end_date($t_id) {
-        $st = function_exists('get_field') ? get_field('tenant_status', $t_id) : get_post_meta($t_id, 'tenant_status', true);
-        if (!$st) $st = get_post_meta($t_id, 'tenant_status', true);
+        $st = get_post_meta($t_id, 'tenant_status', true) ?: (function_exists('get_field') ? get_field('tenant_status', $t_id) : '');
         if ($st === 'finished') {
             return '9999-12-31';
         }
@@ -686,8 +685,7 @@ add_shortcode('outstanding_tenants', function() {
     if (!empty($tenants)) { 
         foreach ($tenants as $tenant) {   
             $tid = $tenant->ID;   
-            $st = function_exists('get_field') ? get_field('tenant_status', $tid) : get_post_meta($tid, 'tenant_status', true);
-            if (!$st) $st = get_post_meta($tid, 'tenant_status', true);
+            $st = get_post_meta($tid, 'tenant_status', true) ?: (function_exists('get_field') ? get_field('tenant_status', $tid) : '');
             if ($st === 'finished') continue;
 
             if (function_exists('ef_is_tenant_billable') && !ef_is_tenant_billable($tid, $m, $y)) continue;

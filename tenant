@@ -387,8 +387,7 @@ add_shortcode('tenant_header', function() {
         while ($q->have_posts()) {
             $q->the_post();
             $tid = get_the_ID();
-            $st = function_exists('get_field') ? get_field('tenant_status', $tid) : get_post_meta($tid, 'tenant_status', true);
-            if (!$st) $st = get_post_meta($tid, 'tenant_status', true);
+            $st = get_post_meta($tid, 'tenant_status', true) ?: (function_exists('get_field') ? get_field('tenant_status', $tid) : '');
             if ($st !== 'finished') {
                 $count++;
             }
@@ -417,7 +416,7 @@ $tenant_list_logic = function() {
                     while ($q->have_posts()) {
                         $q->the_post();
                         $tid = get_the_ID();
-                        $t_status = get_field('tenant_status', $tid) ?: get_post_meta($tid, 'tenant_status', true);
+                        $t_status = get_post_meta($tid, 'tenant_status', true) ?: (function_exists('get_field') ? get_field('tenant_status', $tid) : '');
                         if ($t_status === 'finished') {
                             continue;
                         }
@@ -1532,7 +1531,7 @@ if ( ! function_exists('eftm_get_occupied_count') ) {
         $tenants = get_posts($args); 
         $active_count = 0;
         foreach ($tenants as $tid) {
-            $st = get_field('tenant_status', $tid) ?: get_post_meta($tid, 'tenant_status', true);
+            $st = get_post_meta($tid, 'tenant_status', true) ?: (function_exists('get_field') ? get_field('tenant_status', $tid) : '');
             if ($st !== 'finished') {
                 $active_count++;
             }
@@ -1801,7 +1800,7 @@ function eftm_handle_ajax_tenant_breakdown() {
                 <h2 style="margin: 0 0 2px 0; font-size: 22px; color: #0f172a; font-weight: 700;"><?php echo esc_html($tenant_name); ?></h2> 
                 <div style="color: #64748b; font-size: 14px; font-weight: 500; margin-bottom: 6px;"><?php echo esc_html($property_display); ?> — Unit <?php echo esc_html($unit ?: '1A'); ?></div> 
                 <?php 
-                $t_status = get_field('tenant_status', $tenant_id) ?: get_post_meta($tenant_id, 'tenant_status', true);
+                $t_status = get_post_meta($tenant_id, 'tenant_status', true) ?: (function_exists('get_field') ? get_field('tenant_status', $tenant_id) : '');
                 $is_contract_ended = ($t_status === 'finished');
                 if ($is_contract_ended) : ?>
                     <span style="display: inline-block; padding: 3px 10px; border-radius: 12px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; font-size: 12px; font-weight: 600;">Contract finished</span>
