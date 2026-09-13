@@ -261,6 +261,10 @@ function ef_handle_save_property() {
  
  
     update_post_meta($post_id, 'property_units', $units); 
+
+    if (function_exists('ef_purge_page_cache')) {
+        ef_purge_page_cache($post_id);
+    }
  
     wp_send_json_success(['id' => $post_id]); 
 } 
@@ -282,6 +286,9 @@ function ef_handle_delete_property() {
     } 
  
     if (wp_delete_post($property_id, true)) { 
+        if (function_exists('ef_purge_page_cache')) {
+            ef_purge_page_cache($property_id);
+        }
         wp_send_json_success(); 
     } else { 
         wp_send_json_error('Failed to delete property.'); 
@@ -1273,7 +1280,7 @@ add_action('wp_footer', function() { ?>
             fd.append('new_rent', document.getElementById('renew_monthly_rent').value);
 
             fetch(ajaxUrl, {method:'POST', body:fd}).then(r=>r.json()).then(res=>{
-                if(res.success){ alert('Contract renewed successfully!'); efCloseRenewModal(); location.reload(); }
+                if(res.success){ alert('Contract renewed successfully!'); efCloseRenewModal(); window.location.href = window.location.pathname + '?_t=' + Date.now(); }
                 else { alert(res.data || 'Failed to renew contract'); if (b) b.disabled=false; }
             }).catch(err => { console.error(err); if (b) b.disabled=false; });
         };

@@ -1331,7 +1331,7 @@ add_shortcode('tenant_profile', function() {
             fd.append('new_start', document.getElementById('modal_field_start').value); fd.append('new_end', document.getElementById('modal_field_end').value); 
             fd.append('new_total_rent_cost', document.getElementById('modal_field_total_rent').value); 
             fd.append('new_contract_months', document.getElementById('modal_field_contract_months').value); 
-            fetch(ajax, {method:'POST', body:fd}).then(r=>r.json()).then(res=>{ if(res.success){ alert('Saved!'); efCloseEditModal(); location.reload(); } }); 
+            fetch(ajax, {method:'POST', body:fd}).then(r=>r.json()).then(res=>{ if(res.success){ alert('Saved!'); efCloseEditModal(); window.location.href = window.location.pathname + '?_t=' + Date.now(); } });
         } 
         window.efSubmitRenewContract = function(){ 
             const form = document.getElementById('efRenewContractForm');
@@ -1349,7 +1349,7 @@ add_shortcode('tenant_profile', function() {
             fd.append('new_rent', document.getElementById('renew_monthly_rent').value); 
 
             fetch(ajax, {method:'POST', body:fd}).then(r=>r.json()).then(res=>{ 
-                if(res.success){ alert('Contract renewed successfully!'); efCloseRenewModal(); location.reload(); } 
+                if(res.success){ alert('Contract renewed successfully!'); efCloseRenewModal(); window.location.href = window.location.pathname + '?_t=' + Date.now(); }
                 else { alert(res.data || 'Failed to renew contract'); b.disabled=false; }
             }).catch(err => { console.error(err); b.disabled=false; }); 
         };
@@ -1368,7 +1368,7 @@ add_shortcode('tenant_profile', function() {
                         const card = document.getElementById('tenant-row-' + id);
                         if (card) card.remove();
                         if (typeof efCloseTenantProfile === 'function') efCloseTenantProfile();
-                        location.reload(); 
+                        window.location.href = window.location.pathname + '?_t=' + Date.now();
                     } else { 
                         alert(res.data || 'Failed to finish contract'); 
                     } 
@@ -1406,6 +1406,28 @@ add_action('wp_ajax_eftm_finish_tenant_contract', 'eftm_execute_ajax_tenant_fini
 add_action('wp_ajax_eftm_delete_tenant', 'eftm_execute_ajax_tenant_deletion'); 
 add_action('wp_ajax_eftm_get_properties', 'eftm_global_execute_properties_fetch'); 
 
+if (!function_exists('ef_purge_page_cache')) {
+    function ef_purge_page_cache($post_id = 0) {
+        if ($post_id) {
+            clean_post_cache($post_id);
+        }
+        if (function_exists('wp_cache_flush')) {
+            wp_cache_flush();
+        }
+        if (class_exists('\LiteSpeed\Purge')) {
+            \LiteSpeed\Purge::purge_all();
+        }
+        if (function_exists('litespeed_purge_all')) {
+            litespeed_purge_all();
+        }
+        do_action('litespeed_purge_all');
+        do_action('w3tc_flush_posts');
+        if (function_exists('rocket_clean_domain')) {
+            rocket_clean_domain();
+        }
+    }
+}
+
 function eftm_execute_ajax_tenant_finish() { 
     if (!isset($_POST['security']) || !wp_verify_nonce($_POST['security'], 'finish_tenant_nonce')) { 
         wp_send_json_error('Invalid security check.', 403); 
@@ -1420,6 +1442,7 @@ function eftm_execute_ajax_tenant_finish() {
     if (function_exists('update_field')) { 
         update_field('tenant_status', 'finished', $tid); 
     } 
+    ef_purge_page_cache($tid);
     wp_send_json_success(); 
 } 
 
@@ -1483,6 +1506,7 @@ function eftm_execute_ajax_tenant_renewal() {
         update_post_meta($tid, $k, $v);
         if ( function_exists('update_field') ) update_field($k, $v, $tid); 
     } 
+    ef_purge_page_cache($tid);
     wp_send_json_success(); 
 } 
 
@@ -1590,6 +1614,7 @@ function eftm_handle_create_tenant() {
         if ( function_exists('update_field') ) update_field($k, $v, $tenant_id); 
         else update_post_meta($tenant_id, $k, $v); 
     } 
+    ef_purge_page_cache($tenant_id);
     wp_send_json_success(['id' => $tenant_id]); 
 } 
 
@@ -2011,6 +2036,7 @@ function eftm_execute_ajax_tenant_modification() {
         if ( function_exists('update_field') ) update_field($k, $v, $tid); 
         else update_post_meta($tid, $k, $v); 
     } 
+    ef_purge_page_cache($tid);
     wp_send_json_success(); 
 } 
 
@@ -2022,7 +2048,10 @@ function eftm_execute_ajax_tenant_deletion() {
         wp_send_json_error('Unauthorized.', 403); 
     } 
     $tid = intval($_POST['tenant_id'] ?? 0); 
-    if ($tid && wp_delete_post($tid, true)) wp_send_json_success(); 
+    if ($tid && wp_delete_post($tid, true)) {
+        ef_purge_page_cache($tid);
+        wp_send_json_success();
+    }
     else wp_send_json_error('Delete failed.'); 
 } 
 
