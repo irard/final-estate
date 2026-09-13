@@ -621,10 +621,14 @@ function ef_handle_get_tenant_modal_details() {
     $start_fmt = $start ? date('n/j/Y', strtotime($start)) : 'N/A';
     $end_fmt = $end ? date('n/j/Y', strtotime($end)) : 'N/A';
 
+    $raw_history = get_post_meta($tenant_id, 'contract_history', true);
+    $contract_history = is_array($raw_history) ? $raw_history : (json_decode($raw_history, true) ?: []);
+
     wp_send_json_success([
         'id' => $tenant_id,
         'name' => $tenant_name,
         'status' => $status,
+        'contract_history' => $contract_history,
         'property_name' => $property_name,
         'unit' => $unit,
         'monthly_rent' => $monthly_rent,

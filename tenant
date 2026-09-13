@@ -1421,6 +1421,27 @@ function eftm_execute_ajax_tenant_renewal() {
     $tid = intval($_POST['tenant_id'] ?? 0); 
     if (!$tid) wp_send_json_error('Tenant ID is required.'); 
 
+    // Store previous contract in contract_history backlog before updating
+    $old_start = (function_exists('get_field') ? get_field('tenant_start', $tid) : null) ?: get_post_meta($tid, 'tenant_start', true);
+    $old_end = (function_exists('get_field') ? get_field('tenant_end', $tid) : null) ?: get_post_meta($tid, 'tenant_end', true);
+    $old_rent = (function_exists('get_field') ? get_field('monthly_rent', $tid) : null) ?: get_post_meta($tid, 'monthly_rent', true);
+    $old_total = (function_exists('get_field') ? get_field('total_rent_cost', $tid) : null) ?: get_post_meta($tid, 'total_rent_cost', true) ?: (function_exists('get_field') ? get_field('total_contract_amount', $tid) : null) ?: get_post_meta($tid, 'total_contract_amount', true);
+    $old_months = (function_exists('get_field') ? get_field('contract_months', $tid) : null) ?: get_post_meta($tid, 'contract_months', true) ?: 12;
+
+    if (!empty($old_start) || !empty($old_end)) {
+        $history_raw = get_post_meta($tid, 'contract_history', true);
+        $history = is_array($history_raw) ? $history_raw : (json_decode($history_raw, true) ?: []);
+        $history[] = [
+            'tenant_start' => $old_start,
+            'tenant_end' => $old_end,
+            'monthly_rent' => floatval($old_rent),
+            'total_rent_cost' => floatval($old_total),
+            'contract_months' => intval($old_months),
+            'renewed_at' => date('Y-m-d H:i:s')
+        ];
+        update_post_meta($tid, 'contract_history', $history);
+    }
+
     $start = sanitize_text_field($_POST['new_start'] ?? '');
     $end = sanitize_text_field($_POST['new_end'] ?? '');
     $total_rent_cost = floatval($_POST['new_total_rent_cost'] ?? 0);
@@ -1443,7 +1464,8 @@ function eftm_execute_ajax_tenant_renewal() {
         'total_contract_amount' => $total_rent_cost,
         'contract_months' => $contract_months,
         'tenant_contract_months' => $contract_months,
-        'monthly_rent' => $rent
+        'monthly_rent' => $rent,
+        'tenant_status' => 'active'
     ]; 
     foreach ($meta as $k => $v) { 
         if ( function_exists('update_field') ) update_field($k, $v, $tid); 
@@ -1767,9 +1789,9 @@ function eftm_handle_ajax_tenant_breakdown() {
                 <div style="color: #64748b; font-size: 14px; font-weight: 500; margin-bottom: 6px;"><?php echo esc_html($property_display); ?> — Unit <?php echo esc_html($unit ?: '1A'); ?></div> 
                 <?php 
                 $t_status = get_field('tenant_status', $tenant_id) ?: get_post_meta($tenant_id, 'tenant_status', true);
-                $is_contract_ended = ($t_status === 'finished') || (!empty($contract_end) && date('Y-m-d', strtotime($contract_end)) < date('Y-m-d'));
+                $is_contract_ended = ($t_status === 'finished');
                 if ($is_contract_ended) : ?>
-                    <span style="display: inline-block; padding: 3px 10px; border-radius: 12px; border: 1px solid #fca5a5; background: #fef2f2; color: #dc2626; font-size: 12px; font-weight: 600;">Contract ended</span>
+                    <span style="display: inline-block; padding: 3px 10px; border-radius: 12px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; font-size: 12px; font-weight: 600;">Contract finished</span>
                 <?php else : ?>
                     <span style="display: inline-block; padding: 3px 10px; border-radius: 12px; border: 1px solid #a7f3d0; background: #ecfdf5; color: #059669; font-size: 12px; font-weight: 600;">Contract active</span>
                 <?php endif; ?>
@@ -1863,6 +1885,34 @@ function eftm_handle_ajax_tenant_breakdown() {
             </div>
         </div>
     </div>
+    <?php
+    $contract_history_raw = get_post_meta($tenant_id, 'contract_history', true);
+    $contract_history = is_array($contract_history_raw) ? $contract_history_raw : (json_decode($contract_history_raw, true) ?: []);
+    if (!empty($contract_history)) :
+    ?>
+    <div style="margin-top: 24px; margin-bottom: 24px;">
+        <div class="ef-section-title-sub" style="margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; font-size: 12px; font-weight: 700; color: #64748b;">PREVIOUS CONTRACTS HISTORY (<?php echo count($contract_history); ?>)</div>
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+            <?php foreach (array_reverse($contract_history) as $ch) :
+                $ch_start = !empty($ch['tenant_start']) ? date('n/j/Y', strtotime($ch['tenant_start'])) : 'N/A';
+                $ch_end = !empty($ch['tenant_end']) ? date('n/j/Y', strtotime($ch['tenant_end'])) : 'N/A';
+                $ch_total = floatval($ch['total_rent_cost'] ?? 0);
+                $ch_months = intval($ch['contract_months'] ?? 12);
+                $ch_rent = floatval($ch['monthly_rent'] ?? 0);
+            ?>
+                <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <div style="font-size: 14px; font-weight: 700; color: #0f172a;"><?php echo esc_html($ch_start . ' - ' . $ch_end); ?> · <?php echo $ch_months; ?> Months</div>
+                        <div style="font-size: 13px; color: #64748b; margin-top: 2px;">Rent: AED <?php echo number_format($ch_rent, 2); ?>/mo</div>
+                    </div>
+                    <div style="font-size: 15px; font-weight: 700; color: #0f172a;">
+                        AED <?php echo number_format($ch_total, 2); ?>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+        </div>
+    </div>
+    <?php endif; ?>
     <div class="ef-section-title-sub" style="margin-top: 32px;">Payment Ledger History</div> 
     <div class="ef-payment-history-list"> 
         <?php if (!empty($payment_history)) : foreach ($payment_history as $p) : 
