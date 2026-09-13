@@ -1729,20 +1729,20 @@ add_action('wp_footer', function() { ?>
  
             const activeTenantsHtml = activeTenants.length 
                 ? activeTenants.map(t => ` 
-                    <div style="padding:14px 16px; background:#ffffff; border-radius:12px; margin-bottom:10px; border:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="if(typeof efDispatchGlobalView==='function') efDispatchGlobalView(${t.id});"> 
-                        <div>
-                            <div style="font-size:15px; font-weight:700; color:#0f172a;">${t.name}</div> 
-                            <div style="font-size:13px; color:#64748b; margin-top:2px;">${t.unit} · ${fmtMoney(t.rent)}/mo</div>
+                    <div style="padding:14px 16px; background:#ffffff; border-radius:12px; margin-bottom:10px; border:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; cursor:pointer; gap:12px;" onclick="if(typeof efDispatchGlobalView==='function') efDispatchGlobalView(${t.id});">
+                        <div style="min-width:0; flex:1;">
+                            <div style="font-size:15px; font-weight:700; color:#0f172a; line-height:1.2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${t.name}</div>
+                            <div style="font-size:13px; color:#64748b; margin-top:3px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${t.unit} · ${fmtMoney(t.rent)}/mo</div>
                         </div> 
-                        <div style="color:#94a3b8; font-size:16px;">›</div> 
+                        <div style="color:#94a3b8; font-size:16px; flex-shrink:0;">›</div>
                     </div> 
                 `).join('') 
                 : `<div style="padding:12px 0; color:#9ca3af; font-size:13px;">No active tenants</div>`; 
 
             const historyTenantsHtml = historyTenants.length
                 ? historyTenants.map(t => `
-                    <div onclick="if(typeof efDispatchGlobalView==='function') efDispatchGlobalView(${t.id});" style="padding:14px 16px; background:#ffffff; border-radius:12px; margin-bottom:10px; border:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; cursor:pointer;">
-                        <div style="display:flex; align-items:center; gap:12px;">
+                    <div onclick="if(typeof efDispatchGlobalView==='function') efDispatchGlobalView(${t.id});" style="padding:14px 16px; background:#ffffff; border-radius:12px; margin-bottom:10px; border:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; cursor:pointer; gap:12px;">
+                        <div style="display:flex; align-items:center; gap:12px; min-width:0; flex:1;">
                             <div style="width:40px; height:40px; border-radius:10px; background:#f1f5f9; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                     <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
@@ -1750,13 +1750,13 @@ add_action('wp_footer', function() { ?>
                                     <path d="M12 7v5l4 2"></path>
                                 </svg>
                             </div>
-                            <div>
-                                <div style="font-size:15px; font-weight:700; color:#0f172a; line-height:1.2;">${t.name}</div>
-                                <div style="font-size:13px; color:#64748b; margin-top:3px; font-weight:500;">${t.unit}${t.date_range ? (' · ' + t.date_range) : ''}</div>
+                            <div style="min-width:0; flex:1;">
+                                <div style="font-size:15px; font-weight:700; color:#0f172a; line-height:1.2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${t.name}</div>
+                                <div style="font-size:13px; color:#64748b; margin-top:3px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${t.unit}${t.date_range ? (' · ' + t.date_range) : ''}</div>
                             </div>
                         </div>
-                        <div>
-                            <span style="border:1px solid #cbd5e1; background:#ffffff; color:#0f172a; padding:4px 12px; border-radius:20px; font-size:13px; font-weight:600; display:inline-block;">Finished</span>
+                        <div style="flex-shrink:0; margin-left:4px;">
+                            <span style="border:1px solid #cbd5e1; background:#ffffff; color:#0f172a; padding:4px 10px; border-radius:20px; font-size:12px; font-weight:600; display:inline-block; white-space:nowrap;">Finished</span>
                         </div>
                     </div>
                 `).join('')
