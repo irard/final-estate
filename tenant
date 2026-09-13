@@ -382,8 +382,19 @@ add_shortcode('add_tenant', function(){
 
 add_shortcode('tenant_header', function() { 
     $q = new WP_Query(['post_type'=>'ef_tenant', 'post_status'=>'publish', 'posts_per_page'=>-1]); 
-    $count = $q->found_posts; 
-    wp_reset_postdata(); 
+    $count = 0;
+    if ($q->have_posts()) {
+        while ($q->have_posts()) {
+            $q->the_post();
+            $tid = get_the_ID();
+            $st = function_exists('get_field') ? get_field('tenant_status', $tid) : get_post_meta($tid, 'tenant_status', true);
+            if (!$st) $st = get_post_meta($tid, 'tenant_status', true);
+            if ($st !== 'finished') {
+                $count++;
+            }
+        }
+        wp_reset_postdata();
+    }
     return '<div style="margin-bottom:16px;"> 
             <div style="font-size:15px; color:#64748b; font-weight:500;">' . $count . ' active tenants</div> 
         </div>'; 
@@ -1403,10 +1414,9 @@ function eftm_execute_ajax_tenant_finish() {
     $tid = intval($_POST['tenant_id'] ?? 0); 
     if (!$tid) wp_send_json_error('Tenant ID is required.'); 
 
+    update_post_meta($tid, 'tenant_status', 'finished');
     if (function_exists('update_field')) { 
         update_field('tenant_status', 'finished', $tid); 
-    } else { 
-        update_post_meta($tid, 'tenant_status', 'finished'); 
     } 
     wp_send_json_success(); 
 } 
@@ -1468,8 +1478,8 @@ function eftm_execute_ajax_tenant_renewal() {
         'tenant_status' => 'active'
     ]; 
     foreach ($meta as $k => $v) { 
+        update_post_meta($tid, $k, $v);
         if ( function_exists('update_field') ) update_field($k, $v, $tid); 
-        else update_post_meta($tid, $k, $v); 
     } 
     wp_send_json_success(); 
 } 

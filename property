@@ -467,18 +467,16 @@ function ef_handle_get_property_tenants_simple() {
         'post_type'      => 'ef_tenant', 
         'posts_per_page' => -1, 
         'post_status'    => 'publish', 
-        'meta_query'     => [ 
-            [ 
-                'key'   => 'property_id', 
-                'value' => $property_id, 
-            ] 
-        ] 
     ]); 
  
     $active_data = []; 
     $history_data = [];
     foreach ($tenants as $t) { 
         $tid = $t->ID; 
+        $t_prop_id = ef_get_tenant_property_id($tid);
+        if ($t_prop_id !== $property_id) {
+            continue;
+        }
         $rent = function_exists('get_field') ? get_field('monthly_rent', $tid) : get_post_meta($tid, 'monthly_rent', true); 
         $unit = function_exists('get_field') ? get_field('tenant_unit', $tid) : get_post_meta($tid, 'tenant_unit', true); 
         $address = function_exists('get_field') ? get_field('tenant_address', $tid) : get_post_meta($tid, 'tenant_address', true); 
