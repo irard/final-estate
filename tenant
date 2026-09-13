@@ -1366,6 +1366,9 @@ add_shortcode('tenant_profile', function() {
                 .then(res => { 
                     if (res.success) { 
                         alert('Contract marked as finished!'); 
+                        const card = document.getElementById('tenant-row-' + id);
+                        if (card) card.remove();
+                        if (typeof efCloseTenantProfile === 'function') efCloseTenantProfile();
                         location.reload(); 
                     } else { 
                         alert(res.data || 'Failed to finish contract'); 
@@ -2091,6 +2094,10 @@ add_shortcode('ef_master_tenant_directory', function() {
         while ($t_query->have_posts()) {
             $t_query->the_post();
             $t_id = get_the_ID();
+            $t_st = function_exists('get_field') ? get_field('tenant_status', $t_id) : get_post_meta($t_id, 'tenant_status', true);
+            if (!$t_st) $t_st = get_post_meta($t_id, 'tenant_status', true);
+            if ($t_st === 'finished') continue;
+
             $tenant_title = esc_attr(get_the_title());
 
             $rent = get_field('monthly_rent', $t_id);
