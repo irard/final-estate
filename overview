@@ -248,12 +248,20 @@ add_shortcode('ef_total_payments', function() {
 });  
   
 add_shortcode('ef_total_outstanding', function() {  
+    $period_data = ef_get_dashboard_period();
+    $m = $period_data['m']; $y = $period_data['y'];
     $t_query = new WP_Query(array('post_type' => 'ef_tenant', 'post_status' => 'publish', 'posts_per_page' => -1));  
     $total_outstanding = 0.00;  
     if ($t_query->have_posts()) {  
         while ($t_query->have_posts()) {  
             $t_query->the_post();  
             $t_id = get_the_ID();
+            $st = function_exists('get_field') ? get_field('tenant_status', $t_id) : get_post_meta($t_id, 'tenant_status', true);
+            if (!$st) $st = get_post_meta($t_id, 'tenant_status', true);
+            if ($st === 'finished') continue;
+
+            if (function_exists('ef_is_tenant_billable') && !ef_is_tenant_billable($t_id, $m, $y)) continue;
+
             $total_outstanding += ef_get_tenant_outstanding_balance($t_id);
         }  
         wp_reset_postdata();  
@@ -757,6 +765,9 @@ add_shortcode('monthly_bar_chart', function() {
 }); 
  
 add_shortcode('ef_outstanding_tenants_widget', function() { 
+    $period_data = ef_get_dashboard_period();
+    $m = $period_data['m']; $y = $period_data['y'];
+
     $tenants = get_posts([ 
         'post_type'      => 'ef_tenant', 
         'post_status'    => 'publish', 
@@ -770,6 +781,12 @@ add_shortcode('ef_outstanding_tenants_widget', function() {
     $outstanding_items = []; 
     foreach ($tenants as $tenant) { 
         $tid = $tenant->ID; 
+        $st = function_exists('get_field') ? get_field('tenant_status', $tid) : get_post_meta($tid, 'tenant_status', true);
+        if (!$st) $st = get_post_meta($tid, 'tenant_status', true);
+        if ($st === 'finished') continue;
+
+        if (function_exists('ef_is_tenant_billable') && !ef_is_tenant_billable($tid, $m, $y)) continue;
+
         $outstanding = ef_get_tenant_outstanding_balance($tid);
         if ($outstanding > 0.001) {
             $due_day = get_field('rent_due_day', $tid) ?: get_post_meta($tid, 'rent_due_day', true); 

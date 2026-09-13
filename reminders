@@ -159,6 +159,12 @@ if (!function_exists('ef_parse_date_to_ymd')) {
 
 if (!function_exists('ef_get_tenant_last_payment_end_date')) {
     function ef_get_tenant_last_payment_end_date($t_id) {
+        $st = function_exists('get_field') ? get_field('tenant_status', $t_id) : get_post_meta($t_id, 'tenant_status', true);
+        if (!$st) $st = get_post_meta($t_id, 'tenant_status', true);
+        if ($st === 'finished') {
+            return '9999-12-31';
+        }
+
         $payments = get_posts(array(    
             'post_type'      => 'payment',    
             'post_status'    => ['publish', 'future'],
@@ -182,16 +188,19 @@ if (!function_exists('ef_get_tenant_last_payment_end_date')) {
                 }
             }
         }
-        if (!$max_end_date) {
-            // Fallback to contract start date
-            $start_date = get_field('tenant_start', $t_id) ?: get_post_meta($t_id, 'tenant_start', true);
-            if ($start_date) {
-                $max_end_date = ef_parse_date_to_ymd($start_date) ?: date('Y-m-d');
-            } else {
-                $max_end_date = date('Y-m-d'); // Default to today
-            }
+
+        $start_date_raw = get_field('tenant_start', $t_id) ?: get_post_meta($t_id, 'tenant_start', true);
+        $start_date = $start_date_raw ? ef_parse_date_to_ymd($start_date_raw) : '';
+
+        if ($start_date && (empty($max_end_date) || $start_date > $max_end_date)) {
+            return $start_date;
         }
-        return $max_end_date;
+
+        if ($max_end_date) {
+            return $max_end_date;
+        }
+
+        return $start_date ?: date('Y-m-d');
     }
 }
  
@@ -662,6 +671,9 @@ add_shortcode('outstanding_tenants', function() {
     if ( ! function_exists( 'get_field' ) ) { 
         return ''; 
     } 
+
+    $period_data = function_exists('ef_get_dashboard_period') ? ef_get_dashboard_period() : ['m' => date('m'), 'y' => date('Y')];
+    $m = $period_data['m']; $y = $period_data['y'];
  
     $tenants = get_posts([   
         'post_type'      => 'ef_tenant',   
@@ -674,6 +686,12 @@ add_shortcode('outstanding_tenants', function() {
     if (!empty($tenants)) { 
         foreach ($tenants as $tenant) {   
             $tid = $tenant->ID;   
+            $st = function_exists('get_field') ? get_field('tenant_status', $tid) : get_post_meta($tid, 'tenant_status', true);
+            if (!$st) $st = get_post_meta($tid, 'tenant_status', true);
+            if ($st === 'finished') continue;
+
+            if (function_exists('ef_is_tenant_billable') && !ef_is_tenant_billable($tid, $m, $y)) continue;
+
             $outstanding = ef_get_tenant_outstanding_balance($tid);
             if ($outstanding <= 0.001) continue;   
                
