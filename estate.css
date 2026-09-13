@@ -2559,3 +2559,58 @@ body.ef-no-scroll {
     justify-content: center;
     font-size: 16px;
 }
+
+/* Tenant History Pop-Up Modal Styles */
+#efTenantHistoryModal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 100000;
+    background: rgba(15, 23, 42, 0.45);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    justify-content: center;
+    align-items: center;
+    opacity: 0;
+    transition: opacity 0.25s ease;
+    box-sizing: border-box;
+    padding: 20px;
+}
+#efTenantHistoryModal.ef-show {
+    opacity: 1;
+}
+#efTenantHistoryModal .ef-modal-card {
+    background: #ffffff;
+    width: 100%;
+    max-width: 720px;
+    max-height: 88vh;
+    border-radius: 16px;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+    padding: 28px;
+    overflow-y: auto;
+    transform: translateY(18px);
+    transition: transform 0.25s ease;
+    position: relative;
+    box-sizing: border-box;
+    font-family: inherit;
+}
+#efTenantHistoryModal.ef-show .ef-modal-card {
+    transform: translateY(0);
+}
+@media (max-width: 768px) {
+    #efTenantHistoryModal .ef-modal-card {
+        padding: 20px;
+        max-height: 90vh;
+    }
+    .ef-history-modal-stats {
+        grid-template-columns: 1fr 1fr !important;
+    }
+    .ef-history-modal-2col {
+        grid-template-columns: 1fr !important;
+    }
+}
