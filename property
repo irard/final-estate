@@ -511,7 +511,137 @@ function ef_handle_get_property_tenants_simple() {
         'history' => $history_data
     ]); 
 } 
-} 
+}
+
+add_action('wp_ajax_get_tenant_modal_details', 'ef_handle_get_tenant_modal_details');
+add_action('wp_ajax_nopriv_get_tenant_modal_details', 'ef_handle_get_tenant_modal_details');
+if (!function_exists('ef_handle_get_tenant_modal_details')) {
+function ef_handle_get_tenant_modal_details() {
+    if (!is_user_logged_in()) {
+        wp_send_json_error('Unauthorized.');
+    }
+
+    $tenant_id = intval($_POST['tenant_id'] ?? 0);
+    if (!$tenant_id) {
+        wp_send_json_error('Tenant ID missing');
+    }
+
+    $tenant = get_post($tenant_id);
+    if (!$tenant) {
+        wp_send_json_error('Tenant not found');
+    }
+
+    $tenant_name = $tenant->post_title;
+    $status = function_exists('get_field') ? get_field('tenant_status', $tenant_id) : get_post_meta($tenant_id, 'tenant_status', true);
+    $monthly_rent = floatval(function_exists('get_field') ? get_field('monthly_rent', $tenant_id) : get_post_meta($tenant_id, 'monthly_rent', true));
+    $total_rent_cost = floatval((function_exists('get_field') ? get_field('total_rent_cost', $tenant_id) : null) ?: get_post_meta($tenant_id, 'total_rent_cost', true) ?: (function_exists('get_field') ? get_field('total_contract_amount', $tenant_id) : null) ?: get_post_meta($tenant_id, 'total_contract_amount', true));
+    $contract_months = (function_exists('get_field') ? get_field('contract_months', $tenant_id) : null) ?: get_post_meta($tenant_id, 'contract_months', true) ?: (function_exists('get_field') ? get_field('tenant_contract_months', $tenant_id) : null) ?: get_post_meta($tenant_id, 'tenant_contract_months', true) ?: 12;
+
+    $email = (function_exists('get_field') ? get_field('tenant_email', $tenant_id) : null) ?: get_post_meta($tenant_id, 'tenant_email', true) ?: 'None';
+    $phone = (function_exists('get_field') ? get_field('tenant_phone', $tenant_id) : null) ?: get_post_meta($tenant_id, 'tenant_phone', true) ?: 'None';
+    $address = (function_exists('get_field') ? get_field('tenant_address', $tenant_id) : null) ?: get_post_meta($tenant_id, 'tenant_address', true) ?: 'No Address Provided';
+    $start = (function_exists('get_field') ? get_field('tenant_start', $tenant_id) : null) ?: get_post_meta($tenant_id, 'tenant_start', true);
+    $end = (function_exists('get_field') ? get_field('tenant_end', $tenant_id) : null) ?: get_post_meta($tenant_id, 'tenant_end', true);
+    $unit = (function_exists('get_field') ? get_field('tenant_unit', $tenant_id) : null) ?: get_post_meta($tenant_id, 'tenant_unit', true) ?: '1A';
+
+    $prop_field = (function_exists('get_field') ? get_field('property_id', $tenant_id) : null) ?: get_post_meta($tenant_id, 'property_id', true);
+    $propId = is_object($prop_field) ? $prop_field->ID : (is_array($prop_field) ? ($prop_field['ID'] ?? $prop_field[0]->ID ?? 0) : intval($prop_field));
+    $property_name = $propId ? get_the_title($propId) : 'N/A';
+
+    $total_contract = $total_rent_cost ?: ($monthly_rent * 12);
+    $total_paid = function_exists('ef_get_tenant_total_payments_amount') ? ef_get_tenant_total_payments_amount($tenant_id) : 0;
+    if (!function_exists('ef_get_tenant_total_payments_amount') && !$total_paid) {
+        $p_posts = get_posts([
+            'post_type' => 'payment',
+            'post_status' => ['publish', 'future', 'pending', 'draft', 'private'],
+            'posts_per_page' => -1,
+            'meta_query' => [
+                'relation' => 'OR',
+                ['key' => 'associated_tenant', 'value' => $tenant_id, 'compare' => '='],
+                ['key' => 'select_tenant', 'value' => $tenant_id, 'compare' => '='],
+                ['key' => 'select_tenant', 'value' => '"' . $tenant_id . '"', 'compare' => 'LIKE'],
+            ]
+        ]);
+        foreach ($p_posts as $p) {
+            $total_paid += floatval(str_replace(',', '', (function_exists('get_field') ? get_field('amount_paid', $p->ID) : null) ?: get_post_meta($p->ID, 'amount_paid', true)));
+        }
+    }
+
+    $balance = function_exists('ef_get_tenant_outstanding_balance') ? ef_get_tenant_outstanding_balance($tenant_id) : max(0, $total_contract - $total_paid);
+
+    // Fetch payment records
+    $payment_posts = get_posts([
+        'post_type' => 'payment',
+        'post_status' => ['publish', 'future', 'pending', 'draft', 'private'],
+        'posts_per_page' => -1,
+        'meta_query' => [
+            'relation' => 'OR',
+            ['key' => 'associated_tenant', 'value' => $tenant_id, 'compare' => '='],
+            ['key' => 'select_tenant', 'value' => $tenant_id, 'compare' => '='],
+            ['key' => 'select_tenant', 'value' => '"' . $tenant_id . '"', 'compare' => 'LIKE'],
+        ],
+        'orderby' => 'date',
+        'order' => 'DESC'
+    ]);
+
+    $payments = [];
+    foreach ($payment_posts as $p) {
+        $pay_id = $p->ID;
+        $amt = floatval(str_replace(',', '', (function_exists('get_field') ? get_field('amount_paid', $pay_id) : null) ?: get_post_meta($pay_id, 'amount_paid', true)));
+        $raw_date = (function_exists('get_field') ? get_field('date_of_payment', $pay_id) : null) ?: get_post_meta($pay_id, 'date_of_payment', true);
+        $ts = $raw_date ? strtotime($raw_date) : get_the_date('U', $pay_id);
+        $date_fmt = $ts ? date('n/j/Y', $ts) : 'N/A';
+
+        $method = (function_exists('get_field') ? get_field('mode_of_payment', $pay_id) : null) ?: get_post_meta($pay_id, 'mode_of_payment', true) ?: 'Cash';
+        $cheque = (function_exists('get_field') ? get_field('transaction_cheque_number', $pay_id) : null) ?: get_post_meta($pay_id, 'transaction_cheque_number', true);
+
+        $cheque_start = (function_exists('get_field') ? get_field('cheque_start_date', $pay_id) : null) ?: get_post_meta($pay_id, 'cheque_start_date', true);
+        $cheque_end = (function_exists('get_field') ? get_field('cheque_end_date', $pay_id) : null) ?: get_post_meta($pay_id, 'cheque_end_date', true);
+        $period = (function_exists('get_field') ? get_field('payment_period', $pay_id) : null) ?: get_post_meta($pay_id, 'payment_period', true);
+
+        if ($cheque_start && $cheque_end) {
+            $period_display = ($cheque_start === $cheque_end) ? $cheque_start : ($cheque_start . ' to ' . $cheque_end);
+        } else {
+            $period_display = $period ? substr((string)$period, 0, 7) : ($ts ? date('Y-m', $ts) : 'N/A');
+        }
+
+        $rv = (function_exists('get_field') ? get_field('receipt_voucher', $pay_id) : null) ?: get_post_meta($pay_id, 'receipt_voucher', true) ?: ('REC-' . str_pad($pay_id, 6, '0', STR_PAD_LEFT));
+
+        $payments[] = [
+            'id' => $pay_id,
+            'amount' => $amt,
+            'period' => $period_display,
+            'date' => $date_fmt,
+            'method' => $method,
+            'cheque' => $cheque ?: '',
+            'receipt_voucher' => $rv
+        ];
+    }
+
+    $start_fmt = $start ? date('n/j/Y', strtotime($start)) : 'N/A';
+    $end_fmt = $end ? date('n/j/Y', strtotime($end)) : 'N/A';
+
+    wp_send_json_success([
+        'id' => $tenant_id,
+        'name' => $tenant_name,
+        'status' => $status,
+        'property_name' => $property_name,
+        'unit' => $unit,
+        'monthly_rent' => $monthly_rent,
+        'total_contract' => $total_contract,
+        'total_paid' => $total_paid,
+        'balance' => $balance,
+        'email' => $email,
+        'phone' => $phone,
+        'address' => $address,
+        'start_date' => $start_fmt,
+        'end_date' => $end_fmt,
+        'finished_on' => ($status === 'finished' && $end) ? $end_fmt : ($end_fmt ?: '—'),
+        'contract_months' => $contract_months ? ($contract_months . ' Months') : '—',
+        'payments' => $payments
+    ]);
+}
+}
  
 add_shortcode('properties_page_add_btn', function() { 
     ob_start(); ?> 
@@ -590,7 +720,274 @@ add_shortcode('properties_page_details', function() {
 }); 
  
 add_action('wp_footer', function() { ?> 
+    <style>
+    #efTenantHistoryModal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        width: 100vw;
+        height: 100vh;
+        z-index: 100000;
+        background: rgba(15, 23, 42, 0.45);
+        backdrop-filter: blur(4px);
+        -webkit-backdrop-filter: blur(4px);
+        justify-content: center;
+        align-items: center;
+        opacity: 0;
+        transition: opacity 0.25s ease;
+        box-sizing: border-box;
+        padding: 20px;
+    }
+    #efTenantHistoryModal.ef-show {
+        opacity: 1;
+    }
+    #efTenantHistoryModal .ef-modal-card {
+        background: #ffffff;
+        width: 100%;
+        max-width: 720px;
+        max-height: 88vh;
+        border-radius: 16px;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+        padding: 28px;
+        overflow-y: auto;
+        transform: translateY(18px);
+        transition: transform 0.25s ease;
+        position: relative;
+        box-sizing: border-box;
+        font-family: inherit;
+    }
+    #efTenantHistoryModal.ef-show .ef-modal-card {
+        transform: translateY(0);
+    }
+    @media (max-width: 768px) {
+        #efTenantHistoryModal .ef-modal-card {
+            padding: 20px;
+            max-height: 90vh;
+        }
+        .ef-history-modal-stats {
+            grid-template-columns: 1fr 1fr !important;
+        }
+        .ef-history-modal-2col {
+            grid-template-columns: 1fr !important;
+        }
+    }
+    </style>
+
+    <div id="efTenantHistoryModal" onclick="if(event.target===this) efCloseTenantHistoryModal();">
+        <div class="ef-modal-card">
+            <button type="button" onclick="efCloseTenantHistoryModal()" style="position:absolute; top:20px; right:20px; background:none; border:none; font-size:20px; color:#94a3b8; cursor:pointer; font-weight:600; line-height:1; padding:4px;">✕</button>
+
+            <div style="margin-bottom: 20px; padding-right: 30px;">
+                <h2 id="efHistModalTitle" style="font-size: 22px; font-weight: 700; color: #0f172a; margin: 0 0 10px 0; line-height: 1.3;">Tenant Name — contract history</h2>
+                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                    <span id="efHistModalStatusPill" style="border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; padding: 4px 14px; border-radius: 20px; font-size: 13px; font-weight: 600;">Finished</span>
+                    <span id="efHistModalPropertyPill" style="border: 1px solid #e2e8f0; background: #f8fafc; color: #475569; padding: 4px 14px; border-radius: 20px; font-size: 13px; font-weight: 500;">Property Name</span>
+                    <span id="efHistModalUnitPill" style="border: 1px solid #e2e8f0; background: #f8fafc; color: #475569; padding: 4px 14px; border-radius: 20px; font-size: 13px; font-weight: 500;">Unit 1A</span>
+                </div>
+            </div>
+
+            <div class="ef-history-modal-stats" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px;">
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px 14px;">
+                    <div style="font-size: 12px; color: #64748b; margin-bottom: 4px; font-weight: 500;">Monthly rent</div>
+                    <div id="efHistModalRent" style="font-size: 16px; font-weight: 700; color: #0f172a;">AED 0.00</div>
+                </div>
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px 14px;">
+                    <div style="font-size: 12px; color: #64748b; margin-bottom: 4px; font-weight: 500;">Contract total</div>
+                    <div id="efHistModalTotal" style="font-size: 16px; font-weight: 700; color: #0f172a;">AED 0.00</div>
+                </div>
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px 14px;">
+                    <div style="font-size: 12px; color: #64748b; margin-bottom: 4px; font-weight: 500;">Total paid</div>
+                    <div id="efHistModalPaid" style="font-size: 16px; font-weight: 700; color: #059669;">AED 0.00</div>
+                </div>
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px 14px;">
+                    <div style="font-size: 12px; color: #64748b; margin-bottom: 4px; font-weight: 500;">Balance</div>
+                    <div id="efHistModalBalance" style="font-size: 16px; font-weight: 700; color: #059669;">AED 0.00</div>
+                </div>
+            </div>
+
+            <div class="ef-history-modal-2col" style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 28px;">
+                <div>
+                    <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; margin-bottom: 10px;">CONTACT</div>
+                    <div style="display: flex; flex-direction: column; gap: 8px; font-size: 14px; color: #334155;">
+                        <div><span style="color: #64748b; font-weight: 500;">Email:</span> <span id="efHistModalEmail" style="color: #0f172a;">-</span></div>
+                        <div><span style="color: #64748b; font-weight: 500;">Phone:</span> <span id="efHistModalPhone" style="color: #0f172a;">-</span></div>
+                        <div><span style="color: #64748b; font-weight: 500;">Address:</span> <span id="efHistModalAddress" style="color: #0f172a;">-</span></div>
+                    </div>
+                </div>
+                <div>
+                    <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; margin-bottom: 10px;">CONTRACT</div>
+                    <div style="display: flex; flex-direction: column; gap: 8px; font-size: 14px; color: #334155;">
+                        <div><span style="color: #64748b; font-weight: 500;">Start:</span> <span id="efHistModalStart" style="color: #0f172a;">-</span></div>
+                        <div><span style="color: #64748b; font-weight: 500;">End:</span> <span id="efHistModalEnd" style="color: #0f172a;">-</span></div>
+                        <div><span style="color: #64748b; font-weight: 500;">Finished on:</span> <span id="efHistModalFinishedOn" style="color: #0f172a;">-</span></div>
+                        <div><span style="color: #64748b; font-weight: 500;">Months:</span> <span id="efHistModalMonths" style="color: #0f172a;">-</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-bottom: 24px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <div id="efHistModalPayHeader" style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b;">PAYMENT HISTORY (0)</div>
+                    <button type="button" id="efHistModalReportBtn" style="background: #ffffff; border: 1px solid #059669; color: #059669; padding: 6px 16px; border-radius: 20px; font-size: 13px; font-weight: 600; cursor: pointer;">Yearly report</button>
+                </div>
+                <div id="efHistModalPaymentList" style="display: flex; flex-direction: column; gap: 10px; max-height: 220px; overflow-y: auto;">
+                </div>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; margin-top: 10px;">
+                <button type="button" onclick="efCloseTenantHistoryModal()" style="background: #ffffff; border: 1px solid #e2e8f0; color: #0f172a; padding: 8px 24px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;">Close</button>
+            </div>
+        </div>
+    </div>
+
     <script> 
+    window.efOpenTenantHistoryModal = function(tenantId) {
+        const modal = document.getElementById('efTenantHistoryModal');
+        if (!modal) return;
+
+        document.getElementById('efHistModalTitle').textContent = 'Loading...';
+        document.getElementById('efHistModalRent').textContent = 'AED 0.00';
+        document.getElementById('efHistModalTotal').textContent = 'AED 0.00';
+        document.getElementById('efHistModalPaid').textContent = 'AED 0.00';
+        document.getElementById('efHistModalBalance').textContent = 'AED 0.00';
+        document.getElementById('efHistModalEmail').textContent = '-';
+        document.getElementById('efHistModalPhone').textContent = '-';
+        document.getElementById('efHistModalAddress').textContent = '-';
+        document.getElementById('efHistModalStart').textContent = '-';
+        document.getElementById('efHistModalEnd').textContent = '-';
+        document.getElementById('efHistModalFinishedOn').textContent = '-';
+        document.getElementById('efHistModalMonths').textContent = '-';
+        document.getElementById('efHistModalPayHeader').textContent = 'PAYMENT HISTORY (0)';
+        document.getElementById('efHistModalPaymentList').innerHTML = '<div style="padding:12px; color:#94a3b8; font-size:13px;">Loading payments...</div>';
+
+        modal.style.display = 'flex';
+        setTimeout(() => modal.classList.add('ef-show'), 10);
+
+        const fd = new FormData();
+        fd.append('action', 'get_tenant_modal_details');
+        fd.append('tenant_id', tenantId);
+
+        const ajaxUrl = '<?php echo admin_url("admin-ajax.php"); ?>';
+
+        fetch(ajaxUrl, { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(res => {
+            if (!res.success) {
+                alert(res.data || 'Failed to load tenant details.');
+                efCloseTenantHistoryModal();
+                return;
+            }
+            const data = res.data;
+            const fmtMoney = amount => 'AED ' + (parseFloat(amount) || 0).toLocaleString('en-AE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+            document.getElementById('efHistModalTitle').textContent = data.name + ' — contract history';
+
+            const statusPill = document.getElementById('efHistModalStatusPill');
+            if (data.status === 'finished') {
+                statusPill.textContent = 'Finished';
+                statusPill.style.border = '1px solid #cbd5e1';
+                statusPill.style.background = '#ffffff';
+                statusPill.style.color = '#0f172a';
+            } else {
+                statusPill.textContent = 'Active';
+                statusPill.style.border = '1px solid #a7f3d0';
+                statusPill.style.background = '#ecfdf5';
+                statusPill.style.color = '#059669';
+            }
+
+            document.getElementById('efHistModalPropertyPill').textContent = data.property_name;
+            document.getElementById('efHistModalUnitPill').textContent = 'Unit ' + (data.unit || '1A');
+
+            document.getElementById('efHistModalRent').textContent = fmtMoney(data.monthly_rent);
+            document.getElementById('efHistModalTotal').textContent = fmtMoney(data.total_contract);
+            document.getElementById('efHistModalPaid').textContent = fmtMoney(data.total_paid);
+            document.getElementById('efHistModalBalance').textContent = fmtMoney(data.balance);
+
+            document.getElementById('efHistModalEmail').textContent = data.email || 'None';
+            document.getElementById('efHistModalPhone').textContent = data.phone || 'None';
+            document.getElementById('efHistModalAddress').textContent = data.address || 'No Address Provided';
+
+            document.getElementById('efHistModalStart').textContent = data.start_date || 'N/A';
+            document.getElementById('efHistModalEnd').textContent = data.end_date || 'N/A';
+            document.getElementById('efHistModalFinishedOn').textContent = data.finished_on || '—';
+            document.getElementById('efHistModalMonths').textContent = data.contract_months || '—';
+
+            const payments = data.payments || [];
+            document.getElementById('efHistModalPayHeader').textContent = `PAYMENT HISTORY (${payments.length})`;
+
+            const reportBtn = document.getElementById('efHistModalReportBtn');
+            reportBtn.onclick = function() {
+                if (typeof window.efDownloadTenantPDF === 'function') {
+                    window.efDownloadTenantPDF(data.name);
+                } else {
+                    alert('Report generation feature is available on the Tenants page.');
+                }
+            };
+
+            const listContainer = document.getElementById('efHistModalPaymentList');
+            if (payments.length === 0) {
+                listContainer.innerHTML = '<div style="color: #64748b; font-size: 13px; font-style: italic; padding: 14px 0; text-align: center;">No recorded invoice transactions found.</div>';
+            } else {
+                listContainer.innerHTML = payments.map(p => {
+                    const methodStr = p.cheque ? `${p.method} (${p.cheque})` : p.method;
+                    const amtFormatted = (parseFloat(p.amount) || 0).toLocaleString('en-AE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                    return `
+                        <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; padding:14px 16px; display:flex; justify-content:space-between; align-items:center;">
+                            <div>
+                                <div style="font-size:15px; font-weight:700; color:#0f172a;">AED ${amtFormatted} · ${p.period}</div>
+                                <div style="font-size:13px; color:#64748b; margin-top:3px; font-weight:500;">${p.date} · ${methodStr}</div>
+                            </div>
+                            <div>
+                                <button class="ef-btn-receipt"
+                                    data-ref="${p.receipt_voucher}"
+                                    data-tenant="${data.name}"
+                                    data-prop="${data.property_name}"
+                                    data-date="${p.date}"
+                                    data-period="${p.period}"
+                                    data-method="${p.method}"
+                                    data-cheque="${p.cheque || ''}"
+                                    data-amount="${amtFormatted}"
+                                    style="background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; padding:6px 14px; font-size:13px; font-weight:600; color:#0f172a; cursor:pointer;">
+                                    Receipt
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+                if (typeof window.attachReceiptEvents === 'function') {
+                    window.attachReceiptEvents();
+                }
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            alert('Network error loading tenant details.');
+            efCloseTenantHistoryModal();
+        });
+    };
+
+    window.efCloseTenantHistoryModal = function() {
+        const modal = document.getElementById('efTenantHistoryModal');
+        if (!modal) return;
+        modal.classList.remove('ef-show');
+        setTimeout(() => { modal.style.display = 'none'; }, 250);
+    };
+
+    window.efDispatchGlobalView = function(tid) {
+        if (document.getElementById('efWorkspaceDynamicScreen')) {
+            window.dispatchEvent(new CustomEvent('ef_load_tenant', { detail: { id: tid } }));
+            document.querySelectorAll('.ef-tenant-card-item').forEach(c => c.classList.remove('ef-active-tenant'));
+            const row = document.getElementById('tenant-row-' + tid);
+            if (row) row.classList.add('ef-active-tenant');
+        } else {
+            window.efOpenTenantHistoryModal(tid);
+        }
+    };
+
     document.addEventListener('DOMContentLoaded', () => { 
         const grid = document.getElementById('properties-dashboard-grid'); 
         if (!grid && !document.getElementById('properties-page-modal')) return; 
