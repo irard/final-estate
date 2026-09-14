@@ -1407,6 +1407,7 @@ add_action('wp_ajax_nopriv_eftm_render_tenant_profile', 'eftm_handle_ajax_tenant
 add_action('wp_ajax_eftm_edit_tenant', 'eftm_execute_ajax_tenant_modification'); 
 add_action('wp_ajax_eftm_renew_tenant_contract', 'eftm_execute_ajax_tenant_renewal'); 
 add_action('wp_ajax_eftm_finish_tenant_contract', 'eftm_execute_ajax_tenant_finish'); 
+add_action('wp_ajax_eftm_restore_tenant_contract', 'eftm_execute_ajax_tenant_restore');
 add_action('wp_ajax_eftm_delete_tenant', 'eftm_execute_ajax_tenant_deletion'); 
 add_action('wp_ajax_eftm_get_properties', 'eftm_global_execute_properties_fetch'); 
 
@@ -1446,6 +1447,24 @@ function eftm_execute_ajax_tenant_finish() {
     if (function_exists('update_field')) { 
         update_field('tenant_status', 'finished', $tid); 
     } 
+    ef_purge_page_cache($tid);
+    wp_send_json_success();
+}
+
+function eftm_execute_ajax_tenant_restore() {
+    if (!isset($_POST['security']) || (!wp_verify_nonce($_POST['security'], 'restore_tenant_nonce') && !wp_verify_nonce($_POST['security'], 'finish_tenant_nonce'))) {
+        wp_send_json_error('Invalid security check.', 403);
+    }
+    if (!is_user_logged_in()) {
+        wp_send_json_error('Unauthorized.', 403);
+    }
+    $tid = intval($_POST['tenant_id'] ?? 0);
+    if (!$tid) wp_send_json_error('Tenant ID is required.');
+
+    update_post_meta($tid, 'tenant_status', 'active');
+    if (function_exists('update_field')) {
+        update_field('tenant_status', 'active', $tid);
+    }
     ef_purge_page_cache($tid);
     wp_send_json_success(); 
 } 

@@ -533,6 +533,7 @@ function ef_handle_get_property_tenants_simple() {
 } 
 }
 
+add_action('wp_ajax_eftm_restore_tenant_contract', 'eftm_execute_ajax_tenant_restore');
 add_action('wp_ajax_get_tenant_modal_details', 'ef_handle_get_tenant_modal_details');
 add_action('wp_ajax_nopriv_get_tenant_modal_details', 'ef_handle_get_tenant_modal_details');
 if (!function_exists('ef_handle_get_tenant_modal_details')) {
@@ -865,6 +866,7 @@ add_action('wp_footer', function() { ?>
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                     <div id="efHistModalPayHeader" style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b;">PAYMENT HISTORY (0)</div>
                     <div style="display: flex; align-items: center; gap: 8px;">
+                        <button type="button" id="efHistModalRestoreBtn" style="display:none; background: #ffffff; border: 1px solid #00a86b; color: #00a86b; padding: 6px 16px; border-radius: 20px; font-size: 13px; font-weight: 600; cursor: pointer;">↩ Restore</button>
                         <button type="button" id="efHistModalRenewBtn" onclick="efTriggerRenewPopup(this)" style="background: #ffffff; border: 1px solid #e2e8f0; color: #0f172a; padding: 6px 16px; border-radius: 20px; font-size: 13px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">🔄 Renew</button>
                         <button type="button" id="efHistModalReportBtn" style="background: #ffffff; border: 1px solid #059669; color: #059669; padding: 6px 16px; border-radius: 20px; font-size: 13px; font-weight: 600; cursor: pointer;">Yearly report</button>
                     </div>
@@ -1353,16 +1355,24 @@ add_action('wp_footer', function() { ?>
             document.getElementById('efHistModalTitle').textContent = data.name + ' — contract history';
 
             const statusPill = document.getElementById('efHistModalStatusPill');
+            const restoreBtn = document.getElementById('efHistModalRestoreBtn');
             if (data.status === 'finished') {
                 statusPill.textContent = 'Finished';
                 statusPill.style.border = '1px solid #cbd5e1';
                 statusPill.style.background = '#ffffff';
                 statusPill.style.color = '#0f172a';
+                if (restoreBtn) {
+                    restoreBtn.style.display = 'inline-block';
+                    restoreBtn.onclick = function() {
+                        efRestoreTenantContract(data.id, data.name);
+                    };
+                }
             } else {
                 statusPill.textContent = 'Active';
                 statusPill.style.border = '1px solid #a7f3d0';
                 statusPill.style.background = '#ecfdf5';
                 statusPill.style.color = '#059669';
+                if (restoreBtn) restoreBtn.style.display = 'none';
             }
 
             document.getElementById('efHistModalPropertyPill').textContent = data.property_name;
@@ -1444,6 +1454,28 @@ add_action('wp_footer', function() { ?>
             alert('Network error loading tenant details.');
             efCloseTenantHistoryModal();
         });
+    };
+
+    window.efRestoreTenantContract = function(id, name) {
+        if (confirm(`Restore tenant ${name}? This will move the tenant back to active status.`)) {
+            const ajaxUrl = '<?php echo admin_url("admin-ajax.php"); ?>';
+            const fd = new FormData();
+            fd.append('action', 'eftm_restore_tenant_contract');
+            fd.append('tenant_id', id);
+            fd.append('security', '<?php echo wp_create_nonce("restore_tenant_nonce"); ?>');
+
+            fetch(ajaxUrl, { method: 'POST', body: fd })
+            .then(r => r.json())
+            .then(res => {
+                if (res.success) {
+                    alert('Tenant restored successfully!');
+                    if (typeof efCloseTenantHistoryModal === 'function') efCloseTenantHistoryModal();
+                    window.location.href = window.location.pathname + '?_t=' + Date.now();
+                } else {
+                    alert(res.data || 'Failed to restore tenant');
+                }
+            }).catch(err => { console.error(err); alert('Network error restoring tenant'); });
+        }
     };
 
     window.efCloseTenantHistoryModal = function() {
@@ -1774,7 +1806,10 @@ add_action('wp_footer', function() { ?>
                                     <path d="M12 7v5l4 2"></path>
                                 </svg>
                             </div>
-                            <span style="border:1px solid #cbd5e1; background:#ffffff; color:#0f172a; padding:3px 10px; border-radius:20px; font-size:12px; font-weight:600; white-space:nowrap; flex-shrink:0;">Finished</span>
+                            <div style="display:flex; align-items:center; gap:6px;">
+                                <button type="button" onclick="event.stopPropagation(); efRestoreTenantContract(${t.id}, '${(t.name || '').replace(/'/g, "\\'")}');" style="background:#ffffff; border:1px solid #00a86b; color:#00a86b; padding:2px 8px; border-radius:12px; font-size:11px; font-weight:600; cursor:pointer;">↩ Restore</button>
+                                <span style="border:1px solid #cbd5e1; background:#ffffff; color:#0f172a; padding:3px 10px; border-radius:20px; font-size:12px; font-weight:600; white-space:nowrap; flex-shrink:0;">Finished</span>
+                            </div>
                         </div>
                         <div style="width:100%;">
                             <div style="font-size:15px; font-weight:700; color:#0f172a; line-height:1.3; word-break:break-word;">${t.name}</div>
