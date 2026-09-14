@@ -18,19 +18,12 @@ if (!function_exists('ef_is_tenant_billable')) {
         $e_str = get_field('tenant_end', $t_id) ?: get_post_meta($t_id, 'tenant_end', true);
         if (!$s_str) return true;
 
-        $dd = ef_get_tenant_due_day($t_id);
         $dim = (int)date('t', strtotime("$y-$m-01"));
-        $due_date_str = "$y-$m-" . str_pad(min($dd, $dim), 2, '0', STR_PAD_LEFT);
-        
-        if ($s_str > $due_date_str) return false;
-        if ($e_str && $e_str < "$y-$m-01") return false;
+        $month_end_str = "$y-$m-" . str_pad($dim, 2, '0', STR_PAD_LEFT);
+        $month_start_str = "$y-$m-01";
 
-        $start_ts = strtotime($s_str);
-        $due_ts = strtotime($due_date_str);
-        $diff_days = round(($due_ts - $start_ts) / (60 * 60 * 24));
-        
-        if ($diff_days < 25) return false;
-        if ($e_str && $e_str < $due_date_str) return false;
+        if ($s_str > $month_end_str) return false;
+        if ($e_str && $e_str < $month_start_str) return false;
 
         return true;
     }
