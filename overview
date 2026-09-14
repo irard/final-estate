@@ -90,6 +90,7 @@ if (!function_exists('ef_get_tenant_total_contract_amount')) {
 
 if (!function_exists('ef_get_tenant_total_payments_amount')) {
     function ef_get_tenant_total_payments_amount($t_id) {
+        $tenant_start = get_field('tenant_start', $t_id) ?: get_post_meta($t_id, 'tenant_start', true);
         $payments = get_posts(array(    
             'post_type'      => 'payment',    
             'post_status'    => ['publish', 'future'],
@@ -101,6 +102,16 @@ if (!function_exists('ef_get_tenant_total_payments_amount')) {
             $pid = $p->ID;
             $pay_tid = ef_get_payment_tenant_id($pid);
             if ($pay_tid === $target_tid) {
+                if ($tenant_start) {
+                    $pay_date = get_field('cheque_end_date', $pid) ?: get_post_meta($pid, 'cheque_end_date', true) ?: get_field('cheque_start_date', $pid) ?: get_post_meta($pid, 'cheque_start_date', true) ?: get_field('date_of_payment', $pid) ?: get_post_meta($pid, 'date_of_payment', true);
+                    if ($pay_date) {
+                        $pay_ymd = date('Y-m-d', strtotime($pay_date));
+                        $start_ymd = date('Y-m-d', strtotime($tenant_start));
+                        if ($pay_ymd < $start_ymd) {
+                            continue;
+                        }
+                    }
+                }
                 $amount = get_field('amount_paid', $pid) ?: get_post_meta($pid, 'amount_paid', true);
                 if ($amount) {
                     $total_paid += ef_clean_amount($amount);
@@ -218,8 +229,22 @@ if (!function_exists('ef_get_tenant_monthly_status')) {
 if (!defined('ABSPATH')) exit; 
  
 add_shortcode('ef_total_tenants', function() {  
-    $count_posts = wp_count_posts('ef_tenant');  
-    return isset($count_posts->publish) ? number_format($count_posts->publish) : '0';  
+    $t_query = new WP_Query([
+        'post_type'      => 'ef_tenant',
+        'post_status'    => 'publish',
+        'posts_per_page' => -1,
+        'fields'         => 'ids'
+    ]);
+    $active_count = 0;
+    if (!empty($t_query->posts)) {
+        foreach ($t_query->posts as $tid) {
+            $st = get_post_meta($tid, 'tenant_status', true) ?: (function_exists('get_field') ? get_field('tenant_status', $tid) : '');
+            if ($st !== 'finished') {
+                $active_count++;
+            }
+        }
+    }
+    return number_format($active_count);
 });  
   
 add_shortcode('ef_total_payments', function() {  
