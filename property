@@ -1806,10 +1806,7 @@ add_action('wp_footer', function() { ?>
                                     <path d="M12 7v5l4 2"></path>
                                 </svg>
                             </div>
-                            <div style="display:flex; align-items:center; gap:6px;">
-                                <button type="button" onclick="event.stopPropagation(); efRestoreTenantContract(${t.id}, '${(t.name || '').replace(/'/g, "\\'")}');" style="background:#ffffff; border:1px solid #00a86b; color:#00a86b; padding:2px 8px; border-radius:12px; font-size:11px; font-weight:600; cursor:pointer;">↩ Restore</button>
-                                <span style="border:1px solid #cbd5e1; background:#ffffff; color:#0f172a; padding:3px 10px; border-radius:20px; font-size:12px; font-weight:600; white-space:nowrap; flex-shrink:0;">Finished</span>
-                            </div>
+                            <span style="border:1px solid #cbd5e1; background:#ffffff; color:#0f172a; padding:3px 10px; border-radius:20px; font-size:12px; font-weight:600; white-space:nowrap; flex-shrink:0;">Finished</span>
                         </div>
                         <div style="width:100%;">
                             <div style="font-size:15px; font-weight:700; color:#0f172a; line-height:1.3; word-break:break-word;">${t.name}</div>

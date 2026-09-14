@@ -1709,6 +1709,12 @@ function eftm_handle_ajax_tenant_breakdown() {
     if (!empty($all_payments)) {
         $month_totals = [];
         foreach ($all_payments as $p_all) {
+            if ($contract_start) {
+                $p_end_date = get_field('cheque_end_date', $p_all->ID) ?: get_post_meta($p_all->ID, 'cheque_end_date', true) ?: get_field('cheque_start_date', $p_all->ID) ?: get_post_meta($p_all->ID, 'cheque_start_date', true) ?: get_field('date_of_payment', $p_all->ID) ?: get_post_meta($p_all->ID, 'date_of_payment', true);
+                if ($p_end_date && date('Y-m-d', strtotime($p_end_date)) < date('Y-m-d', strtotime($contract_start))) {
+                    continue;
+                }
+            }
             $p_period_all = ef_get_payment_period($p_all->ID);
             $amt_all = floatval(str_replace(',', '', get_field('amount_paid', $p_all->ID) ?: get_post_meta($p_all->ID, 'amount_paid', true)));
             if (!isset($month_totals[$p_period_all])) $month_totals[$p_period_all] = 0;
@@ -1725,7 +1731,14 @@ function eftm_handle_ajax_tenant_breakdown() {
         while ($p_query->have_posts()) { 
             $p_query->the_post(); 
             $pay_id = get_the_ID(); 
+            $cheque_start = get_field('cheque_start_date', $pay_id) ?: get_post_meta($pay_id, 'cheque_start_date', true) ?: '';
+            $cheque_end = get_field('cheque_end_date', $pay_id) ?: get_post_meta($pay_id, 'cheque_end_date', true) ?: '';
             $raw_date = get_field('date_of_payment', $pay_id) ?: get_post_meta($pay_id, 'date_of_payment', true); 
+
+            $check_date = $cheque_end ?: ($cheque_start ?: $raw_date);
+            if ($contract_start && $check_date && date('Y-m-d', strtotime($check_date)) < date('Y-m-d', strtotime($contract_start))) {
+                continue;
+            }
             $ts = $raw_date ? strtotime($raw_date) : get_the_date('U', $pay_id); 
             $period = (function_exists('get_field') ? get_field('payment_period', $pay_id) : null) ?: get_post_meta($pay_id, 'payment_period', true) ?: date('Y-m', $ts);
             $period = substr((string)$period, 0, 7);
