@@ -508,20 +508,21 @@ function ef_handle_get_property_tenants_simple() {
         $raw_ch = get_post_meta($tid, 'contract_history', true);
         $ch_list = is_array($raw_ch) ? $raw_ch : (json_decode($raw_ch, true) ?: []);
         if (!empty($ch_list)) {
-            foreach ($ch_list as $ch) {
+            foreach ($ch_list as $index => $ch) {
                 $ch_start = !empty($ch['tenant_start']) ? date('n/j/Y', strtotime($ch['tenant_start'])) : '';
                 $ch_end = !empty($ch['tenant_end']) ? date('n/j/Y', strtotime($ch['tenant_end'])) : '';
                 $ch_range = ($ch_start && $ch_end) ? ($ch_start . ' - ' . $ch_end) : ($ch_start ?: $ch_end);
                 $ch_rent = floatval($ch['monthly_rent'] ?? $rent);
 
                 $history_data[] = [
-                    'id'         => $tid,
-                    'name'       => $t->post_title,
-                    'unit'       => $unit ?: '1A',
-                    'address'    => $address ?: 'N/A',
-                    'rent'       => $ch_rent,
-                    'status'     => 'finished',
-                    'date_range' => $ch_range
+                    'id'            => $tid,
+                    'history_index' => $index,
+                    'name'          => $t->post_title,
+                    'unit'          => $unit ?: '1A',
+                    'address'       => $address ?: 'N/A',
+                    'rent'          => $ch_rent,
+                    'status'        => 'finished',
+                    'date_range'    => $ch_range
                 ];
             }
         }
@@ -565,30 +566,28 @@ function ef_handle_get_tenant_modal_details() {
     $end = (function_exists('get_field') ? get_field('tenant_end', $tenant_id) : null) ?: get_post_meta($tenant_id, 'tenant_end', true);
     $unit = (function_exists('get_field') ? get_field('tenant_unit', $tenant_id) : null) ?: get_post_meta($tenant_id, 'tenant_unit', true) ?: '1A';
 
+    $raw_history = get_post_meta($tenant_id, 'contract_history', true);
+    $contract_history = is_array($raw_history) ? $raw_history : (json_decode($raw_history, true) ?: []);
+
+    $history_index = isset($_POST['history_index']) && $_POST['history_index'] !== '' ? intval($_POST['history_index']) : -1;
+    $is_historical_view = false;
+
+    if ($history_index >= 0 && isset($contract_history[$history_index])) {
+        $ch_item = $contract_history[$history_index];
+        $start = $ch_item['tenant_start'] ?? $start;
+        $end = $ch_item['tenant_end'] ?? $end;
+        $monthly_rent = floatval($ch_item['monthly_rent'] ?? $monthly_rent);
+        $total_rent_cost = floatval($ch_item['total_rent_cost'] ?? $total_rent_cost);
+        $contract_months = intval($ch_item['contract_months'] ?? $contract_months);
+        $status = 'finished';
+        $is_historical_view = true;
+    }
+
     $prop_field = (function_exists('get_field') ? get_field('property_id', $tenant_id) : null) ?: get_post_meta($tenant_id, 'property_id', true);
     $propId = is_object($prop_field) ? $prop_field->ID : (is_array($prop_field) ? ($prop_field['ID'] ?? $prop_field[0]->ID ?? 0) : intval($prop_field));
     $property_name = $propId ? get_the_title($propId) : 'N/A';
 
     $total_contract = $total_rent_cost ?: ($monthly_rent * 12);
-    $total_paid = function_exists('ef_get_tenant_total_payments_amount') ? ef_get_tenant_total_payments_amount($tenant_id) : 0;
-    if (!function_exists('ef_get_tenant_total_payments_amount') && !$total_paid) {
-        $p_posts = get_posts([
-            'post_type' => 'payment',
-            'post_status' => ['publish', 'future', 'pending', 'draft', 'private'],
-            'posts_per_page' => -1,
-            'meta_query' => [
-                'relation' => 'OR',
-                ['key' => 'associated_tenant', 'value' => $tenant_id, 'compare' => '='],
-                ['key' => 'select_tenant', 'value' => $tenant_id, 'compare' => '='],
-                ['key' => 'select_tenant', 'value' => '"' . $tenant_id . '"', 'compare' => 'LIKE'],
-            ]
-        ]);
-        foreach ($p_posts as $p) {
-            $total_paid += floatval(str_replace(',', '', (function_exists('get_field') ? get_field('amount_paid', $p->ID) : null) ?: get_post_meta($p->ID, 'amount_paid', true)));
-        }
-    }
-
-    $balance = function_exists('ef_get_tenant_outstanding_balance') ? ef_get_tenant_outstanding_balance($tenant_id) : max(0, $total_contract - $total_paid);
 
     // Fetch payment records
     $payment_posts = get_posts([
@@ -606,18 +605,37 @@ function ef_handle_get_tenant_modal_details() {
     ]);
 
     $payments = [];
+    $total_paid = 0.00;
+
     foreach ($payment_posts as $p) {
         $pay_id = $p->ID;
         $amt = floatval(str_replace(',', '', (function_exists('get_field') ? get_field('amount_paid', $pay_id) : null) ?: get_post_meta($pay_id, 'amount_paid', true)));
         $raw_date = (function_exists('get_field') ? get_field('date_of_payment', $pay_id) : null) ?: get_post_meta($pay_id, 'date_of_payment', true);
+        $cheque_start = (function_exists('get_field') ? get_field('cheque_start_date', $pay_id) : null) ?: get_post_meta($pay_id, 'cheque_start_date', true);
+        $cheque_end = (function_exists('get_field') ? get_field('cheque_end_date', $pay_id) : null) ?: get_post_meta($pay_id, 'cheque_end_date', true);
+
+        $pay_ref_date = $cheque_end ?: ($cheque_start ?: $raw_date);
+        if ($pay_ref_date) {
+            $pay_ymd = date('Y-m-d', strtotime($pay_ref_date));
+            if ($is_historical_view) {
+                $start_ymd = $start ? date('Y-m-d', strtotime($start)) : '';
+                $end_ymd = $end ? date('Y-m-d', strtotime($end)) : '';
+                if ($start_ymd && $pay_ymd < $start_ymd) continue;
+                if ($end_ymd && $pay_ymd > $end_ymd) continue;
+            } else {
+                if ($start) {
+                    $start_ymd = date('Y-m-d', strtotime($start));
+                    if ($pay_ymd < $start_ymd) continue;
+                }
+            }
+        }
+
+        $total_paid += $amt;
         $ts = $raw_date ? strtotime($raw_date) : get_the_date('U', $pay_id);
         $date_fmt = $ts ? date('n/j/Y', $ts) : 'N/A';
 
         $method = (function_exists('get_field') ? get_field('mode_of_payment', $pay_id) : null) ?: get_post_meta($pay_id, 'mode_of_payment', true) ?: 'Cash';
         $cheque = (function_exists('get_field') ? get_field('transaction_cheque_number', $pay_id) : null) ?: get_post_meta($pay_id, 'transaction_cheque_number', true);
-
-        $cheque_start = (function_exists('get_field') ? get_field('cheque_start_date', $pay_id) : null) ?: get_post_meta($pay_id, 'cheque_start_date', true);
-        $cheque_end = (function_exists('get_field') ? get_field('cheque_end_date', $pay_id) : null) ?: get_post_meta($pay_id, 'cheque_end_date', true);
         $period = (function_exists('get_field') ? get_field('payment_period', $pay_id) : null) ?: get_post_meta($pay_id, 'payment_period', true);
 
         if ($cheque_start && $cheque_end) {
@@ -638,6 +656,8 @@ function ef_handle_get_tenant_modal_details() {
             'receipt_voucher' => $rv
         ];
     }
+
+    $balance = max(0, $total_contract - $total_paid);
 
     $start_fmt = $start ? date('n/j/Y', strtotime($start)) : 'N/A';
     $end_fmt = $end ? date('n/j/Y', strtotime($end)) : 'N/A';
@@ -1313,7 +1333,7 @@ add_action('wp_footer', function() { ?>
         if (renewTotalRent) renewTotalRent.addEventListener('input', calculateRenewValues);
     });
 
-    window.efOpenTenantHistoryModal = function(tenantId) {
+    window.efOpenTenantHistoryModal = function(tenantId, historyIndex) {
         const modal = document.getElementById('efTenantHistoryModal');
         if (!modal) return;
 
@@ -1338,6 +1358,9 @@ add_action('wp_footer', function() { ?>
         const fd = new FormData();
         fd.append('action', 'get_tenant_modal_details');
         fd.append('tenant_id', tenantId);
+        if (historyIndex !== undefined && historyIndex >= 0) {
+            fd.append('history_index', historyIndex);
+        }
 
         const ajaxUrl = '<?php echo admin_url("admin-ajax.php"); ?>';
 
@@ -1485,14 +1508,14 @@ add_action('wp_footer', function() { ?>
         setTimeout(() => { modal.style.display = 'none'; }, 250);
     };
 
-    window.efDispatchGlobalView = function(tid) {
+    window.efDispatchGlobalView = function(tid, historyIndex) {
         if (document.getElementById('efWorkspaceDynamicScreen')) {
             window.dispatchEvent(new CustomEvent('ef_load_tenant', { detail: { id: tid } }));
             document.querySelectorAll('.ef-tenant-card-item').forEach(c => c.classList.remove('ef-active-tenant'));
             const row = document.getElementById('tenant-row-' + tid);
             if (row) row.classList.add('ef-active-tenant');
         } else {
-            window.efOpenTenantHistoryModal(tid);
+            window.efOpenTenantHistoryModal(tid, historyIndex);
         }
     };
 
@@ -1797,7 +1820,7 @@ add_action('wp_footer', function() { ?>
 
             const historyTenantsHtml = historyTenants.length
                 ? historyTenants.map(t => `
-                    <div onclick="if(typeof efDispatchGlobalView==='function') efDispatchGlobalView(${t.id});" style="padding:14px 16px; background:#ffffff; border-radius:12px; margin-bottom:10px; border:1px solid #e2e8f0; cursor:pointer; display:flex; flex-direction:column; gap:10px;">
+                    <div onclick="if(typeof efDispatchGlobalView==='function') efDispatchGlobalView(${t.id}, ${t.history_index !== undefined ? t.history_index : -1});" style="padding:14px 16px; background:#ffffff; border-radius:12px; margin-bottom:10px; border:1px solid #e2e8f0; cursor:pointer; display:flex; flex-direction:column; gap:10px;">
                         <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
                             <div style="width:32px; height:32px; border-radius:8px; background:#f1f5f9; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
                                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
