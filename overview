@@ -417,12 +417,19 @@ add_shortcode('ef_card_active_tenants', function() {
 }); 
  
 add_shortcode('ef_card_outstanding_total', function() { 
+    $period_data = ef_get_dashboard_period();
+    $m = $period_data['m']; $y = $period_data['y'];
     $tenants = new WP_Query(['post_type' => 'ef_tenant', 'post_status' => 'publish', 'posts_per_page' => -1]); 
     $due_count = 0; 
     if ($tenants->have_posts()) { 
         while ($tenants->have_posts()) { 
             $tenants->the_post(); 
             $t_id = get_the_ID(); 
+            $st = get_post_meta($t_id, 'tenant_status', true) ?: (function_exists('get_field') ? get_field('tenant_status', $t_id) : '');
+            if ($st === 'finished') continue;
+
+            if (function_exists('ef_is_tenant_billable') && !ef_is_tenant_billable($t_id, $m, $y)) continue;
+
             if (ef_get_tenant_outstanding_balance($t_id) > 0.001) {
                 $due_count++;
             }
