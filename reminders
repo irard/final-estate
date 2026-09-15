@@ -57,19 +57,12 @@ if (!function_exists('ef_is_tenant_billable')) {
         $e_str = get_field('tenant_end', $t_id) ?: get_post_meta($t_id, 'tenant_end', true);
         if (!$s_str) return true;
 
-        $dd = ef_get_tenant_due_day($t_id);
         $dim = (int)date('t', strtotime("$y-$m-01"));
-        $due_date_str = "$y-$m-" . str_pad(min($dd, $dim), 2, '0', STR_PAD_LEFT);
-        
-        if ($s_str > $due_date_str) return false;
-        if ($e_str && $e_str < "$y-$m-01") return false;
+        $month_end_str = "$y-$m-" . str_pad($dim, 2, '0', STR_PAD_LEFT);
+        $month_start_str = "$y-$m-01";
 
-        $start_ts = strtotime($s_str);
-        $due_ts = strtotime($due_date_str);
-        $diff_days = round(($due_ts - $start_ts) / (60 * 60 * 24));
-        
-        if ($diff_days < 25) return false;
-        if ($e_str && $e_str < $due_date_str) return false;
+        if ($s_str > $month_end_str) return false;
+        if ($e_str && $e_str < $month_start_str) return false;
 
         return true;
     }
@@ -92,6 +85,7 @@ if (!function_exists('ef_get_tenant_total_contract_amount')) {
 
 if (!function_exists('ef_get_tenant_total_payments_amount')) {
     function ef_get_tenant_total_payments_amount($t_id) {
+        $tenant_start = get_field('tenant_start', $t_id) ?: get_post_meta($t_id, 'tenant_start', true);
         $payments = get_posts(array(    
             'post_type'      => 'payment',    
             'post_status'    => ['publish', 'future'],
@@ -103,6 +97,16 @@ if (!function_exists('ef_get_tenant_total_payments_amount')) {
             $pid = $p->ID;
             $pay_tid = ef_get_payment_tenant_id($pid);
             if ($pay_tid === $target_tid) {
+                if ($tenant_start) {
+                    $pay_date = get_field('cheque_end_date', $pid) ?: get_post_meta($pid, 'cheque_end_date', true) ?: get_field('cheque_start_date', $pid) ?: get_post_meta($pid, 'cheque_start_date', true) ?: get_field('date_of_payment', $pid) ?: get_post_meta($pid, 'date_of_payment', true);
+                    if ($pay_date) {
+                        $pay_ymd = date('Y-m-d', strtotime($pay_date));
+                        $start_ymd = date('Y-m-d', strtotime($tenant_start));
+                        if ($pay_ymd < $start_ymd) {
+                            continue;
+                        }
+                    }
+                }
                 $amount = get_field('amount_paid', $pid) ?: get_post_meta($pid, 'amount_paid', true);
                 if ($amount) {
                     $total_paid += ef_clean_amount($amount);
@@ -159,6 +163,11 @@ if (!function_exists('ef_parse_date_to_ymd')) {
 
 if (!function_exists('ef_get_tenant_last_payment_end_date')) {
     function ef_get_tenant_last_payment_end_date($t_id) {
+        $st = get_post_meta($t_id, 'tenant_status', true) ?: (function_exists('get_field') ? get_field('tenant_status', $t_id) : '');
+        if ($st === 'finished') {
+            return '9999-12-31';
+        }
+
         $payments = get_posts(array(    
             'post_type'      => 'payment',    
             'post_status'    => ['publish', 'future'],
@@ -182,16 +191,19 @@ if (!function_exists('ef_get_tenant_last_payment_end_date')) {
                 }
             }
         }
-        if (!$max_end_date) {
-            // Fallback to contract start date
-            $start_date = get_field('tenant_start', $t_id) ?: get_post_meta($t_id, 'tenant_start', true);
-            if ($start_date) {
-                $max_end_date = ef_parse_date_to_ymd($start_date) ?: date('Y-m-d');
-            } else {
-                $max_end_date = date('Y-m-d'); // Default to today
-            }
+
+        $start_date_raw = get_field('tenant_start', $t_id) ?: get_post_meta($t_id, 'tenant_start', true);
+        $start_date = $start_date_raw ? ef_parse_date_to_ymd($start_date_raw) : '';
+
+        if ($start_date && (empty($max_end_date) || $start_date > $max_end_date)) {
+            return $start_date;
         }
-        return $max_end_date;
+
+        if ($max_end_date) {
+            return $max_end_date;
+        }
+
+        return $start_date ?: date('Y-m-d');
     }
 }
  
@@ -662,6 +674,9 @@ add_shortcode('outstanding_tenants', function() {
     if ( ! function_exists( 'get_field' ) ) { 
         return ''; 
     } 
+
+    $period_data = function_exists('ef_get_dashboard_period') ? ef_get_dashboard_period() : ['m' => date('m'), 'y' => date('Y')];
+    $m = $period_data['m']; $y = $period_data['y'];
  
     $tenants = get_posts([   
         'post_type'      => 'ef_tenant',   
@@ -674,6 +689,11 @@ add_shortcode('outstanding_tenants', function() {
     if (!empty($tenants)) { 
         foreach ($tenants as $tenant) {   
             $tid = $tenant->ID;   
+            $st = get_post_meta($tid, 'tenant_status', true) ?: (function_exists('get_field') ? get_field('tenant_status', $tid) : '');
+            if ($st === 'finished') continue;
+
+            if (function_exists('ef_is_tenant_billable') && !ef_is_tenant_billable($tid, $m, $y)) continue;
+
             $outstanding = ef_get_tenant_outstanding_balance($tid);
             if ($outstanding <= 0.001) continue;   
                
