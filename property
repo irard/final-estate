@@ -1261,7 +1261,7 @@ add_action('wp_footer', function() { ?>
 
             const titleSuffix = (type === 'summary') ? 'payment summary' : 'Yearly report';
             const rawFilename = `${tName || 'Tenant'} ${titleSuffix}.pdf`;
-            const filename = rawFilename.replace(/[/\\?%*:|"<>]/g, '').trim();
+            const filename = rawFilename.replace(/[/\\?%*:"<>]/g, '').trim();
 
             const options = {
                 margin: [0.3, 0.3, 0.3, 0.3],
