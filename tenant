@@ -38,9 +38,9 @@ if (!function_exists('ef_get_tenant_total_payments_amount')) {
                 if ($tenant_start) {
                     $pay_date = get_field('cheque_end_date', $pid) ?: get_post_meta($pid, 'cheque_end_date', true) ?: get_field('cheque_start_date', $pid) ?: get_post_meta($pid, 'cheque_start_date', true) ?: get_field('date_of_payment', $pid) ?: get_post_meta($pid, 'date_of_payment', true);
                     if ($pay_date) {
-                        $pay_ymd = date('Y-m-d', strtotime($pay_date));
-                        $start_ymd = date('Y-m-d', strtotime($tenant_start));
-                        if ($pay_ymd < $start_ymd) {
+                    $pay_ts = strtotime(str_replace('/', '-', $pay_date));
+                    $start_ts = strtotime(str_replace('/', '-', $tenant_start));
+                    if ($pay_ts && $start_ts && date('Y-m-d', $pay_ts) < date('Y-m-d', $start_ts)) {
                             continue;
                         }
                     }
@@ -1847,7 +1847,12 @@ function eftm_handle_ajax_tenant_breakdown() {
         'post_status'    => ['publish', 'future'], 
         'posts_per_page' => $posts_per_page, 
         'paged'          => $paged,
-        'meta_query'     => [['key' => 'associated_tenant', 'value' => $tenant_id, 'compare' => '=']], 
+        'meta_query'     => [
+            'relation' => 'OR',
+            ['key' => 'associated_tenant', 'value' => $tenant_id, 'compare' => '='],
+            ['key' => 'select_tenant', 'value' => $tenant_id, 'compare' => '='],
+            ['key' => 'select_tenant', 'value' => '"' . $tenant_id . '"', 'compare' => 'LIKE'],
+        ],
         'meta_key'       => 'payment_period', 'orderby' => 'meta_value', 'order' => 'DESC' 
     ]); 
     $total_pages = $p_query->max_num_pages;
@@ -1869,8 +1874,12 @@ function eftm_handle_ajax_tenant_breakdown() {
         foreach ($all_payments as $p_all) {
             if ($contract_start) {
                 $p_end_date = get_field('cheque_end_date', $p_all->ID) ?: get_post_meta($p_all->ID, 'cheque_end_date', true) ?: get_field('cheque_start_date', $p_all->ID) ?: get_post_meta($p_all->ID, 'cheque_start_date', true) ?: get_field('date_of_payment', $p_all->ID) ?: get_post_meta($p_all->ID, 'date_of_payment', true);
-                if ($p_end_date && date('Y-m-d', strtotime($p_end_date)) < date('Y-m-d', strtotime($contract_start))) {
-                    continue;
+                if ($p_end_date) {
+                    $p_ts = strtotime(str_replace('/', '-', $p_end_date));
+                    $c_start_ts = strtotime(str_replace('/', '-', $contract_start));
+                    if ($p_ts && $c_start_ts && date('Y-m-d', $p_ts) < date('Y-m-d', $c_start_ts)) {
+                        continue;
+                    }
                 }
             }
             $p_period_all = ef_get_payment_period($p_all->ID);
@@ -1894,8 +1903,12 @@ function eftm_handle_ajax_tenant_breakdown() {
             $raw_date = get_field('date_of_payment', $pay_id) ?: get_post_meta($pay_id, 'date_of_payment', true); 
 
             $check_date = $cheque_end ?: ($cheque_start ?: $raw_date);
-            if ($contract_start && $check_date && date('Y-m-d', strtotime($check_date)) < date('Y-m-d', strtotime($contract_start))) {
-                continue;
+            if ($contract_start && $check_date) {
+                $check_ts = strtotime(str_replace('/', '-', $check_date));
+                $c_start_ts = strtotime(str_replace('/', '-', $contract_start));
+                if ($check_ts && $c_start_ts && date('Y-m-d', $check_ts) < date('Y-m-d', $c_start_ts)) {
+                    continue;
+                }
             }
             $ts = $raw_date ? strtotime($raw_date) : get_the_date('U', $pay_id); 
             $period = (function_exists('get_field') ? get_field('payment_period', $pay_id) : null) ?: get_post_meta($pay_id, 'payment_period', true) ?: date('Y-m', $ts);
