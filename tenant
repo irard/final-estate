@@ -836,11 +836,59 @@ add_shortcode('tenant_profile', function() {
 
         window.efDownloadTenantPDF = function(tenantName, tenantData, type = 'yearly') {
             const fmtMoney = amount => (parseFloat(amount) || 0).toLocaleString('en-AE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const fmtDateDMY = dateStr => {
+                if (!dateStr || dateStr === 'N/A') return 'N/A';
+                let d = new Date(dateStr);
+                if (isNaN(d.getTime())) return dateStr;
+                return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear();
+            };
+            const numberToWordsDirham = amount => {
+                amount = parseFloat(String(amount).replace(/,/g, '')) || 0;
+                const units = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+                const tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+                const convertGroup = n => {
+                    let str = "";
+                    if (n >= 100) {
+                        str += units[Math.floor(n / 100)] + " Hundred ";
+                        n %= 100;
+                    }
+                    if (n >= 20) {
+                        str += tens[Math.floor(n / 10)] + (n % 10 ? " " + units[n % 10] : "");
+                    } else if (n > 0) {
+                        str += units[n];
+                    }
+                    return str.trim();
+                };
+                if (amount === 0) return "Only Zero UAE Dirham";
+                let dirhams = Math.floor(amount);
+                let fils = Math.round((amount - dirhams) * 100);
+                let parts = [];
+                if (dirhams >= 1000000) {
+                    let millions = Math.floor(dirhams / 1000000);
+                    dirhams %= 1000000;
+                    parts.push(convertGroup(millions) + " Million");
+                }
+                if (dirhams >= 1000) {
+                    let thousands = Math.floor(dirhams / 1000);
+                    dirhams %= 1000;
+                    parts.push(convertGroup(thousands) + " Thousand");
+                }
+                if (dirhams > 0) {
+                    parts.push(convertGroup(dirhams));
+                }
+                let res = "Only " + parts.join(" ").trim() + " UAE Dirham";
+                if (fils > 0) {
+                    res += " and " + convertGroup(fils) + " Fils";
+                }
+                return res;
+            };
+
             let tName = tenantName || 'Tenant';
             let prop = '';
             let unit = '1A';
             let monthlyRent = '0.00';
             let totalContract = '0.00';
+            let totalContractWords = '';
             let totalPaid = '0.00';
             let remainingBalance = '0.00';
             let paymentsCount = '0';
@@ -878,6 +926,7 @@ add_shortcode('tenant_profile', function() {
                 unit = content.getAttribute('data-unit') || '1A';
                 monthlyRent = content.getAttribute('data-monthly-rent') || '0.00';
                 totalContract = content.getAttribute('data-total-contract') || '0.00';
+                totalContractWords = content.getAttribute('data-total-contract-words') || '';
                 totalPaid = content.getAttribute('data-total-paid') || '0.00';
                 remainingBalance = content.getAttribute('data-remaining-balance') || '0.00';
                 paymentsCount = content.getAttribute('data-payments-count') || '0';
@@ -894,138 +943,230 @@ add_shortcode('tenant_profile', function() {
 
             const initials = tName.split(' ').map(w => w.charAt(0).toUpperCase()).join('').substring(0, 2) || 'SR';
 
-            let rowsHtml = '';
-            if (payments.length > 0) {
-                payments.forEach((p) => {
-                    const statusStr = p.status || 'Paid';
-                    const statusClass = (statusStr === 'Paid') ? 'color: #059669; background: #ecfdf5;' : 'color: #d97706; background: #fef3c7;';
-                    const amtStr = (typeof p.amount === 'number') ? fmtMoney(p.amount) : p.amount;
-                    const methodStr = p.method ? (p.cheque ? `${p.method} (${p.cheque})` : p.method) : 'Cash';
-                    rowsHtml += `
-                        <tr style="border-bottom: 1px solid #f1f5f9; font-size: 13px;">
-                            <td style="padding: 12px 14px; color: #0f172a; font-weight: 500;">${p.period || p.date}</td>
-                            <td style="padding: 12px 14px; color: #475569;">${methodStr}</td>
-                            <td style="padding: 12px 14px; color: #64748b;">${p.date}</td>
-                            <td style="padding: 12px 14px; color: #059669; font-weight: 700;">AED ${amtStr}</td>
-                            <td style="padding: 12px 14px; text-align: right;"><span style="padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; ${statusClass}">${statusStr}</span></td>
-                        </tr>
-                    `;
-                });
-            } else {
-                rowsHtml = `<tr><td colspan="5" style="padding: 20px; text-align: center; color: #64748b;">No recorded payments found.</td></tr>`;
-            }
+            const today = new Date();
+            const requestDate = String(today.getDate()).padStart(2, '0') + '/' + String(today.getMonth() + 1).padStart(2, '0') + '/' + today.getFullYear();
+            const printTimeStr = today.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true });
 
-            const statusBadgeHtml = (statusLabel === 'Contract ended')
-                ? `<span style="display: inline-block; padding: 3px 10px; border-radius: 12px; background: #fef2f2; color: #dc2626; border: 1px solid #fca5a5; font-size: 12px; font-weight: 600;">Contract ended</span>`
-                : `<span style="display: inline-block; padding: 3px 10px; border-radius: 12px; background: #ecfdf5; color: #059669; font-size: 12px; font-weight: 600;">Contract active</span>`;
+            let pdfHtml = '';
 
-            const docTitle = (type === 'summary') ? 'TENANT PAYMENT SUMMARY' : 'YEARLY FINANCIAL REPORT';
+            if (type === 'summary') {
+                let summaryRowsHtml = '';
+                if (payments.length > 0) {
+                    payments.forEach((p) => {
+                        const rawAmt = typeof p.amount === 'number' ? p.amount : (parseFloat(String(p.amount).replace(/,/g, '')) || 0);
+                        const amtFmt = (rawAmt % 1 === 0) ? rawAmt.toLocaleString('en-US') : rawAmt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        const pMethod = p.method || 'Cash';
+                        const pDate = fmtDateDMY(p.date || p.payment_date);
+                        const rvVal = p.rv || p.receipt_voucher || p.cheque || '';
+                        const rvDisplay = rvVal ? (String(rvVal).toUpperCase().startsWith('RV') ? String(rvVal) : `RV ${rvVal}`) : '';
+                        const rvNumOnly = rvVal ? String(rvVal).replace(/^RV\s*/i, '') : '';
 
-            const pdfHtml = `
-                <div style="font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding: 32px; background: #ffffff; color: #0f172a; width: 740px; box-sizing: border-box; border: 1px solid #e2e8f0; border-radius: 12px;">
-                    <!-- Document Header Banner -->
-                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #e2e8f0; padding-bottom: 16px; margin-bottom: 24px;">
-                        <div>
-                            <div style="color: #0f172a; font-size: 20px; font-weight: 800; letter-spacing: -0.5px;"><span style="color: #27784e;">AS Alhajeri</span> Estate</div>
-                            <div style="color: #64748b; font-size: 12px; font-weight: 500;">Property Suite</div>
-                        </div>
-                        <div style="text-align: right;">
-                            <div style="color: #00a86b; font-size: 18px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">${docTitle}</div>
-                            <div style="color: #64748b; font-size: 11px; margin-top: 2px;">Generated: ${new Date().toLocaleDateString('en-AE', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
-                        </div>
-                    </div>
+                        summaryRowsHtml += `
+                            <tr style="border-bottom: 1px solid #e2e8f0; font-size: 13px;">
+                                <td style="padding: 12px 10px; vertical-align: top; width: 45%;">
+                                    <div style="font-weight: normal; color: #000; line-height: 1.5;">
+                                        ${pMethod} received from ${tName}<br>
+                                        &nbsp;&nbsp;&nbsp;&nbsp;Amount ${amtFmt} UAE Dirham<br>
+                                        &nbsp;&nbsp;&nbsp;&nbsp;${rvDisplay ? rvDisplay + ' dt ' : ''}${pDate}
+                                    </div>
+                                </td>
+                                <td style="padding: 12px 10px; vertical-align: top; width: 15%; color: #000;">
+                                    Collected
+                                </td>
+                                <td style="padding: 12px 10px; vertical-align: top; text-align: right; width: 15%; font-weight: normal; color: #000;">
+                                    ${amtFmt}
+                                </td>
+                                <td style="padding: 12px 10px; vertical-align: top; text-align: center; width: 15%; color: #000;">
+                                    ${pDate}
+                                </td>
+                                <td style="padding: 12px 10px; vertical-align: top; text-align: right; width: 10%; color: #000;">
+                                    ${rvNumOnly}
+                                </td>
+                            </tr>
+                        `;
+                    });
+                } else {
+                    summaryRowsHtml = `<tr><td colspan="5" style="padding: 20px; text-align: center; color: #64748b;">No recorded payments found.</td></tr>`;
+                }
 
-                    <!-- Header -->
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px;">
-                        <div style="display: flex; align-items: center; gap: 16px;">
-                            <div style="width: 56px; height: 56px; border-radius: 50%; background: #00a86b; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 700;">${initials}</div>
+                const totalContractRaw = parseFloat(String(totalContract).replace(/,/g, '')) || 0;
+                const totalContractFmt = (totalContractRaw % 1 === 0) ? totalContractRaw.toLocaleString('en-US') : totalContractRaw.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                const totalContractWordsVal = totalContractWords || numberToWordsDirham(totalContractRaw);
+
+                pdfHtml = `
+                    <div style="font-family: Arial, sans-serif; padding: 40px; background: #ffffff; color: #0f172a; width: 740px; box-sizing: border-box;">
+                        <!-- Top Section -->
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 25px;">
                             <div>
-                                <h1 style="margin: 0 0 4px 0; font-size: 24px; font-weight: 800; color: #0f172a;">${tName}</h1>
-                                <div style="color: #64748b; font-size: 14px; font-weight: 500; margin-bottom: 6px;">${prop} — Unit ${unit}</div>
-                                ${statusBadgeHtml}
+                                <div style="font-size: 13px; color: #000; font-weight: bold; margin-bottom: 20px;">${requestDate}</div>
+                                <div style="font-size: 18px; color: #000; font-weight: bold;">${totalContractFmt}</div>
+                            </div>
+                            <div style="text-align: right; font-size: 13px; color: #000;">
+                                <div style="font-size: 15px; font-weight: bold; margin-bottom: 6px;">${totalContractFmt} AED</div>
+                                <div style="margin-bottom: 6px;">${fmtDateDMY(contractEnd)} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ${fmtDateDMY(contractStart)}</div>
+                                <div>${prop || 'Villas'}</div>
+                            </div>
+                        </div>
+
+                        <!-- Tenant Header & Words -->
+                        <div style="text-align: center; margin-bottom: 35px;">
+                            <div style="font-size: 16px; font-weight: bold; color: #000; margin-bottom: 6px;">${tName}</div>
+                            <div style="font-size: 14px; font-weight: bold; color: #000;">${totalContractWordsVal}</div>
+                        </div>
+
+                        <!-- Payments List -->
+                        <div style="margin-bottom: 40px;">
+                            <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                                <tbody>
+                                    ${summaryRowsHtml}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Footer -->
+                        <div style="font-size: 12px; color: #000; display: flex; justify-content: space-between; align-items: flex-end; margin-top: 50px;">
+                            <div>
+                                <div style="font-weight: bold; margin-bottom: 25px;">admin</div>
+                                <div>Printed from MELIKA</div>
+                            </div>
+                            <div>
+                                ${printTimeStr}
                             </div>
                         </div>
                     </div>
+                `;
+            } else {
+                let rowsHtml = '';
+                if (payments.length > 0) {
+                    payments.forEach((p) => {
+                        const statusStr = p.status || 'Paid';
+                        const statusClass = (statusStr === 'Paid') ? 'color: #059669; background: #ecfdf5;' : 'color: #d97706; background: #fef3c7;';
+                        const amtStr = (typeof p.amount === 'number') ? fmtMoney(p.amount) : p.amount;
+                        const methodStr = p.method ? (p.cheque ? `${p.method} (${p.cheque})` : p.method) : 'Cash';
+                        rowsHtml += `
+                            <tr style="border-bottom: 1px solid #f1f5f9; font-size: 13px;">
+                                <td style="padding: 12px 14px; color: #0f172a; font-weight: 500;">${p.period || p.date}</td>
+                                <td style="padding: 12px 14px; color: #475569;">${methodStr}</td>
+                                <td style="padding: 12px 14px; color: #64748b;">${p.date}</td>
+                                <td style="padding: 12px 14px; color: #059669; font-weight: 700;">AED ${amtStr}</td>
+                                <td style="padding: 12px 14px; text-align: right;"><span style="padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; ${statusClass}">${statusStr}</span></td>
+                            </tr>
+                        `;
+                    });
+                } else {
+                    rowsHtml = `<tr><td colspan="5" style="padding: 20px; text-align: center; color: #64748b;">No recorded payments found.</td></tr>`;
+                }
 
-                    <!-- Meta Cards Grid -->
-                    <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 28px;">
-                        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 10px;">
-                            <div style="color: #64748b; font-size: 11px; font-weight: 600; margin-bottom: 6px;">Contract amount</div>
-                            <div style="color: #0f172a; font-size: 15px; font-weight: 800;">AED ${totalContract}</div>
-                        </div>
-                        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 10px;">
-                            <div style="color: #64748b; font-size: 11px; font-weight: 600; margin-bottom: 6px;">Monthly rent</div>
-                            <div style="color: #059669; font-size: 15px; font-weight: 800;">AED ${monthlyRent}</div>
-                        </div>
-                        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 10px;">
-                            <div style="color: #64748b; font-size: 11px; font-weight: 600; margin-bottom: 6px;">Total paid</div>
-                            <div style="color: #059669; font-size: 15px; font-weight: 800;">AED ${totalPaid}</div>
-                        </div>
-                        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 10px;">
-                            <div style="color: #64748b; font-size: 11px; font-weight: 600; margin-bottom: 6px;">Remaining balance</div>
-                            <div style="color: #059669; font-size: 15px; font-weight: 800;">AED ${remainingBalance}</div>
-                        </div>
-                        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 10px;">
-                            <div style="color: #64748b; font-size: 11px; font-weight: 600; margin-bottom: 6px;">Payments</div>
-                            <div style="color: #0f172a; font-size: 15px; font-weight: 800;">${paymentsCount}</div>
-                        </div>
-                    </div>
+                const statusBadgeHtml = (statusLabel === 'Contract ended')
+                    ? `<span style="display: inline-block; padding: 3px 10px; border-radius: 12px; background: #fef2f2; color: #dc2626; border: 1px solid #fca5a5; font-size: 12px; font-weight: 600;">Contract ended</span>`
+                    : `<span style="display: inline-block; padding: 3px 10px; border-radius: 12px; background: #ecfdf5; color: #059669; font-size: 12px; font-weight: 600;">Contract active</span>`;
 
-                    <!-- Details Sections -->
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 28px;">
+                pdfHtml = `
+                    <div style="font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding: 32px; background: #ffffff; color: #0f172a; width: 740px; box-sizing: border-box; border: 1px solid #e2e8f0; border-radius: 12px;">
+                        <!-- Document Header Banner -->
+                        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #e2e8f0; padding-bottom: 16px; margin-bottom: 24px;">
+                            <div>
+                                <div style="color: #0f172a; font-size: 20px; font-weight: 800; letter-spacing: -0.5px;"><span style="color: #27784e;">AS Alhajeri</span> Estate</div>
+                                <div style="color: #64748b; font-size: 12px; font-weight: 500;">Property Suite</div>
+                            </div>
+                            <div style="text-align: right;">
+                                <div style="color: #00a86b; font-size: 18px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">YEARLY FINANCIAL REPORT</div>
+                                <div style="color: #64748b; font-size: 11px; margin-top: 2px;">Generated: ${new Date().toLocaleDateString('en-AE', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
+                            </div>
+                        </div>
+
+                        <!-- Header -->
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px;">
+                            <div style="display: flex; align-items: center; gap: 16px;">
+                                <div style="width: 56px; height: 56px; border-radius: 50%; background: #00a86b; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 700;">${initials}</div>
+                                <div>
+                                    <h1 style="margin: 0 0 4px 0; font-size: 24px; font-weight: 800; color: #0f172a;">${tName}</h1>
+                                    <div style="color: #64748b; font-size: 14px; font-weight: 500; margin-bottom: 6px;">${prop} — Unit ${unit}</div>
+                                    ${statusBadgeHtml}
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Meta Cards Grid -->
+                        <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 28px;">
+                            <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 10px;">
+                                <div style="color: #64748b; font-size: 11px; font-weight: 600; margin-bottom: 6px;">Contract amount</div>
+                                <div style="color: #0f172a; font-size: 15px; font-weight: 800;">AED ${totalContract}</div>
+                            </div>
+                            <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 10px;">
+                                <div style="color: #64748b; font-size: 11px; font-weight: 600; margin-bottom: 6px;">Monthly rent</div>
+                                <div style="color: #059669; font-size: 15px; font-weight: 800;">AED ${monthlyRent}</div>
+                            </div>
+                            <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 10px;">
+                                <div style="color: #64748b; font-size: 11px; font-weight: 600; margin-bottom: 6px;">Total paid</div>
+                                <div style="color: #059669; font-size: 15px; font-weight: 800;">AED ${totalPaid}</div>
+                            </div>
+                            <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 10px;">
+                                <div style="color: #64748b; font-size: 11px; font-weight: 600; margin-bottom: 6px;">Remaining balance</div>
+                                <div style="color: #059669; font-size: 15px; font-weight: 800;">AED ${remainingBalance}</div>
+                            </div>
+                            <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 10px;">
+                                <div style="color: #64748b; font-size: 11px; font-weight: 600; margin-bottom: 6px;">Payments</div>
+                                <div style="color: #0f172a; font-size: 15px; font-weight: 800;">${paymentsCount}</div>
+                            </div>
+                        </div>
+
+                        <!-- Details Sections -->
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 28px;">
+                            <div>
+                                <div style="color: #64748b; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px;">CONTACT DETAILS</div>
+                                <div style="display: flex; flex-direction: column; gap: 8px;">
+                                    <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; font-size: 13px; color: #1e293b; display: flex; align-items: center; gap: 8px;">
+                                        <span style="color: #64748b;">✉️</span> <span>${email}</span>
+                                    </div>
+                                    <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; font-size: 13px; color: #1e293b; display: flex; align-items: center; gap: 8px;">
+                                        <span style="color: #64748b;">📞</span> <span>${phone}</span>
+                                    </div>
+                                    <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; font-size: 13px; color: #1e293b; display: flex; align-items: center; gap: 8px;">
+                                        <span style="color: #64748b;">📍</span> <span>${address}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div>
+                                <div style="color: #64748b; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px;">CONTRACT DETAILS</div>
+                                <div style="display: flex; flex-direction: column; gap: 8px;">
+                                    <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; font-size: 13px; display: flex; justify-content: space-between; align-items: center;">
+                                        <span style="color: #64748b;">Start date</span>
+                                        <span style="color: #0f172a; font-weight: 700; font-family: monospace;">${contractStart}</span>
+                                    </div>
+                                    <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; font-size: 13px; display: flex; justify-content: space-between; align-items: center;">
+                                        <span style="color: #64748b;">End date</span>
+                                        <span style="color: #0f172a; font-weight: 700; font-family: monospace;">${contractEnd}</span>
+                                    </div>
+                                    <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; font-size: 13px; display: flex; justify-content: space-between; align-items: center;">
+                                        <span style="color: #64748b;">Duration</span>
+                                        <span style="color: #0f172a; font-weight: 700;">—</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Payment History Section -->
                         <div>
-                            <div style="color: #64748b; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px;">CONTACT DETAILS</div>
-                            <div style="display: flex; flex-direction: column; gap: 8px;">
-                                <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; font-size: 13px; color: #1e293b; display: flex; align-items: center; gap: 8px;">
-                                    <span style="color: #64748b;">✉️</span> <span>${email}</span>
-                                </div>
-                                <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; font-size: 13px; color: #1e293b; display: flex; align-items: center; gap: 8px;">
-                                    <span style="color: #64748b;">📞</span> <span>${phone}</span>
-                                </div>
-                                <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; font-size: 13px; color: #1e293b; display: flex; align-items: center; gap: 8px;">
-                                    <span style="color: #64748b;">📍</span> <span>${address}</span>
-                                </div>
-                            </div>
-                        </div>
-                        <div>
-                            <div style="color: #64748b; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px;">CONTRACT DETAILS</div>
-                            <div style="display: flex; flex-direction: column; gap: 8px;">
-                                <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; font-size: 13px; display: flex; justify-content: space-between; align-items: center;">
-                                    <span style="color: #64748b;">Start date</span>
-                                    <span style="color: #0f172a; font-weight: 700; font-family: monospace;">${contractStart}</span>
-                                </div>
-                                <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; font-size: 13px; display: flex; justify-content: space-between; align-items: center;">
-                                    <span style="color: #64748b;">End date</span>
-                                    <span style="color: #0f172a; font-weight: 700; font-family: monospace;">${contractEnd}</span>
-                                </div>
-                                <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; font-size: 13px; display: flex; justify-content: space-between; align-items: center;">
-                                    <span style="color: #64748b;">Duration</span>
-                                    <span style="color: #0f172a; font-weight: 700;">—</span>
-                                </div>
-                            </div>
+                            <div style="color: #64748b; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;">PAYMENT HISTORY</div>
+                            <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                                <thead>
+                                    <tr style="border-bottom: 1px solid #e2e8f0; background: #f8fafc;">
+                                        <th style="padding: 10px 14px; color: #64748b; font-size: 11px; text-transform: uppercase;">Period / Allocation</th>
+                                        <th style="padding: 10px 14px; color: #64748b; font-size: 11px; text-transform: uppercase;">Method</th>
+                                        <th style="padding: 10px 14px; color: #64748b; font-size: 11px; text-transform: uppercase;">Date</th>
+                                        <th style="padding: 10px 14px; color: #64748b; font-size: 11px; text-transform: uppercase;">Amount</th>
+                                        <th style="padding: 10px 14px; color: #64748b; font-size: 11px; text-transform: uppercase; text-align: right;">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${rowsHtml}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
-
-                    <!-- Payment History Section -->
-                    <div>
-                        <div style="color: #64748b; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;">PAYMENT HISTORY</div>
-                        <table style="width: 100%; border-collapse: collapse; text-align: left;">
-                            <thead>
-                                <tr style="border-bottom: 1px solid #e2e8f0; background: #f8fafc;">
-                                    <th style="padding: 10px 14px; color: #64748b; font-size: 11px; text-transform: uppercase;">Period / Allocation</th>
-                                    <th style="padding: 10px 14px; color: #64748b; font-size: 11px; text-transform: uppercase;">Method</th>
-                                    <th style="padding: 10px 14px; color: #64748b; font-size: 11px; text-transform: uppercase;">Date</th>
-                                    <th style="padding: 10px 14px; color: #64748b; font-size: 11px; text-transform: uppercase;">Amount</th>
-                                    <th style="padding: 10px 14px; color: #64748b; font-size: 11px; text-transform: uppercase; text-align: right;">Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${rowsHtml}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            `;
+                `;
+            }
 
             const wrapper = document.createElement('div');
             wrapper.style.position = 'fixed';
