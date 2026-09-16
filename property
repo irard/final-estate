@@ -690,7 +690,11 @@ function ef_handle_get_tenant_modal_details() {
         'end_date' => $end_fmt,
         'raw_start' => $start,
         'raw_end' => $end,
-        'finished_on' => ($status === 'finished' && $end) ? $end_fmt : ($end_fmt ?: '—'),
+        'finished_on' => ($status === 'finished') ? (
+            ($fin_date_meta = (function_exists('get_field') ? get_field('tenant_finished_date', $tenant_id) : null) ?: get_post_meta($tenant_id, 'tenant_finished_date', true))
+                ? date('n/j/Y', strtotime(str_replace('/', '-', $fin_date_meta)))
+                : ($end_fmt ?: '—')
+        ) : ($end_fmt ?: '—'),
         'contract_months' => $contract_months ? ($contract_months . ' Months') : '—',
         'contract_months_num' => intval($contract_months),
         'payments' => $payments

@@ -1601,9 +1601,12 @@ function eftm_execute_ajax_tenant_finish() {
     $tid = intval($_POST['tenant_id'] ?? 0); 
     if (!$tid) wp_send_json_error('Tenant ID is required.'); 
 
+    $today_date = date('Y-m-d');
     update_post_meta($tid, 'tenant_status', 'finished'); 
+    update_post_meta($tid, 'tenant_finished_date', $today_date);
     if (function_exists('update_field')) { 
         update_field('tenant_status', 'finished', $tid); 
+        update_field('tenant_finished_date', $today_date, $tid);
     } 
     ef_purge_page_cache($tid);
     wp_send_json_success(); 
@@ -1620,8 +1623,10 @@ function eftm_execute_ajax_tenant_restore() {
     if (!$tid) wp_send_json_error('Tenant ID is required.'); 
 
     update_post_meta($tid, 'tenant_status', 'active'); 
+    delete_post_meta($tid, 'tenant_finished_date');
     if (function_exists('update_field')) { 
         update_field('tenant_status', 'active', $tid); 
+        update_field('tenant_finished_date', '', $tid);
     } 
     ef_purge_page_cache($tid);
     wp_send_json_success(); 
