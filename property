@@ -659,6 +659,13 @@ function ef_handle_get_tenant_modal_details() {
 
     $balance = max(0, $total_contract - $total_paid);
 
+    if ($status !== 'finished' && $balance > 0.001) {
+        $last_pay_end = function_exists('ef_get_tenant_last_payment_end_date') ? ef_get_tenant_last_payment_end_date($tenant_id) : $start;
+        if ($last_pay_end && $last_pay_end < date('Y-m-d')) {
+            $status = 'due';
+        }
+    }
+
     $start_fmt = $start ? date('n/j/Y', strtotime($start)) : 'N/A';
     $end_fmt = $end ? date('n/j/Y', strtotime($end)) : 'N/A';
 
@@ -1554,6 +1561,12 @@ add_action('wp_footer', function() { ?>
                         efRestoreTenantContract(data.id, data.name);
                     };
                 }
+            } else if (data.status === 'due') {
+                statusPill.textContent = 'Payment due';
+                statusPill.style.border = '1px solid #fca5a5';
+                statusPill.style.background = '#fef2f2';
+                statusPill.style.color = '#dc2626';
+                if (restoreBtn) restoreBtn.style.display = 'none';
             } else {
                 statusPill.textContent = 'Active';
                 statusPill.style.border = '1px solid #a7f3d0';

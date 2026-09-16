@@ -2019,8 +2019,20 @@ function eftm_handle_ajax_tenant_breakdown() {
                 <?php 
                 $t_status = get_post_meta($tenant_id, 'tenant_status', true) ?: (function_exists('get_field') ? get_field('tenant_status', $tenant_id) : '');
                 $is_contract_ended = ($t_status === 'finished');
+                $is_tenant_due = false;
+                if (!$is_contract_ended) {
+                    $outstanding_bal = ef_get_tenant_outstanding_balance($tenant_id);
+                    if ($outstanding_bal > 0.001) {
+                        $last_pay_end = function_exists('ef_get_tenant_last_payment_end_date') ? ef_get_tenant_last_payment_end_date($tenant_id) : $contract_start;
+                        if ($last_pay_end && $last_pay_end < date('Y-m-d')) {
+                            $is_tenant_due = true;
+                        }
+                    }
+                }
                 if ($is_contract_ended) : ?>
                     <span style="display: inline-block; padding: 3px 10px; border-radius: 12px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; font-size: 12px; font-weight: 600;">Contract finished</span>
+                <?php elseif ($is_tenant_due) : ?>
+                    <span style="display: inline-block; padding: 3px 10px; border-radius: 12px; border: 1px solid #fca5a5; background: #fef2f2; color: #dc2626; font-size: 12px; font-weight: 600;">Payment due</span>
                 <?php else : ?>
                     <span style="display: inline-block; padding: 3px 10px; border-radius: 12px; border: 1px solid #a7f3d0; background: #ecfdf5; color: #059669; font-size: 12px; font-weight: 600;">Contract active</span>
                 <?php endif; ?>
