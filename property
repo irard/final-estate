@@ -992,8 +992,23 @@ add_action('wp_footer', function() { ?>
                 ? `<span style="display: inline-block; padding: 3px 10px; border-radius: 12px; background: #fef2f2; color: #dc2626; border: 1px solid #fca5a5; font-size: 12px; font-weight: 600;">Contract ended</span>`
                 : `<span style="display: inline-block; padding: 3px 10px; border-radius: 12px; background: #ecfdf5; color: #059669; font-size: 12px; font-weight: 600;">Contract active</span>`;
 
+            const docTitle = (type === 'summary') ? 'TENANT PAYMENT SUMMARY' : 'YEARLY FINANCIAL REPORT';
+
             const pdfHtml = `
                 <div style="font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding: 32px; background: #ffffff; color: #0f172a; width: 740px; box-sizing: border-box; border: 1px solid #e2e8f0; border-radius: 12px;">
+                    <!-- Document Header Banner -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #e2e8f0; padding-bottom: 16px; margin-bottom: 24px;">
+                        <div>
+                            <div style="color: #0f172a; font-size: 20px; font-weight: 800; letter-spacing: -0.5px;"><span style="color: #27784e;">AS Alhajeri</span> Estate</div>
+                            <div style="color: #64748b; font-size: 12px; font-weight: 500;">Property Suite</div>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="color: #00a86b; font-size: 18px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">${docTitle}</div>
+                            <div style="color: #64748b; font-size: 11px; margin-top: 2px;">Generated: ${new Date().toLocaleDateString('en-AE', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
+                        </div>
+                    </div>
+
+                    <!-- Header -->
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px;">
                         <div style="display: flex; align-items: center; gap: 16px;">
                             <div style="width: 56px; height: 56px; border-radius: 50%; background: #00a86b; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 700;">${initials}</div>
@@ -1088,7 +1103,8 @@ add_action('wp_footer', function() { ?>
             document.body.appendChild(wrapper);
 
             const titleSuffix = (type === 'summary') ? 'payment summary' : 'Yearly report';
-            const filename = `${tName || 'Tenant'} ${titleSuffix}.pdf`;
+            const rawFilename = `${tName || 'Tenant'} ${titleSuffix}.pdf`;
+            const filename = rawFilename.replace(/[/\\?%*:|"<>]/g, '').trim();
 
             const options = {
                 margin: [0.3, 0.3, 0.3, 0.3],
