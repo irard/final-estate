@@ -23,6 +23,7 @@ if (!function_exists('ef_get_tenant_total_contract_amount')) {
 
 if (!function_exists('ef_get_tenant_total_payments_amount')) {
     function ef_get_tenant_total_payments_amount($t_id) {
+        $tenant_start = get_field('tenant_start', $t_id) ?: get_post_meta($t_id, 'tenant_start', true);
         $payments = get_posts(array(    
             'post_type'      => 'payment',    
             'post_status'    => ['publish', 'future'],
@@ -34,6 +35,16 @@ if (!function_exists('ef_get_tenant_total_payments_amount')) {
             $pid = $p->ID;
             $pay_tid = ef_get_payment_tenant_id($pid);
             if ($pay_tid === $target_tid) {
+                if ($tenant_start) {
+                    $pay_date = get_field('cheque_end_date', $pid) ?: get_post_meta($pid, 'cheque_end_date', true) ?: get_field('cheque_start_date', $pid) ?: get_post_meta($pid, 'cheque_start_date', true) ?: get_field('date_of_payment', $pid) ?: get_post_meta($pid, 'date_of_payment', true);
+                    if ($pay_date) {
+                        $pay_ymd = date('Y-m-d', strtotime($pay_date));
+                        $start_ymd = date('Y-m-d', strtotime($tenant_start));
+                        if ($pay_ymd < $start_ymd) {
+                            continue;
+                        }
+                    }
+                }
                 $amount = get_field('amount_paid', $pid) ?: get_post_meta($pid, 'amount_paid', true);
                 if ($amount) {
                     $total_paid += ef_clean_amount($amount);
@@ -122,19 +133,12 @@ if (!function_exists('ef_is_tenant_billable')) {
         $e_str = get_field('tenant_end', $t_id) ?: get_post_meta($t_id, 'tenant_end', true);
         if (!$s_str) return true;
 
-        $dd = ef_get_tenant_due_day($t_id);
         $dim = (int)date('t', strtotime("$y-$m-01"));
-        $due_date_str = "$y-$m-" . str_pad(min($dd, $dim), 2, '0', STR_PAD_LEFT);
-        
-        if ($s_str > $due_date_str) return false;
-        if ($e_str && $e_str < "$y-$m-01") return false;
+        $month_end_str = "$y-$m-" . str_pad($dim, 2, '0', STR_PAD_LEFT);
+        $month_start_str = "$y-$m-01";
 
-        $start_ts = strtotime($s_str);
-        $due_ts = strtotime($due_date_str);
-        $diff_days = round(($due_ts - $start_ts) / (60 * 60 * 24));
-        
-        if ($diff_days < 25) return false;
-        if ($e_str && $e_str < $due_date_str) return false;
+        if ($s_str > $month_end_str) return false;
+        if ($e_str && $e_str < $month_start_str) return false;
 
         return true;
     }
@@ -382,8 +386,18 @@ add_shortcode('add_tenant', function(){
 
 add_shortcode('tenant_header', function() { 
     $q = new WP_Query(['post_type'=>'ef_tenant', 'post_status'=>'publish', 'posts_per_page'=>-1]); 
-    $count = $q->found_posts; 
-    wp_reset_postdata(); 
+    $count = 0;
+    if ($q->have_posts()) {
+        while ($q->have_posts()) {
+            $q->the_post();
+            $tid = get_the_ID();
+            $st = get_post_meta($tid, 'tenant_status', true) ?: (function_exists('get_field') ? get_field('tenant_status', $tid) : '');
+            if ($st !== 'finished') {
+                $count++;
+            }
+        }
+        wp_reset_postdata();
+    }
     return '<div style="margin-bottom:16px;"> 
             <div style="font-size:15px; color:#64748b; font-weight:500;">' . $count . ' active tenants</div> 
         </div>'; 
@@ -406,7 +420,7 @@ $tenant_list_logic = function() {
                     while ($q->have_posts()) {
                         $q->the_post();
                         $tid = get_the_ID();
-                        $t_status = get_field('tenant_status', $tid) ?: get_post_meta($tid, 'tenant_status', true);
+                        $t_status = get_post_meta($tid, 'tenant_status', true) ?: (function_exists('get_field') ? get_field('tenant_status', $tid) : '');
                         if ($t_status === 'finished') {
                             continue;
                         }
@@ -820,50 +834,90 @@ add_shortcode('tenant_profile', function() {
             document.querySelectorAll('.ef-tenant-card-item').forEach(c => c.classList.remove('ef-active-tenant'));
         };
 
-        window.efDownloadTenantPDF = function(tenantName) {
-            const screen = document.getElementById('efWorkspaceDynamicScreen');
-            if (!screen) return;
-            const content = screen.querySelector('#efTenantProfileContent') || screen;
-
-            const tName = content.getAttribute('data-tenant-name') || tenantName || 'Tenant';
-            const prop = content.getAttribute('data-property') || '';
-            const unit = content.getAttribute('data-unit') || '1A';
-            const monthlyRent = content.getAttribute('data-monthly-rent') || '0.00';
-            const totalContract = content.getAttribute('data-total-contract') || '0.00';
-            const totalPaid = content.getAttribute('data-total-paid') || '0.00';
-            const expectedTotal = content.getAttribute('data-expected-total') || '0.00';
-            const remainingBalance = content.getAttribute('data-remaining-balance') || '0.00';
-            const paymentsCount = content.getAttribute('data-payments-count') || '0';
-            const email = content.getAttribute('data-email') || 'None';
-            const phone = content.getAttribute('data-phone') || 'None';
-            const address = content.getAttribute('data-address') || 'No Address Provided';
-            const contractStart = content.getAttribute('data-contract-start') || 'N/A';
-            const contractEnd = content.getAttribute('data-contract-end') || 'N/A';
-            
+        window.efDownloadTenantPDF = function(tenantName, tenantData) {
+            const fmtMoney = amount => (parseFloat(amount) || 0).toLocaleString('en-AE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            let tName = tenantName || 'Tenant';
+            let prop = '';
+            let unit = '1A';
+            let monthlyRent = '0.00';
+            let totalContract = '0.00';
+            let totalPaid = '0.00';
+            let remainingBalance = '0.00';
+            let paymentsCount = '0';
+            let email = 'None';
+            let phone = 'None';
+            let address = 'No Address Provided';
+            let contractStart = 'N/A';
+            let contractEnd = 'N/A';
+            let statusLabel = 'Contract active';
             let payments = [];
-            try {
-                payments = JSON.parse(content.getAttribute('data-payments') || '[]');
-            } catch(e) {}
+
+            if (tenantData) {
+                tName = tenantData.name || tName;
+                prop = tenantData.property_name || '';
+                unit = tenantData.unit || '1A';
+                monthlyRent = fmtMoney(tenantData.monthly_rent);
+                totalContract = fmtMoney(tenantData.total_contract);
+                totalPaid = fmtMoney(tenantData.total_paid);
+                remainingBalance = fmtMoney(tenantData.balance);
+                email = tenantData.email || 'None';
+                phone = tenantData.phone || 'None';
+                address = tenantData.address || 'No Address Provided';
+                contractStart = tenantData.start_date || 'N/A';
+                contractEnd = tenantData.end_date || 'N/A';
+                statusLabel = (tenantData.status === 'finished') ? 'Contract ended' : 'Contract active';
+                payments = tenantData.payments || [];
+                paymentsCount = String(payments.length);
+            } else {
+                const screen = document.getElementById('efWorkspaceDynamicScreen');
+                const content = screen ? (screen.querySelector('#efTenantProfileContent') || screen) : document.getElementById('efTenantProfileContent');
+                if (!content) return;
+
+                tName = content.getAttribute('data-tenant-name') || tName;
+                prop = content.getAttribute('data-property') || '';
+                unit = content.getAttribute('data-unit') || '1A';
+                monthlyRent = content.getAttribute('data-monthly-rent') || '0.00';
+                totalContract = content.getAttribute('data-total-contract') || '0.00';
+                totalPaid = content.getAttribute('data-total-paid') || '0.00';
+                remainingBalance = content.getAttribute('data-remaining-balance') || '0.00';
+                paymentsCount = content.getAttribute('data-payments-count') || '0';
+                email = content.getAttribute('data-email') || 'None';
+                phone = content.getAttribute('data-phone') || 'None';
+                address = content.getAttribute('data-address') || 'No Address Provided';
+                contractStart = content.getAttribute('data-contract-start') || 'N/A';
+                contractEnd = content.getAttribute('data-contract-end') || 'N/A';
+                
+                try {
+                    payments = JSON.parse(content.getAttribute('data-payments') || '[]');
+                } catch(e) {}
+            }
 
             const initials = tName.split(' ').map(w => w.charAt(0).toUpperCase()).join('').substring(0, 2) || 'SR';
 
             let rowsHtml = '';
             if (payments.length > 0) {
-                payments.forEach((p, index) => {
-                    const statusClass = (p.status === 'Paid') ? 'color: #059669; background: #ecfdf5;' : 'color: #d97706; background: #fef3c7;';
+                payments.forEach((p) => {
+                    const statusStr = p.status || 'Paid';
+                    const statusClass = (statusStr === 'Paid') ? 'color: #059669; background: #ecfdf5;' : 'color: #d97706; background: #fef3c7;';
+                    const amtStr = (typeof p.amount === 'number') ? fmtMoney(p.amount) : p.amount;
+                    const methodStr = p.method ? (p.cheque ? `${p.method} (${p.cheque})` : p.method) : 'Cash';
                     rowsHtml += `
                         <tr style="border-bottom: 1px solid #f1f5f9; font-size: 13px;">
                             <td style="padding: 12px 14px; color: #0f172a; font-weight: 500;">${p.period || p.date}</td>
-                            <td style="padding: 12px 14px; color: #475569;">${p.method}</td>
+                            <td style="padding: 12px 14px; color: #475569;">${methodStr}</td>
                             <td style="padding: 12px 14px; color: #64748b;">${p.date}</td>
-                            <td style="padding: 12px 14px; color: #059669; font-weight: 700;">AED ${p.amount}</td>
-                            <td style="padding: 12px 14px; text-align: right;"><span style="padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; ${statusClass}">${p.status}</span></td>
+                            <td style="padding: 12px 14px; color: #059669; font-weight: 700;">AED ${amtStr}</td>
+                            <td style="padding: 12px 14px; text-align: right;"><span style="padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; ${statusClass}">${statusStr}</span></td>
                         </tr>
                     `;
                 });
             } else {
                 rowsHtml = `<tr><td colspan="5" style="padding: 20px; text-align: center; color: #64748b;">No recorded payments found.</td></tr>`;
             }
+
+            const statusBadgeHtml = (statusLabel === 'Contract ended')
+                ? `<span style="display: inline-block; padding: 3px 10px; border-radius: 12px; background: #fef2f2; color: #dc2626; border: 1px solid #fca5a5; font-size: 12px; font-weight: 600;">Contract ended</span>`
+                : `<span style="display: inline-block; padding: 3px 10px; border-radius: 12px; background: #ecfdf5; color: #059669; font-size: 12px; font-weight: 600;">Contract active</span>`;
 
             const pdfHtml = `
                 <div style="font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding: 32px; background: #ffffff; color: #0f172a; width: 740px; box-sizing: border-box; border: 1px solid #e2e8f0; border-radius: 12px;">
@@ -874,7 +928,7 @@ add_shortcode('tenant_profile', function() {
                             <div>
                                 <h1 style="margin: 0 0 4px 0; font-size: 24px; font-weight: 800; color: #0f172a;">${tName}</h1>
                                 <div style="color: #64748b; font-size: 14px; font-weight: 500; margin-bottom: 6px;">${prop} — Unit ${unit}</div>
-                                <span style="display: inline-block; padding: 3px 10px; border-radius: 12px; background: #ecfdf5; color: #059669; font-size: 12px; font-weight: 600;">Contract active</span>
+                                ${statusBadgeHtml}
                             </div>
                         </div>
                     </div>
@@ -1281,7 +1335,7 @@ add_shortcode('tenant_profile', function() {
             fd.append('new_start', document.getElementById('modal_field_start').value); fd.append('new_end', document.getElementById('modal_field_end').value); 
             fd.append('new_total_rent_cost', document.getElementById('modal_field_total_rent').value); 
             fd.append('new_contract_months', document.getElementById('modal_field_contract_months').value); 
-            fetch(ajax, {method:'POST', body:fd}).then(r=>r.json()).then(res=>{ if(res.success){ alert('Saved!'); efCloseEditModal(); location.reload(); } }); 
+            fetch(ajax, {method:'POST', body:fd}).then(r=>r.json()).then(res=>{ if(res.success){ alert('Saved!'); efCloseEditModal(); window.location.href = window.location.pathname + '?_t=' + Date.now(); } }); 
         } 
         window.efSubmitRenewContract = function(){ 
             const form = document.getElementById('efRenewContractForm');
@@ -1299,7 +1353,7 @@ add_shortcode('tenant_profile', function() {
             fd.append('new_rent', document.getElementById('renew_monthly_rent').value); 
 
             fetch(ajax, {method:'POST', body:fd}).then(r=>r.json()).then(res=>{ 
-                if(res.success){ alert('Contract renewed successfully!'); efCloseRenewModal(); location.reload(); } 
+                if(res.success){ alert('Contract renewed successfully!'); efCloseRenewModal(); window.location.href = window.location.pathname + '?_t=' + Date.now(); } 
                 else { alert(res.data || 'Failed to renew contract'); b.disabled=false; }
             }).catch(err => { console.error(err); b.disabled=false; }); 
         };
@@ -1315,7 +1369,10 @@ add_shortcode('tenant_profile', function() {
                 .then(res => { 
                     if (res.success) { 
                         alert('Contract marked as finished!'); 
-                        location.reload(); 
+                        const card = document.getElementById('tenant-row-' + id);
+                        if (card) card.remove();
+                        if (typeof efCloseTenantProfile === 'function') efCloseTenantProfile();
+                        window.location.href = window.location.pathname + '?_t=' + Date.now(); 
                     } else { 
                         alert(res.data || 'Failed to finish contract'); 
                     } 
@@ -1350,8 +1407,31 @@ add_action('wp_ajax_nopriv_eftm_render_tenant_profile', 'eftm_handle_ajax_tenant
 add_action('wp_ajax_eftm_edit_tenant', 'eftm_execute_ajax_tenant_modification'); 
 add_action('wp_ajax_eftm_renew_tenant_contract', 'eftm_execute_ajax_tenant_renewal'); 
 add_action('wp_ajax_eftm_finish_tenant_contract', 'eftm_execute_ajax_tenant_finish'); 
+add_action('wp_ajax_eftm_restore_tenant_contract', 'eftm_execute_ajax_tenant_restore'); 
 add_action('wp_ajax_eftm_delete_tenant', 'eftm_execute_ajax_tenant_deletion'); 
 add_action('wp_ajax_eftm_get_properties', 'eftm_global_execute_properties_fetch'); 
+
+if (!function_exists('ef_purge_page_cache')) {
+    function ef_purge_page_cache($post_id = 0) {
+        if ($post_id) {
+            clean_post_cache($post_id);
+        }
+        if (function_exists('wp_cache_flush')) {
+            wp_cache_flush();
+        }
+        if (class_exists('\LiteSpeed\Purge')) {
+            \LiteSpeed\Purge::purge_all();
+        }
+        if (function_exists('litespeed_purge_all')) {
+            litespeed_purge_all();
+        }
+        do_action('litespeed_purge_all');
+        do_action('w3tc_flush_posts');
+        if (function_exists('rocket_clean_domain')) {
+            rocket_clean_domain();
+        }
+    }
+}
 
 function eftm_execute_ajax_tenant_finish() { 
     if (!isset($_POST['security']) || !wp_verify_nonce($_POST['security'], 'finish_tenant_nonce')) { 
@@ -1363,11 +1443,29 @@ function eftm_execute_ajax_tenant_finish() {
     $tid = intval($_POST['tenant_id'] ?? 0); 
     if (!$tid) wp_send_json_error('Tenant ID is required.'); 
 
+    update_post_meta($tid, 'tenant_status', 'finished'); 
     if (function_exists('update_field')) { 
         update_field('tenant_status', 'finished', $tid); 
-    } else { 
-        update_post_meta($tid, 'tenant_status', 'finished'); 
     } 
+    ef_purge_page_cache($tid);
+    wp_send_json_success(); 
+} 
+
+function eftm_execute_ajax_tenant_restore() { 
+    if (!isset($_POST['security']) || (!wp_verify_nonce($_POST['security'], 'restore_tenant_nonce') && !wp_verify_nonce($_POST['security'], 'finish_tenant_nonce'))) { 
+        wp_send_json_error('Invalid security check.', 403); 
+    } 
+    if (!is_user_logged_in()) { 
+        wp_send_json_error('Unauthorized.', 403); 
+    } 
+    $tid = intval($_POST['tenant_id'] ?? 0); 
+    if (!$tid) wp_send_json_error('Tenant ID is required.'); 
+
+    update_post_meta($tid, 'tenant_status', 'active'); 
+    if (function_exists('update_field')) { 
+        update_field('tenant_status', 'active', $tid); 
+    } 
+    ef_purge_page_cache($tid);
     wp_send_json_success(); 
 } 
 
@@ -1380,6 +1478,27 @@ function eftm_execute_ajax_tenant_renewal() {
     } 
     $tid = intval($_POST['tenant_id'] ?? 0); 
     if (!$tid) wp_send_json_error('Tenant ID is required.'); 
+
+    // Store previous contract in contract_history backlog before updating
+    $old_start = (function_exists('get_field') ? get_field('tenant_start', $tid) : null) ?: get_post_meta($tid, 'tenant_start', true);
+    $old_end = (function_exists('get_field') ? get_field('tenant_end', $tid) : null) ?: get_post_meta($tid, 'tenant_end', true);
+    $old_rent = (function_exists('get_field') ? get_field('monthly_rent', $tid) : null) ?: get_post_meta($tid, 'monthly_rent', true);
+    $old_total = (function_exists('get_field') ? get_field('total_rent_cost', $tid) : null) ?: get_post_meta($tid, 'total_rent_cost', true) ?: (function_exists('get_field') ? get_field('total_contract_amount', $tid) : null) ?: get_post_meta($tid, 'total_contract_amount', true);
+    $old_months = (function_exists('get_field') ? get_field('contract_months', $tid) : null) ?: get_post_meta($tid, 'contract_months', true) ?: 12;
+
+    if (!empty($old_start) || !empty($old_end)) {
+        $history_raw = get_post_meta($tid, 'contract_history', true);
+        $history = is_array($history_raw) ? $history_raw : (json_decode($history_raw, true) ?: []);
+        $history[] = [
+            'tenant_start' => $old_start,
+            'tenant_end' => $old_end,
+            'monthly_rent' => floatval($old_rent),
+            'total_rent_cost' => floatval($old_total),
+            'contract_months' => intval($old_months),
+            'renewed_at' => date('Y-m-d H:i:s')
+        ];
+        update_post_meta($tid, 'contract_history', $history);
+    }
 
     $start = sanitize_text_field($_POST['new_start'] ?? '');
     $end = sanitize_text_field($_POST['new_end'] ?? '');
@@ -1403,12 +1522,14 @@ function eftm_execute_ajax_tenant_renewal() {
         'total_contract_amount' => $total_rent_cost,
         'contract_months' => $contract_months,
         'tenant_contract_months' => $contract_months,
-        'monthly_rent' => $rent
+        'monthly_rent' => $rent,
+        'tenant_status' => 'active'
     ]; 
     foreach ($meta as $k => $v) { 
+        update_post_meta($tid, $k, $v); 
         if ( function_exists('update_field') ) update_field($k, $v, $tid); 
-        else update_post_meta($tid, $k, $v); 
     } 
+    ef_purge_page_cache($tid);
     wp_send_json_success(); 
 } 
 
@@ -1457,7 +1578,7 @@ if ( ! function_exists('eftm_get_occupied_count') ) {
         $tenants = get_posts($args); 
         $active_count = 0;
         foreach ($tenants as $tid) {
-            $st = get_field('tenant_status', $tid) ?: get_post_meta($tid, 'tenant_status', true);
+            $st = get_post_meta($tid, 'tenant_status', true) ?: (function_exists('get_field') ? get_field('tenant_status', $tid) : '');
             if ($st !== 'finished') {
                 $active_count++;
             }
@@ -1516,6 +1637,7 @@ function eftm_handle_create_tenant() {
         if ( function_exists('update_field') ) update_field($k, $v, $tenant_id); 
         else update_post_meta($tenant_id, $k, $v); 
     } 
+    ef_purge_page_cache($tenant_id);
     wp_send_json_success(['id' => $tenant_id]); 
 } 
 
@@ -1587,6 +1709,12 @@ function eftm_handle_ajax_tenant_breakdown() {
     if (!empty($all_payments)) {
         $month_totals = [];
         foreach ($all_payments as $p_all) {
+            if ($contract_start) {
+                $p_end_date = get_field('cheque_end_date', $p_all->ID) ?: get_post_meta($p_all->ID, 'cheque_end_date', true) ?: get_field('cheque_start_date', $p_all->ID) ?: get_post_meta($p_all->ID, 'cheque_start_date', true) ?: get_field('date_of_payment', $p_all->ID) ?: get_post_meta($p_all->ID, 'date_of_payment', true);
+                if ($p_end_date && date('Y-m-d', strtotime($p_end_date)) < date('Y-m-d', strtotime($contract_start))) {
+                    continue;
+                }
+            }
             $p_period_all = ef_get_payment_period($p_all->ID);
             $amt_all = floatval(str_replace(',', '', get_field('amount_paid', $p_all->ID) ?: get_post_meta($p_all->ID, 'amount_paid', true)));
             if (!isset($month_totals[$p_period_all])) $month_totals[$p_period_all] = 0;
@@ -1603,7 +1731,14 @@ function eftm_handle_ajax_tenant_breakdown() {
         while ($p_query->have_posts()) { 
             $p_query->the_post(); 
             $pay_id = get_the_ID(); 
+            $cheque_start = get_field('cheque_start_date', $pay_id) ?: get_post_meta($pay_id, 'cheque_start_date', true) ?: '';
+            $cheque_end = get_field('cheque_end_date', $pay_id) ?: get_post_meta($pay_id, 'cheque_end_date', true) ?: '';
             $raw_date = get_field('date_of_payment', $pay_id) ?: get_post_meta($pay_id, 'date_of_payment', true); 
+
+            $check_date = $cheque_end ?: ($cheque_start ?: $raw_date);
+            if ($contract_start && $check_date && date('Y-m-d', strtotime($check_date)) < date('Y-m-d', strtotime($contract_start))) {
+                continue;
+            }
             $ts = $raw_date ? strtotime($raw_date) : get_the_date('U', $pay_id); 
             $period = (function_exists('get_field') ? get_field('payment_period', $pay_id) : null) ?: get_post_meta($pay_id, 'payment_period', true) ?: date('Y-m', $ts);
             $period = substr((string)$period, 0, 7);
@@ -1726,10 +1861,10 @@ function eftm_handle_ajax_tenant_breakdown() {
                 <h2 style="margin: 0 0 2px 0; font-size: 22px; color: #0f172a; font-weight: 700;"><?php echo esc_html($tenant_name); ?></h2> 
                 <div style="color: #64748b; font-size: 14px; font-weight: 500; margin-bottom: 6px;"><?php echo esc_html($property_display); ?> — Unit <?php echo esc_html($unit ?: '1A'); ?></div> 
                 <?php 
-                $t_status = get_field('tenant_status', $tenant_id) ?: get_post_meta($tenant_id, 'tenant_status', true);
-                $is_contract_ended = ($t_status === 'finished') || (!empty($contract_end) && date('Y-m-d', strtotime($contract_end)) < date('Y-m-d'));
+                $t_status = get_post_meta($tenant_id, 'tenant_status', true) ?: (function_exists('get_field') ? get_field('tenant_status', $tenant_id) : '');
+                $is_contract_ended = ($t_status === 'finished');
                 if ($is_contract_ended) : ?>
-                    <span style="display: inline-block; padding: 3px 10px; border-radius: 12px; border: 1px solid #fca5a5; background: #fef2f2; color: #dc2626; font-size: 12px; font-weight: 600;">Contract ended</span>
+                    <span style="display: inline-block; padding: 3px 10px; border-radius: 12px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; font-size: 12px; font-weight: 600;">Contract finished</span>
                 <?php else : ?>
                     <span style="display: inline-block; padding: 3px 10px; border-radius: 12px; border: 1px solid #a7f3d0; background: #ecfdf5; color: #059669; font-size: 12px; font-weight: 600;">Contract active</span>
                 <?php endif; ?>
@@ -1823,6 +1958,34 @@ function eftm_handle_ajax_tenant_breakdown() {
             </div>
         </div>
     </div>
+    <?php
+    $contract_history_raw = get_post_meta($tenant_id, 'contract_history', true);
+    $contract_history = is_array($contract_history_raw) ? $contract_history_raw : (json_decode($contract_history_raw, true) ?: []);
+    if (!empty($contract_history)) :
+    ?>
+    <div style="margin-top: 24px; margin-bottom: 24px;">
+        <div class="ef-section-title-sub" style="margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; font-size: 12px; font-weight: 700; color: #64748b;">PREVIOUS CONTRACTS HISTORY (<?php echo count($contract_history); ?>)</div>
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+            <?php foreach (array_reverse($contract_history) as $ch) : 
+                $ch_start = !empty($ch['tenant_start']) ? date('n/j/Y', strtotime($ch['tenant_start'])) : 'N/A';
+                $ch_end = !empty($ch['tenant_end']) ? date('n/j/Y', strtotime($ch['tenant_end'])) : 'N/A';
+                $ch_total = floatval($ch['total_rent_cost'] ?? 0);
+                $ch_months = intval($ch['contract_months'] ?? 12);
+                $ch_rent = floatval($ch['monthly_rent'] ?? 0);
+            ?>
+                <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <div style="font-size: 14px; font-weight: 700; color: #0f172a;"><?php echo esc_html($ch_start . ' - ' . $ch_end); ?> · <?php echo $ch_months; ?> Months</div>
+                        <div style="font-size: 13px; color: #64748b; margin-top: 2px;">Rent: AED <?php echo number_format($ch_rent, 2); ?>/mo</div>
+                    </div>
+                    <div style="font-size: 15px; font-weight: 700; color: #0f172a;">
+                        AED <?php echo number_format($ch_total, 2); ?>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+        </div>
+    </div>
+    <?php endif; ?>
     <div class="ef-section-title-sub" style="margin-top: 32px;">Payment Ledger History</div> 
     <div class="ef-payment-history-list"> 
         <?php if (!empty($payment_history)) : foreach ($payment_history as $p) : 
@@ -1909,6 +2072,7 @@ function eftm_execute_ajax_tenant_modification() {
         if ( function_exists('update_field') ) update_field($k, $v, $tid); 
         else update_post_meta($tid, $k, $v); 
     } 
+    ef_purge_page_cache($tid);
     wp_send_json_success(); 
 } 
 
@@ -1920,7 +2084,10 @@ function eftm_execute_ajax_tenant_deletion() {
         wp_send_json_error('Unauthorized.', 403); 
     } 
     $tid = intval($_POST['tenant_id'] ?? 0); 
-    if ($tid && wp_delete_post($tid, true)) wp_send_json_success(); 
+    if ($tid && wp_delete_post($tid, true)) {
+        ef_purge_page_cache($tid);
+        wp_send_json_success();
+    }
     else wp_send_json_error('Delete failed.'); 
 } 
 
@@ -1991,6 +2158,10 @@ add_shortcode('ef_master_tenant_directory', function() {
         while ($t_query->have_posts()) {
             $t_query->the_post();
             $t_id = get_the_ID();
+            $t_st = function_exists('get_field') ? get_field('tenant_status', $t_id) : get_post_meta($t_id, 'tenant_status', true);
+            if (!$t_st) $t_st = get_post_meta($t_id, 'tenant_status', true);
+            if ($t_st === 'finished') continue;
+
             $tenant_title = esc_attr(get_the_title());
 
             $rent = get_field('monthly_rent', $t_id);
