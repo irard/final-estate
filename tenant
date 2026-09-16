@@ -951,9 +951,11 @@ add_shortcode('tenant_profile', function() {
 
             if (type === 'summary') {
                 let summaryRowsHtml = '';
+                let calcTotalPaid = 0;
                 if (payments.length > 0) {
                     payments.forEach((p) => {
                         const rawAmt = typeof p.amount === 'number' ? p.amount : (parseFloat(String(p.amount).replace(/,/g, '')) || 0);
+                        calcTotalPaid += rawAmt;
                         const amtFmt = (rawAmt % 1 === 0) ? rawAmt.toLocaleString('en-US') : rawAmt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                         const pMethod = p.method || 'Cash';
                         const pDate = fmtDateDMY(p.date || p.payment_date);
@@ -989,9 +991,9 @@ add_shortcode('tenant_profile', function() {
                     summaryRowsHtml = `<tr><td colspan="5" style="padding: 20px; text-align: center; color: #64748b;">No recorded payments found.</td></tr>`;
                 }
 
-                const totalContractRaw = parseFloat(String(totalContract).replace(/,/g, '')) || 0;
-                const totalContractFmt = (totalContractRaw % 1 === 0) ? totalContractRaw.toLocaleString('en-US') : totalContractRaw.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                const totalContractWordsVal = totalContractWords || numberToWordsDirham(totalContractRaw);
+                const displayPaidRaw = payments.length > 0 ? calcTotalPaid : (parseFloat(String(totalPaid).replace(/,/g, '')) || 0);
+                const displayPaidFmt = (displayPaidRaw % 1 === 0) ? displayPaidRaw.toLocaleString('en-US') : displayPaidRaw.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                const displayPaidWordsVal = numberToWordsDirham(displayPaidRaw);
 
                 pdfHtml = `
                     <div style="font-family: Arial, sans-serif; padding: 40px; background: #ffffff; color: #0f172a; width: 740px; box-sizing: border-box;">
@@ -999,10 +1001,10 @@ add_shortcode('tenant_profile', function() {
                         <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 25px;">
                             <div>
                                 <div style="font-size: 13px; color: #000; font-weight: bold; margin-bottom: 20px;">${requestDate}</div>
-                                <div style="font-size: 18px; color: #000; font-weight: bold;">${totalContractFmt}</div>
+                                <div style="font-size: 18px; color: #000; font-weight: bold;">${displayPaidFmt}</div>
                             </div>
                             <div style="text-align: right; font-size: 13px; color: #000;">
-                                <div style="font-size: 15px; font-weight: bold; margin-bottom: 6px;">${totalContractFmt} AED</div>
+                                <div style="font-size: 15px; font-weight: bold; margin-bottom: 6px;">${displayPaidFmt} AED</div>
                                 <div style="margin-bottom: 6px;">${fmtDateDMY(contractEnd)} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ${fmtDateDMY(contractStart)}</div>
                                 <div>${prop || 'Villas'}</div>
                             </div>
@@ -1011,7 +1013,7 @@ add_shortcode('tenant_profile', function() {
                         <!-- Tenant Header & Words -->
                         <div style="text-align: center; margin-bottom: 35px;">
                             <div style="font-size: 16px; font-weight: bold; color: #000; margin-bottom: 6px;">${tName}</div>
-                            <div style="font-size: 14px; font-weight: bold; color: #000;">${totalContractWordsVal}</div>
+                            <div style="font-size: 14px; font-weight: bold; color: #000;">${displayPaidWordsVal}</div>
                         </div>
 
                         <!-- Payments List -->
