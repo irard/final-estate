@@ -26,19 +26,12 @@ if (!function_exists('ef_is_tenant_billable')) {
         $e_str = get_field('tenant_end', $t_id) ?: get_post_meta($t_id, 'tenant_end', true);
         if (!$s_str) return true;
 
-        $dd = ef_get_tenant_due_day($t_id);
         $dim = (int)date('t', strtotime("$y-$m-01"));
-        $due_date_str = "$y-$m-" . str_pad(min($dd, $dim), 2, '0', STR_PAD_LEFT);
-        
-        if ($s_str > $due_date_str) return false;
-        if ($e_str && $e_str < "$y-$m-01") return false;
+        $month_end_str = "$y-$m-" . str_pad($dim, 2, '0', STR_PAD_LEFT);
+        $month_start_str = "$y-$m-01";
 
-        $start_ts = strtotime($s_str);
-        $due_ts = strtotime($due_date_str);
-        $diff_days = round(($due_ts - $start_ts) / (60 * 60 * 24));
-        
-        if ($diff_days < 25) return false;
-        if ($e_str && $e_str < $due_date_str) return false;
+        if ($s_str > $month_end_str) return false;
+        if ($e_str && $e_str < $month_start_str) return false;
 
         return true;
     }
@@ -181,6 +174,10 @@ add_shortcode('ef_log_payment_btn', function() {
                         while ($tenants_query->have_posts()) {   
                             $tenants_query->the_post();   
                             $tid = get_the_ID();
+                            $t_status = get_post_meta($tid, 'tenant_status', true) ?: (function_exists('get_field') ? get_field('tenant_status', $tid) : '');
+                            if ($t_status === 'finished') {
+                                continue;
+                            }
                             $rent = get_field('monthly_rent', $tid) ?: get_post_meta($tid, 'monthly_rent', true);
                             $due  = get_field('rent_due_day', $tid) ?: get_post_meta($tid, 'rent_due_day', true);
                             echo '<option value="'.$tid.'" data-rent="'.esc_attr($rent).'" data-due="'.esc_attr($due).'">'.get_the_title().'</option>';   
@@ -533,8 +530,21 @@ add_shortcode('ef_payments_stats', function() {
     $count_payments = wp_count_posts('payment');   
     $total_payments_logged = isset($count_payments->publish) ? intval($count_payments->publish) : 0;   
    
-    $count_tenants = wp_count_posts('ef_tenant');   
-    $active_tenants_count = isset($count_tenants->publish) ? intval($count_tenants->publish) : 0;   
+    $tenants_q = new WP_Query([
+        'post_type'      => 'ef_tenant',
+        'post_status'    => 'publish',
+        'posts_per_page' => -1,
+        'fields'         => 'ids'
+    ]);
+    $active_tenants_count = 0;
+    if (!empty($tenants_q->posts)) {
+        foreach ($tenants_q->posts as $tid) {
+            $t_st = get_post_meta($tid, 'tenant_status', true) ?: (function_exists('get_field') ? get_field('tenant_status', $tid) : '');
+            if ($t_st !== 'finished') {
+                $active_tenants_count++;
+            }
+        }
+    }
    
     ob_start();   
     ?>   
