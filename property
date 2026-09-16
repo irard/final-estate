@@ -929,7 +929,7 @@ add_action('wp_footer', function() { ?>
 
     <script> 
     if (typeof window.efDownloadTenantPDF !== 'function') {
-        window.efDownloadTenantPDF = function(tenantName, tenantData) {
+        window.efDownloadTenantPDF = function(tenantName, tenantData, type = 'yearly') {
             const fmtMoney = amount => (parseFloat(amount) || 0).toLocaleString('en-AE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             let tName = tenantName || 'Tenant';
             let prop = '';
@@ -1087,8 +1087,8 @@ add_action('wp_footer', function() { ?>
             wrapper.innerHTML = pdfHtml;
             document.body.appendChild(wrapper);
 
-            const safeName = (tName || 'Tenant').replace(/[^a-zA-Z0-9_\-\s]/g, '').trim();
-            const filename = `${safeName || 'Tenant'}-Profile.pdf`;
+            const titleSuffix = (type === 'summary') ? 'payment summary' : 'Yearly report';
+            const filename = `${tName || 'Tenant'} ${titleSuffix}.pdf`;
 
             const options = {
                 margin: [0.3, 0.3, 0.3, 0.3],
@@ -1432,7 +1432,7 @@ add_action('wp_footer', function() { ?>
             const reportBtn = document.getElementById('efHistModalReportBtn');
             reportBtn.onclick = function() {
                 if (typeof window.efDownloadTenantPDF === 'function') {
-                    window.efDownloadTenantPDF(data.name, data);
+                    window.efDownloadTenantPDF(data.name, data, 'yearly');
                 }
             };
 

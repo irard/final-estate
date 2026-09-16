@@ -834,7 +834,7 @@ add_shortcode('tenant_profile', function() {
             document.querySelectorAll('.ef-tenant-card-item').forEach(c => c.classList.remove('ef-active-tenant'));
         };
 
-        window.efDownloadTenantPDF = function(tenantName, tenantData) {
+        window.efDownloadTenantPDF = function(tenantName, tenantData, type = 'yearly') {
             const fmtMoney = amount => (parseFloat(amount) || 0).toLocaleString('en-AE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             let tName = tenantName || 'Tenant';
             let prop = '';
@@ -1023,8 +1023,8 @@ add_shortcode('tenant_profile', function() {
             wrapper.innerHTML = pdfHtml;
             document.body.appendChild(wrapper);
 
-            const safeName = (tName || 'Tenant').replace(/[^a-zA-Z0-9_\-\s]/g, '').trim();
-            const filename = `${safeName || 'Tenant'}-Profile.pdf`;
+            const titleSuffix = (type === 'summary') ? 'payment summary' : 'Yearly report';
+            const filename = `${tName || 'Tenant'} ${titleSuffix}.pdf`;
 
             const options = {
                 margin: [0.3, 0.3, 0.3, 0.3],
@@ -1871,7 +1871,7 @@ function eftm_handle_ajax_tenant_breakdown() {
             </div> 
         </div> 
         <div class="ef-action-btn-group" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;"> 
-            <button class="ef-btn-action" title="Yearly report" onclick="efDownloadTenantPDF('<?php echo esc_js($tenant_name); ?>')" style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:6px 14px; font-size:13px; color:#0f172a; font-weight:500; display:inline-flex; align-items:center; gap:6px; cursor:pointer;"> 
+            <button class="ef-btn-action" title="Yearly report" onclick="efDownloadTenantPDF('<?php echo esc_js($tenant_name); ?>', null, 'yearly')" style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:6px 14px; font-size:13px; color:#0f172a; font-weight:500; display:inline-flex; align-items:center; gap:6px; cursor:pointer;">
                 📅 <span class="ef-btn-text">Yearly report</span>
             </button> 
             <button class="ef-btn-action" title="Renew" 
@@ -1888,7 +1888,7 @@ function eftm_handle_ajax_tenant_breakdown() {
             <button class="ef-btn-action" title="Finish" onclick="efFinishTenantContract(<?php echo $tenant_id; ?>, '<?php echo esc_js($tenant_name); ?>')" style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:6px 14px; font-size:13px; color:#0f172a; font-weight:500; display:inline-flex; align-items:center; gap:6px; cursor:pointer;"> 
                 ✔ <span class="ef-btn-text">Finish</span>
             </button> 
-            <button class="ef-btn-action" title="Download PDF" onclick="efDownloadTenantPDF('<?php echo esc_js($tenant_name); ?>')" style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:6px 14px; font-size:13px; color:#0f172a; font-weight:500; display:inline-flex; align-items:center; gap:6px; cursor:pointer;"> 
+            <button class="ef-btn-action" title="Download PDF" onclick="efDownloadTenantPDF('<?php echo esc_js($tenant_name); ?>', null, 'summary')" style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:6px 14px; font-size:13px; color:#0f172a; font-weight:500; display:inline-flex; align-items:center; gap:6px; cursor:pointer;">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> <span class="ef-btn-text">Download PDF</span>
             </button> 
             <?php if (is_user_logged_in()) : ?> 
