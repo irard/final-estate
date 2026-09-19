@@ -575,7 +575,7 @@ add_shortcode('student_list', $tenant_list_logic);
 add_shortcode('tenant_profile', function() { 
     ob_start(); ?> 
      
-    <div id="efTenantProfileModal" class="ef-popup-modal-container" style="display:none;"> 
+    <div id="efTenantProfileModal" class="ef-popup-modal-container active ef-show" style="display:block;">
         <div class="ef-popup-modal-box" style="position: relative; background: #ffffff; border-radius: 16px; padding: 28px; width: 100%;"> 
             <div id="efWorkspaceDynamicScreen" style="width:100%;"> 
                 <div style="text-align:center; padding: 40px; color: #64748b;">Select a tenant to view profile.</div> 
@@ -792,35 +792,10 @@ add_shortcode('tenant_profile', function() {
         if (renewTotalRent) renewTotalRent.addEventListener('input', calculateRenewValues);
 
         window.efCloseTenantProfile = function() {
-            const profile = document.getElementById('efTenantProfileModal');
-            const listContainer = document.getElementById('efTenantListContainer');
-            const leftPanel = document.querySelector('.ef-left-panel');
-            const rightPanel = document.querySelector('.ef-right-panel');
-            const splitContainer = document.querySelector('.ef-split-container');
-
-            if (profile) {
-                profile.style.transition = 'none';
-                profile.style.opacity = '1';
-                profile.style.transform = 'none';
-                profile.style.display = 'none';
-                profile.classList.remove('active', 'ef-show');
+            const screen = document.getElementById('efWorkspaceDynamicScreen');
+            if (screen) {
+                screen.innerHTML = '<div style="text-align:center; padding: 40px; color: #64748b;">Select a tenant to view profile.</div>';
             }
-            if (listContainer) {
-                listContainer.style.transition = 'none';
-                listContainer.style.opacity = '1';
-                listContainer.style.transform = 'none';
-                listContainer.style.display = '';
-            }
-            if (leftPanel) {
-                leftPanel.style.transition = 'none';
-                leftPanel.style.opacity = '1';
-                leftPanel.style.transform = 'none';
-                leftPanel.style.display = '';
-            }
-            if (rightPanel) rightPanel.style.display = '';
-            if (splitContainer) splitContainer.style.gridTemplateColumns = '';
-
-            efToggleScrollLock();
             document.querySelectorAll('.ef-tenant-card-item').forEach(c => c.classList.remove('ef-active-tenant'));
         };
 
@@ -1247,31 +1222,8 @@ add_shortcode('tenant_profile', function() {
         }); 
 
         window.efLoadTenantLedgerPage = function(tid, page) {
-            const listContainer = document.getElementById('efTenantListContainer');
-            const leftPanel = document.querySelector('.ef-left-panel');
-            const rightPanel = document.querySelector('.ef-right-panel');
-            const splitContainer = document.querySelector('.ef-split-container');
             let modal = document.getElementById('efTenantProfileModal'); 
-
-            if (listContainer) {
-                listContainer.style.transition = 'none';
-                listContainer.style.opacity = '1';
-                listContainer.style.transform = 'none';
-                listContainer.style.display = 'none';
-            }
-            if (leftPanel) {
-                leftPanel.style.transition = 'none';
-                leftPanel.style.opacity = '1';
-                leftPanel.style.transform = 'none';
-                leftPanel.style.display = 'none';
-            }
-            if (rightPanel) rightPanel.style.display = 'block';
-            if (splitContainer) splitContainer.style.gridTemplateColumns = '1fr';
-
             if (modal) {
-                modal.style.transition = 'none';
-                modal.style.opacity = '1';
-                modal.style.transform = 'none';
                 modal.classList.add('active', 'ef-show');
                 modal.style.display = 'block';
             }
