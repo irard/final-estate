@@ -575,7 +575,7 @@ add_shortcode('student_list', $tenant_list_logic);
 add_shortcode('tenant_profile', function() { 
     ob_start(); ?> 
      
-    <div id="efTenantProfileModal" class="ef-popup-modal-container active ef-show" style="display:block;">
+    <div id="efTenantProfileModal" class="ef-popup-modal-container" style="display:none;">
         <div class="ef-popup-modal-box" style="position: relative; background: #ffffff; border-radius: 16px; padding: 28px; width: 100%;"> 
             <div id="efWorkspaceDynamicScreen" style="width:100%;"> 
                 <div style="text-align:center; padding: 40px; color: #64748b;">Select a tenant to view profile.</div> 
@@ -792,10 +792,45 @@ add_shortcode('tenant_profile', function() {
         if (renewTotalRent) renewTotalRent.addEventListener('input', calculateRenewValues);
 
         window.efCloseTenantProfile = function() {
-            const screen = document.getElementById('efWorkspaceDynamicScreen');
-            if (screen) {
-                screen.innerHTML = '<div style="text-align:center; padding: 40px; color: #64748b;">Select a tenant to view profile.</div>';
+            const profile = document.getElementById('efTenantProfileModal');
+            const listContainer = document.getElementById('efTenantListContainer');
+            const leftPanel = document.querySelector('.ef-left-panel');
+            const rightPanel = document.querySelector('.ef-right-panel');
+            const splitContainer = document.querySelector('.ef-split-container');
+
+            if (profile) {
+                profile.style.transition = 'opacity 0.25s ease, transform 0.25s ease';
+                profile.style.opacity = '0';
+                profile.style.transform = 'translateX(30px)';
+                setTimeout(() => {
+                    profile.style.display = 'none';
+                    profile.classList.remove('active', 'ef-show');
+
+                    if (listContainer) {
+                        listContainer.style.display = '';
+                        listContainer.style.transition = 'opacity 0.25s ease, transform 0.25s ease';
+                        listContainer.style.opacity = '0';
+                        listContainer.style.transform = 'translateX(-30px)';
+                        setTimeout(() => { listContainer.style.opacity = '1'; listContainer.style.transform = 'translateX(0)'; }, 20);
+                    }
+                    if (leftPanel) {
+                        leftPanel.style.display = '';
+                        leftPanel.style.transition = 'opacity 0.25s ease, transform 0.25s ease';
+                        leftPanel.style.opacity = '0';
+                        leftPanel.style.transform = 'translateX(-30px)';
+                        setTimeout(() => { leftPanel.style.opacity = '1'; leftPanel.style.transform = 'translateX(0)'; }, 20);
+                    }
+                    if (rightPanel) rightPanel.style.display = '';
+                    if (splitContainer) splitContainer.style.gridTemplateColumns = '';
+                }, 220);
+            } else {
+                if (listContainer) listContainer.style.display = '';
+                if (leftPanel) leftPanel.style.display = '';
+                if (rightPanel) rightPanel.style.display = '';
+                if (splitContainer) splitContainer.style.gridTemplateColumns = '';
             }
+
+            efToggleScrollLock();
             document.querySelectorAll('.ef-tenant-card-item').forEach(c => c.classList.remove('ef-active-tenant'));
         };
 
@@ -1222,11 +1257,41 @@ add_shortcode('tenant_profile', function() {
         }); 
 
         window.efLoadTenantLedgerPage = function(tid, page) {
+            const listContainer = document.getElementById('efTenantListContainer');
+            const leftPanel = document.querySelector('.ef-left-panel');
+            const rightPanel = document.querySelector('.ef-right-panel');
+            const splitContainer = document.querySelector('.ef-split-container');
             let modal = document.getElementById('efTenantProfileModal'); 
-            if (modal) {
-                modal.classList.add('active', 'ef-show');
-                modal.style.display = 'block';
+
+            if (listContainer) {
+                listContainer.style.transition = 'opacity 0.25s ease, transform 0.25s ease';
+                listContainer.style.opacity = '0';
+                listContainer.style.transform = 'translateX(-30px)';
             }
+            if (leftPanel) {
+                leftPanel.style.transition = 'opacity 0.25s ease, transform 0.25s ease';
+                leftPanel.style.opacity = '0';
+                leftPanel.style.transform = 'translateX(-30px)';
+            }
+
+            setTimeout(() => {
+                if (listContainer) listContainer.style.display = 'none';
+                if (leftPanel) leftPanel.style.display = 'none';
+                if (rightPanel) rightPanel.style.display = 'block';
+                if (splitContainer) splitContainer.style.gridTemplateColumns = '1fr';
+
+                if (modal) {
+                    modal.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+                    modal.style.opacity = '0';
+                    modal.style.transform = 'translateX(30px)';
+                    modal.classList.add('active', 'ef-show');
+                    modal.style.display = 'block';
+                    setTimeout(() => {
+                        modal.style.opacity = '1';
+                        modal.style.transform = 'translateX(0)';
+                    }, 20);
+                }
+            }, 180);
 
             const screen = document.getElementById('efWorkspaceDynamicScreen'); 
             if (page === 1 && screen) screen.innerHTML = '<div style="text-align:center; padding:40px;">Loading profile...</div>'; 
