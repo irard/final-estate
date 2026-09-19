@@ -98,9 +98,9 @@ if (!function_exists('ef_get_tenant_total_payments_amount')) {
                 if ($tenant_start) {
                     $pay_date = get_field('cheque_end_date', $pid) ?: get_post_meta($pid, 'cheque_end_date', true) ?: get_field('cheque_start_date', $pid) ?: get_post_meta($pid, 'cheque_start_date', true) ?: get_field('date_of_payment', $pid) ?: get_post_meta($pid, 'date_of_payment', true);
                     if ($pay_date) {
-                        $pay_ymd = date('Y-m-d', strtotime($pay_date));
-                        $start_ymd = date('Y-m-d', strtotime($tenant_start));
-                        if ($pay_ymd < $start_ymd) {
+                        $pay_ts = strtotime(str_replace('/', '-', $pay_date));
+                        $start_ts = strtotime(str_replace('/', '-', $tenant_start));
+                        if ($pay_ts && $start_ts && date('Y-m-d', $pay_ts) < date('Y-m-d', $start_ts)) {
                             continue;
                         }
                     }

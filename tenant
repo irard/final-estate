@@ -2155,8 +2155,8 @@ function eftm_handle_ajax_tenant_breakdown() {
         <div class="ef-section-title-sub" style="margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; font-size: 12px; font-weight: 700; color: #64748b;">PREVIOUS CONTRACTS HISTORY (<?php echo count($contract_history); ?>)</div>
         <div style="display: flex; flex-direction: column; gap: 10px;">
             <?php foreach (array_reverse($contract_history) as $ch) : 
-                $ch_start = !empty($ch['tenant_start']) ? date('n/j/Y', strtotime($ch['tenant_start'])) : 'N/A';
-                $ch_end = !empty($ch['tenant_end']) ? date('n/j/Y', strtotime($ch['tenant_end'])) : 'N/A';
+                $ch_start = !empty($ch['tenant_start']) ? date('m/d/Y', strtotime(str_replace('/', '-', $ch['tenant_start']))) : 'N/A';
+                $ch_end = !empty($ch['tenant_end']) ? date('m/d/Y', strtotime(str_replace('/', '-', $ch['tenant_end']))) : 'N/A';
                 $ch_total = floatval($ch['total_rent_cost'] ?? 0);
                 $ch_months = intval($ch['contract_months'] ?? 12);
                 $ch_rent = floatval($ch['monthly_rent'] ?? 0);
