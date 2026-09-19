@@ -855,7 +855,7 @@ add_action('wp_footer', function() { ?>
         </div> 
     </div>
 
-    <div id="efTenantHistoryModal" onclick="if(event.target===this) efCloseTenantHistoryModal();">
+    <div id="efTenantHistoryModal" class="ef-popup-modal-container" style="display: none; position: fixed; inset: 0; z-index: 100000; background: rgba(15, 23, 42, 0.5); backdrop-filter: blur(4px); justify-content: center; align-items: center;" onclick="if(event.target===this) efCloseTenantHistoryModal();">
         <div class="ef-modal-card">
             <button type="button" onclick="efCloseTenantHistoryModal()" style="position:absolute; top:20px; right:20px; background:none; border:none; font-size:20px; color:#94a3b8; cursor:pointer; font-weight:600; line-height:1; padding:4px;">✕</button>
             
