@@ -1028,7 +1028,7 @@ add_action('wp_footer', function() { ?>
                 address = tenantData.address || 'No Address Provided';
                 contractStart = tenantData.start_date || 'N/A';
                 contractEnd = tenantData.end_date || 'N/A';
-                statusLabel = (tenantData.status === 'finished') ? 'Contract ended' : 'Contract active';
+                statusLabel = (tenantData.status === 'finished') ? 'tenant contract ended' : 'Contract active';
                 payments = tenantData.payments || [];
                 paymentsCount = String(payments.length);
             }

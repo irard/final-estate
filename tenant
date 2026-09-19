@@ -2042,7 +2042,7 @@ function eftm_handle_ajax_tenant_breakdown() {
                     }
                 }
                 if ($is_contract_ended) : ?>
-                    <span style="display: inline-block; padding: 3px 10px; border-radius: 12px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; font-size: 12px; font-weight: 600;">Contract finished</span>
+                    <span style="display: inline-block; padding: 3px 10px; border-radius: 12px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; font-size: 12px; font-weight: 600;">tenant contract ended</span>
                 <?php elseif ($is_tenant_due) : ?>
                     <span style="display: inline-block; padding: 3px 10px; border-radius: 12px; border: 1px solid #fca5a5; background: #fef2f2; color: #dc2626; font-size: 12px; font-weight: 600;">Payment due</span>
                 <?php else : ?>
