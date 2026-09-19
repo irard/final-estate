@@ -2247,14 +2247,6 @@ body.ef-no-scroll {
   box-sizing: border-box !important;
 }
 
-.ef-dashboard-sidebar-independent,
-.sidebar,
-.dashboard-sidebar,
-.left-sidebar,
-.nav-sidebar {
-  min-height: 100% !important;
-  align-self: stretch !important;
-}
 
 #efWorkspaceDynamicScreen,
 #efTenantProfileContent {
