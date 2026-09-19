@@ -24,7 +24,7 @@ if (!function_exists('ef_get_payment_tenant_id')) {
 add_action('wp_ajax_ef_get_tenants_for_deletion', 'ef_handle_get_tenants_for_deletion');
 if (!function_exists('ef_handle_get_tenants_for_deletion')) {
     function ef_handle_get_tenants_for_deletion() {
-        if (!is_user_logged_in()) {
+        if (!is_user_logged_in() || (!current_user_can('manage_options') && !current_user_can('delete_posts') && !current_user_can('edit_others_posts'))) {
             wp_send_json_error('Unauthorized access.', 403);
         }
 
@@ -89,7 +89,7 @@ if (!function_exists('ef_handle_delete_tenant_forever')) {
         if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'ef_delete_nonce')) {
             wp_send_json_error('Invalid security token.', 403);
         }
-        if (!is_user_logged_in()) {
+        if (!is_user_logged_in() || (!current_user_can('manage_options') && !current_user_can('delete_posts') && !current_user_can('edit_others_posts'))) {
             wp_send_json_error('Unauthorized access.', 403);
         }
 
