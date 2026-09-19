@@ -2238,9 +2238,9 @@ body.ef-no-scroll {
   box-shadow: 0 4px 12px rgba(0,0,0,0.05) !important;
   padding: 24px !important;
   position: relative !important;
-  max-height: none !important;
+  max-height: calc(100vh - 100px) !important;
   margin: 0 !important;
-  overflow: visible !important;
+  overflow-y: auto !important;
   display: block !important;
   visibility: visible !important;
   opacity: 1 !important;
