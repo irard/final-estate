@@ -590,19 +590,20 @@ function ef_handle_get_tenant_modal_details() {
     $total_contract = $total_rent_cost ?: ($monthly_rent * 12);
 
     // Fetch payment records
-    $payment_posts = get_posts([
+    $raw_payment_posts = get_posts([
         'post_type' => 'payment',
         'post_status' => ['publish', 'future', 'pending', 'draft', 'private'],
         'posts_per_page' => -1,
-        'meta_query' => [
-            'relation' => 'OR',
-            ['key' => 'associated_tenant', 'value' => $tenant_id, 'compare' => '='],
-            ['key' => 'select_tenant', 'value' => $tenant_id, 'compare' => '='],
-            ['key' => 'select_tenant', 'value' => '"' . $tenant_id . '"', 'compare' => 'LIKE'],
-        ],
         'orderby' => 'date',
         'order' => 'DESC'
     ]);
+
+    $payment_posts = [];
+    foreach ($raw_payment_posts as $raw_p) {
+        if (ef_get_payment_tenant_id($raw_p->ID) === intval($tenant_id)) {
+            $payment_posts[] = $raw_p;
+        }
+    }
 
     $payments = [];
     $total_paid = 0.00;
