@@ -799,36 +799,26 @@ add_shortcode('tenant_profile', function() {
             const splitContainer = document.querySelector('.ef-split-container');
 
             if (profile) {
-                profile.style.transition = 'opacity 0.25s ease, transform 0.25s ease';
-                profile.style.opacity = '0';
-                profile.style.transform = 'translateX(30px)';
-                setTimeout(() => {
-                    profile.style.display = 'none';
-                    profile.classList.remove('active', 'ef-show');
-                    
-                    if (listContainer) {
-                        listContainer.style.display = '';
-                        listContainer.style.transition = 'opacity 0.25s ease, transform 0.25s ease';
-                        listContainer.style.opacity = '0';
-                        listContainer.style.transform = 'translateX(-30px)';
-                        setTimeout(() => { listContainer.style.opacity = '1'; listContainer.style.transform = 'translateX(0)'; }, 20);
-                    }
-                    if (leftPanel) {
-                        leftPanel.style.display = '';
-                        leftPanel.style.transition = 'opacity 0.25s ease, transform 0.25s ease';
-                        leftPanel.style.opacity = '0';
-                        leftPanel.style.transform = 'translateX(-30px)';
-                        setTimeout(() => { leftPanel.style.opacity = '1'; leftPanel.style.transform = 'translateX(0)'; }, 20);
-                    }
-                    if (rightPanel) rightPanel.style.display = '';
-                    if (splitContainer) splitContainer.style.gridTemplateColumns = '';
-                }, 220);
-            } else {
-                if (listContainer) listContainer.style.display = '';
-                if (leftPanel) leftPanel.style.display = '';
-                if (rightPanel) rightPanel.style.display = '';
-                if (splitContainer) splitContainer.style.gridTemplateColumns = '';
+                profile.style.transition = 'none';
+                profile.style.opacity = '1';
+                profile.style.transform = 'none';
+                profile.style.display = 'none';
+                profile.classList.remove('active', 'ef-show');
             }
+            if (listContainer) {
+                listContainer.style.transition = 'none';
+                listContainer.style.opacity = '1';
+                listContainer.style.transform = 'none';
+                listContainer.style.display = '';
+            }
+            if (leftPanel) {
+                leftPanel.style.transition = 'none';
+                leftPanel.style.opacity = '1';
+                leftPanel.style.transform = 'none';
+                leftPanel.style.display = '';
+            }
+            if (rightPanel) rightPanel.style.display = '';
+            if (splitContainer) splitContainer.style.gridTemplateColumns = '';
 
             efToggleScrollLock();
             document.querySelectorAll('.ef-tenant-card-item').forEach(c => c.classList.remove('ef-active-tenant'));
@@ -1264,34 +1254,27 @@ add_shortcode('tenant_profile', function() {
             let modal = document.getElementById('efTenantProfileModal'); 
 
             if (listContainer) {
-                listContainer.style.transition = 'opacity 0.25s ease, transform 0.25s ease';
-                listContainer.style.opacity = '0';
-                listContainer.style.transform = 'translateX(-30px)';
+                listContainer.style.transition = 'none';
+                listContainer.style.opacity = '1';
+                listContainer.style.transform = 'none';
+                listContainer.style.display = 'none';
             }
             if (leftPanel) {
-                leftPanel.style.transition = 'opacity 0.25s ease, transform 0.25s ease';
-                leftPanel.style.opacity = '0';
-                leftPanel.style.transform = 'translateX(-30px)';
+                leftPanel.style.transition = 'none';
+                leftPanel.style.opacity = '1';
+                leftPanel.style.transform = 'none';
+                leftPanel.style.display = 'none';
             }
+            if (rightPanel) rightPanel.style.display = 'block';
+            if (splitContainer) splitContainer.style.gridTemplateColumns = '1fr';
 
-            setTimeout(() => {
-                if (listContainer) listContainer.style.display = 'none';
-                if (leftPanel) leftPanel.style.display = 'none';
-                if (rightPanel) rightPanel.style.display = 'block';
-                if (splitContainer) splitContainer.style.gridTemplateColumns = '1fr';
-
-                if (modal) {
-                    modal.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
-                    modal.style.opacity = '0';
-                    modal.style.transform = 'translateX(30px)';
-                    modal.classList.add('active', 'ef-show');
-                    modal.style.display = 'block';
-                    setTimeout(() => {
-                        modal.style.opacity = '1';
-                        modal.style.transform = 'translateX(0)';
-                    }, 20);
-                }
-            }, 180);
+            if (modal) {
+                modal.style.transition = 'none';
+                modal.style.opacity = '1';
+                modal.style.transform = 'none';
+                modal.classList.add('active', 'ef-show');
+                modal.style.display = 'block';
+            }
 
             const screen = document.getElementById('efWorkspaceDynamicScreen'); 
             if (page === 1 && screen) screen.innerHTML = '<div style="text-align:center; padding:40px;">Loading profile...</div>'; 
