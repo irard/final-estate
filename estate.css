@@ -2228,6 +2228,8 @@ body.ef-no-scroll {
   display: block !important;
   visibility: visible !important;
   opacity: 1 !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
 }
 
 #efTenantProfileModal:not(.ef-show):not(.active) {
