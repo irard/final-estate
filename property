@@ -666,6 +666,11 @@ function ef_handle_get_tenant_modal_details() {
 
     $balance = max(0, $total_contract - $total_paid);
 
+    $end_ymd = $end ? (function_exists('ef_parse_date_to_ymd') ? ef_parse_date_to_ymd($end) : date('Y-m-d', strtotime(str_replace('/', '-', $end)))) : '';
+    if ($status !== 'finished' && $end_ymd && $end_ymd < date('Y-m-d')) {
+        $status = 'finished';
+    }
+
     if ($status !== 'finished' && $balance > 0.001) {
         $last_pay_end = function_exists('ef_get_tenant_last_payment_end_date') ? ef_get_tenant_last_payment_end_date($tenant_id) : $start;
         if ($last_pay_end && $last_pay_end < date('Y-m-d')) {
