@@ -575,8 +575,9 @@ function ef_handle_add_property_maintenance_fee() {
 
     if (function_exists('update_field')) {
         update_field('maintenance_fees', $m_fees, $property_id);
+    } else {
+        update_post_meta($property_id, 'maintenance_fees', $m_fees);
     }
-    update_post_meta($property_id, 'maintenance_fees', $m_fees);
 
     wp_send_json_success(['maintenance' => $m_fees]);
 }
@@ -608,8 +609,9 @@ function ef_handle_update_property_maintenance_fee() {
 
         if (function_exists('update_field')) {
             update_field('maintenance_fees', $m_fees, $property_id);
+        } else {
+            update_post_meta($property_id, 'maintenance_fees', $m_fees);
         }
-        update_post_meta($property_id, 'maintenance_fees', $m_fees);
     }
 
     wp_send_json_success(['maintenance' => $m_fees]);
@@ -635,8 +637,9 @@ function ef_handle_delete_property_maintenance_fee() {
 
         if (function_exists('update_field')) {
             update_field('maintenance_fees', $m_fees, $property_id);
+        } else {
+            update_post_meta($property_id, 'maintenance_fees', $m_fees);
         }
-        update_post_meta($property_id, 'maintenance_fees', $m_fees);
     }
 
     wp_send_json_success(['maintenance' => $m_fees]);
@@ -1111,6 +1114,11 @@ add_action('wp_footer', function() { ?>
         document.getElementById('efMaintenanceModal').style.display = 'flex';
     };
 
+    window.efOpenEditMaintenanceModalFromBtn = function(btn) {
+        const d = btn.dataset;
+        window.efOpenEditMaintenanceModal(d.prop, d.index, d.fee, d.details, d.date);
+    };
+
     window.efCloseMaintenanceModal = function() {
         document.getElementById('efMaintenanceModal').style.display = 'none';
     };
@@ -1141,7 +1149,9 @@ add_action('wp_footer', function() { ?>
         const saveBtn = document.getElementById('efMaintenanceSaveBtn');
         if (saveBtn) { saveBtn.disabled = true; saveBtn.innerText = 'Saving...'; }
 
-        fetch(ajaxUrl, { method: 'POST', body: formData })
+        const reqUrl = (typeof ajaxUrl !== 'undefined' && ajaxUrl) ? ajaxUrl : '<?php echo admin_url("admin-ajax.php"); ?>';
+
+        fetch(reqUrl, { method: 'POST', body: formData })
             .then(r => r.json())
             .then(res => {
                 if (saveBtn) { saveBtn.disabled = false; saveBtn.innerText = 'Save Fee'; }
@@ -1153,9 +1163,10 @@ add_action('wp_footer', function() { ?>
                     alert(res.data || 'Failed to save maintenance fee.');
                 }
             })
-            .catch(() => {
+            .catch((err) => {
+                console.error(err);
                 if (saveBtn) { saveBtn.disabled = false; saveBtn.innerText = 'Save Fee'; }
-                alert('An error occurred.');
+                alert('An error occurred while saving.');
             });
     };
 
@@ -1169,7 +1180,9 @@ add_action('wp_footer', function() { ?>
         formData.append('property_id', propertyId);
         formData.append('index', index);
 
-        fetch(ajaxUrl, { method: 'POST', body: formData })
+        const reqUrl = (typeof ajaxUrl !== 'undefined' && ajaxUrl) ? ajaxUrl : '<?php echo admin_url("admin-ajax.php"); ?>';
+
+        fetch(reqUrl, { method: 'POST', body: formData })
             .then(r => r.json())
             .then(res => {
                 if (res.success) {
@@ -2259,7 +2272,7 @@ add_action('wp_footer', function() { ?>
                         </div>
                         <div style="display:flex; align-items:center; gap:10px; flex-shrink:0;">
                             <div style="font-size:14px; font-weight:700; color:#0f172a;">${fmtMoney(m.fee)}</div>
-                            <button type="button" onclick="efOpenEditMaintenanceModal(${prop.id}, ${m.index}, ${m.fee}, '${(m.details || '').replace(/'/g, "\\'")}', '${m.date || ''}')" style="background:none; border:none; color:#64748b; cursor:pointer; padding:4px;" title="Edit">
+                            <button type="button" data-prop="${prop.id}" data-index="${m.index}" data-fee="${m.fee}" data-details="${(m.details || '').replace(/"/g, '&quot;')}" data-date="${m.date || ''}" onclick="efOpenEditMaintenanceModalFromBtn(this)" style="background:none; border:none; color:#64748b; cursor:pointer; padding:4px;" title="Edit">
                                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                             </button>
                             <button type="button" onclick="efDeleteMaintenanceFee(${prop.id}, ${m.index})" style="background:none; border:none; color:#ef4444; cursor:pointer; padding:4px;" title="Delete">
