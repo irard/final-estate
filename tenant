@@ -1846,49 +1846,46 @@ function eftm_handle_ajax_tenant_breakdown() {
     $prop_field     = get_field('property_id', $tenant_id) ?: get_post_meta($tenant_id, 'property_id', true); 
     $propId = is_object($prop_field) ? $prop_field->ID : (is_array($prop_field) ? ($prop_field['ID'] ?? $prop_field[0]->ID ?? 0) : intval($prop_field)); 
     $property_display = $propId ? get_the_title($propId) : 'No Property Assigned'; 
-    $payment_history = []; 
-    $p_query = new WP_Query([ 
-        'post_type'      => 'payment', 
-        'post_status'    => ['publish', 'future'], 
-        'posts_per_page' => $posts_per_page, 
-        'paged'          => $paged,
-        'meta_query'     => [
-            'relation' => 'OR',
-            ['key' => 'associated_tenant', 'value' => $tenant_id, 'compare' => '='],
-            ['key' => 'select_tenant', 'value' => $tenant_id, 'compare' => '='],
-            ['key' => 'select_tenant', 'value' => '"' . $tenant_id . '"', 'compare' => 'LIKE'],
-        ],
-        'meta_key'       => 'payment_period', 'orderby' => 'meta_value', 'order' => 'DESC' 
-    ]); 
-    $total_pages = $p_query->max_num_pages;
-
-    $fully_paid_months_count = 0;
-    $all_payments = get_posts([
+    $all_raw_payments = get_posts([
         'post_type' => 'payment',
         'post_status' => ['publish', 'future', 'pending', 'draft', 'private'],
         'posts_per_page' => -1,
-        'meta_query' => [
-            'relation' => 'OR',
-            ['key' => 'associated_tenant', 'value' => $tenant_id, 'compare' => '='],
-            ['key' => 'select_tenant', 'value' => $tenant_id, 'compare' => '='],
-            ['key' => 'select_tenant', 'value' => '"' . $tenant_id . '"', 'compare' => 'LIKE'],
-        ]
+        'orderby' => 'date',
+        'order' => 'DESC'
     ]);
-    if (!empty($all_payments)) {
-        $month_totals = [];
-        foreach ($all_payments as $p_all) {
+
+    $all_payments = [];
+    $active_contract_payments = [];
+
+    foreach ($all_raw_payments as $p_item) {
+        $p_id = $p_item->ID;
+        if (ef_get_payment_tenant_id($p_id) === intval($tenant_id)) {
+            $all_payments[] = $p_item;
+
             if ($contract_start) {
-                $p_end_date = get_field('cheque_end_date', $p_all->ID) ?: get_post_meta($p_all->ID, 'cheque_end_date', true) ?: get_field('cheque_start_date', $p_all->ID) ?: get_post_meta($p_all->ID, 'cheque_start_date', true) ?: get_field('date_of_payment', $p_all->ID) ?: get_post_meta($p_all->ID, 'date_of_payment', true);
-                if ($p_end_date) {
-                    $p_ts = strtotime(str_replace('/', '-', $p_end_date));
+                $c_end = get_field('cheque_end_date', $p_id) ?: get_post_meta($p_id, 'cheque_end_date', true);
+                $c_start = get_field('cheque_start_date', $p_id) ?: get_post_meta($p_id, 'cheque_start_date', true);
+                $r_date = get_field('date_of_payment', $p_id) ?: get_post_meta($p_id, 'date_of_payment', true);
+
+                $check_date = $c_end ?: ($c_start ?: $r_date);
+                if ($check_date) {
+                    $check_ts = strtotime(str_replace('/', '-', $check_date));
                     $c_start_ts = strtotime(str_replace('/', '-', $contract_start));
-                    if ($p_ts && $c_start_ts && date('Y-m-d', $p_ts) < date('Y-m-d', $c_start_ts)) {
+                    if ($check_ts && $c_start_ts && date('Y-m-d', $check_ts) < date('Y-m-d', $c_start_ts)) {
                         continue;
                     }
                 }
             }
-            $p_period_all = ef_get_payment_period($p_all->ID);
-            $amt_all = floatval(str_replace(',', '', get_field('amount_paid', $p_all->ID) ?: get_post_meta($p_all->ID, 'amount_paid', true)));
+            $active_contract_payments[] = $p_item;
+        }
+    }
+
+    $fully_paid_months_count = 0;
+    if (!empty($active_contract_payments)) {
+        $month_totals = [];
+        foreach ($active_contract_payments as $p_active) {
+            $p_period_all = ef_get_payment_period($p_active->ID);
+            $amt_all = floatval(str_replace(',', '', get_field('amount_paid', $p_active->ID) ?: get_post_meta($p_active->ID, 'amount_paid', true)));
             if (!isset($month_totals[$p_period_all])) $month_totals[$p_period_all] = 0;
             $month_totals[$p_period_all] += $amt_all;
         }
@@ -1899,60 +1896,55 @@ function eftm_handle_ajax_tenant_breakdown() {
         }
     }
 
-    if ($p_query->have_posts()) { 
-        while ($p_query->have_posts()) { 
-            $p_query->the_post(); 
-            $pay_id = get_the_ID(); 
-            $cheque_start = get_field('cheque_start_date', $pay_id) ?: get_post_meta($pay_id, 'cheque_start_date', true) ?: '';
-            $cheque_end = get_field('cheque_end_date', $pay_id) ?: get_post_meta($pay_id, 'cheque_end_date', true) ?: '';
-            $raw_date = get_field('date_of_payment', $pay_id) ?: get_post_meta($pay_id, 'date_of_payment', true); 
+    $total_items = count($active_contract_payments);
+    $total_pages = ceil($total_items / $posts_per_page) ?: 1;
+    if ($paged > $total_pages) $paged = $total_pages;
+    if ($paged < 1) $paged = 1;
 
-            $check_date = $cheque_end ?: ($cheque_start ?: $raw_date);
-            if ($contract_start && $check_date) {
-                $check_ts = strtotime(str_replace('/', '-', $check_date));
-                $c_start_ts = strtotime(str_replace('/', '-', $contract_start));
-                if ($check_ts && $c_start_ts && date('Y-m-d', $check_ts) < date('Y-m-d', $c_start_ts)) {
-                    continue;
-                }
+    $paged_active_payments = array_slice($active_contract_payments, ($paged - 1) * $posts_per_page, $posts_per_page);
+
+    $payment_history = [];
+    foreach ($paged_active_payments as $p_post) {
+        $pay_id = $p_post->ID;
+        $cheque_start = get_field('cheque_start_date', $pay_id) ?: get_post_meta($pay_id, 'cheque_start_date', true) ?: '';
+        $cheque_end = get_field('cheque_end_date', $pay_id) ?: get_post_meta($pay_id, 'cheque_end_date', true) ?: '';
+        $raw_date = get_field('date_of_payment', $pay_id) ?: get_post_meta($pay_id, 'date_of_payment', true);
+
+        $ts = $raw_date ? strtotime(str_replace('/', '-', $raw_date)) : get_the_date('U', $pay_id);
+        $period = (function_exists('get_field') ? get_field('payment_period', $pay_id) : null) ?: get_post_meta($pay_id, 'payment_period', true) ?: date('Y-m', $ts);
+        $period = substr((string)$period, 0, 7);
+
+        $status_label = 'Paid';
+        if ($tenant_id && $period) {
+            $py = substr($period, 0, 4);
+            $pm = substr($period, 5, 2);
+            if (function_exists('ef_get_tenant_monthly_status')) {
+                $st = ef_get_tenant_monthly_status($tenant_id, $pm, $py);
+                if (!$st['is_fully_paid']) $status_label = 'Partial';
             }
-            $ts = $raw_date ? strtotime($raw_date) : get_the_date('U', $pay_id); 
-            $period = (function_exists('get_field') ? get_field('payment_period', $pay_id) : null) ?: get_post_meta($pay_id, 'payment_period', true) ?: date('Y-m', $ts);
-            $period = substr((string)$period, 0, 7);
+        }
 
-            $status_label = 'Paid';
-            if ($tenant_id && $period) {
-                $py = substr($period, 0, 4);
-                $pm = substr($period, 5, 2);
-                if (function_exists('ef_get_tenant_monthly_status')) {
-                    $st = ef_get_tenant_monthly_status($tenant_id, $pm, $py);
-                    if (!$st['is_fully_paid']) $status_label = 'Partial';
-                }
-            }
-
-            $cheque_start = get_field('cheque_start_date', $pay_id) ?: get_post_meta($pay_id, 'cheque_start_date', true) ?: '';
-            $cheque_end = get_field('cheque_end_date', $pay_id) ?: get_post_meta($pay_id, 'cheque_end_date', true) ?: '';
-            
-            $period_display = '';
-            if ($cheque_start && $cheque_end) {
-                if ($cheque_start === $cheque_end) {
-                    $period_display = $cheque_start;
-                } else {
-                    $period_display = $cheque_start . ' to ' . $cheque_end;
-                }
+        $period_display = '';
+        if ($cheque_start && $cheque_end) {
+            if ($cheque_start === $cheque_end) {
+                $period_display = $cheque_start;
             } else {
-                $period_display = $period;
+                $period_display = $cheque_start . ' to ' . $cheque_end;
             }
+        } else {
+            $period_display = $period;
+        }
 
-            $payment_history[] = [ 
-                'id' => $pay_id, 'period' => $period_display, 'date' => date('n/j/Y', $ts), 
-                'method' => (get_field('mode_of_payment', $pay_id) ?: get_post_meta($pay_id, 'mode_of_payment', true)) ?: 'Cash', 
-                'amount' => floatval(get_field('amount_paid', $pay_id) ?: get_post_meta($pay_id, 'amount_paid', true)),
-                'cheque' => get_field('transaction_cheque_number', $pay_id) ?: get_post_meta($pay_id, 'transaction_cheque_number', true),
-                'receipt_voucher' => get_field('receipt_voucher', $pay_id) ?: get_post_meta($pay_id, 'receipt_voucher', true),
-                'status' => $status_label
-            ]; 
-        } 
-        wp_reset_postdata(); 
+        $payment_history[] = [
+            'id' => $pay_id,
+            'period' => $period_display,
+            'date' => date('n/j/Y', $ts),
+            'method' => (get_field('mode_of_payment', $pay_id) ?: get_post_meta($pay_id, 'mode_of_payment', true)) ?: 'Cash',
+            'amount' => floatval(get_field('amount_paid', $pay_id) ?: get_post_meta($pay_id, 'amount_paid', true)),
+            'cheque' => get_field('transaction_cheque_number', $pay_id) ?: get_post_meta($pay_id, 'transaction_cheque_number', true),
+            'receipt_voucher' => (get_field('receipt_voucher', $pay_id) ?: get_post_meta($pay_id, 'receipt_voucher', true)) ?: ('REC-' . str_pad($pay_id, 6, '0', STR_PAD_LEFT)),
+            'status' => $status_label
+        ];
     } 
     $initials = ''; $words = explode(' ', $tenant_name); foreach ($words as $w) $initials .= strtoupper(substr($w, 0, 1)); 
     $initials = substr($initials, 0, 2); 
@@ -2038,7 +2030,8 @@ function eftm_handle_ajax_tenant_breakdown() {
                 <div style="color: #64748b; font-size: 14px; font-weight: 500; margin-bottom: 6px;"><?php echo esc_html($property_display); ?> — Unit <?php echo esc_html($unit ?: '1A'); ?></div> 
                 <?php 
                 $t_status = get_post_meta($tenant_id, 'tenant_status', true) ?: (function_exists('get_field') ? get_field('tenant_status', $tenant_id) : '');
-                $is_contract_ended = ($t_status === 'finished');
+                $contract_end_ymd = $contract_end ? (function_exists('ef_parse_date_to_ymd') ? ef_parse_date_to_ymd($contract_end) : date('Y-m-d', strtotime(str_replace('/', '-', $contract_end)))) : '';
+                $is_contract_ended = ($t_status === 'finished') || (!empty($contract_end_ymd) && $contract_end_ymd < date('Y-m-d'));
                 $is_tenant_due = false;
                 if (!$is_contract_ended) {
                     $outstanding_bal = ef_get_tenant_outstanding_balance($tenant_id);
@@ -2050,7 +2043,7 @@ function eftm_handle_ajax_tenant_breakdown() {
                     }
                 }
                 if ($is_contract_ended) : ?>
-                    <span style="display: inline-block; padding: 3px 10px; border-radius: 12px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; font-size: 12px; font-weight: 600;">Contract finished</span>
+                    <span style="display: inline-block; padding: 3px 10px; border-radius: 12px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; font-size: 12px; font-weight: 600;">tenant contract ended</span>
                 <?php elseif ($is_tenant_due) : ?>
                     <span style="display: inline-block; padding: 3px 10px; border-radius: 12px; border: 1px solid #fca5a5; background: #fef2f2; color: #dc2626; font-size: 12px; font-weight: 600;">Payment due</span>
                 <?php else : ?>
@@ -2146,34 +2139,7 @@ function eftm_handle_ajax_tenant_breakdown() {
             </div>
         </div>
     </div>
-    <?php
-    $contract_history_raw = get_post_meta($tenant_id, 'contract_history', true);
-    $contract_history = is_array($contract_history_raw) ? $contract_history_raw : (json_decode($contract_history_raw, true) ?: []);
-    if (!empty($contract_history)) :
-    ?>
-    <div style="margin-top: 24px; margin-bottom: 24px;">
-        <div class="ef-section-title-sub" style="margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; font-size: 12px; font-weight: 700; color: #64748b;">PREVIOUS CONTRACTS HISTORY (<?php echo count($contract_history); ?>)</div>
-        <div style="display: flex; flex-direction: column; gap: 10px;">
-            <?php foreach (array_reverse($contract_history) as $ch) : 
-                $ch_start = !empty($ch['tenant_start']) ? date('n/j/Y', strtotime($ch['tenant_start'])) : 'N/A';
-                $ch_end = !empty($ch['tenant_end']) ? date('n/j/Y', strtotime($ch['tenant_end'])) : 'N/A';
-                $ch_total = floatval($ch['total_rent_cost'] ?? 0);
-                $ch_months = intval($ch['contract_months'] ?? 12);
-                $ch_rent = floatval($ch['monthly_rent'] ?? 0);
-            ?>
-                <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center;">
-                    <div>
-                        <div style="font-size: 14px; font-weight: 700; color: #0f172a;"><?php echo esc_html($ch_start . ' - ' . $ch_end); ?> · <?php echo $ch_months; ?> Months</div>
-                        <div style="font-size: 13px; color: #64748b; margin-top: 2px;">Rent: AED <?php echo number_format($ch_rent, 2); ?>/mo</div>
-                    </div>
-                    <div style="font-size: 15px; font-weight: 700; color: #0f172a;">
-                        AED <?php echo number_format($ch_total, 2); ?>
-                    </div>
-                </div>
-            <?php endforeach; ?>
-        </div>
-    </div>
-    <?php endif; ?>
+
     <div class="ef-section-title-sub" style="margin-top: 32px;">Payment Ledger History</div> 
     <div class="ef-payment-history-list"> 
         <?php if (!empty($payment_history)) : foreach ($payment_history as $p) : 
@@ -2211,7 +2177,35 @@ function eftm_handle_ajax_tenant_breakdown() {
             <div style="color: #64748b; font-size: 14px; font-style: italic; padding: 20px 0; text-align: center; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 12px;">No recorded invoice transactions found.</div> 
         <?php endif; ?> 
     </div>
-    </div> 
+
+    <?php
+    $contract_history_raw = get_post_meta($tenant_id, 'contract_history', true);
+    $contract_history = is_array($contract_history_raw) ? $contract_history_raw : (json_decode($contract_history_raw, true) ?: []);
+    if (!empty($contract_history)) :
+    ?>
+    <div style="margin-top: 32px; margin-bottom: 24px;">
+        <div class="ef-section-title-sub" style="margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; font-size: 12px; font-weight: 700; color: #64748b;">PREVIOUS CONTRACTS HISTORY (<?php echo count($contract_history); ?>)</div>
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+            <?php foreach (array_reverse($contract_history) as $ch) : 
+                $ch_start = !empty($ch['tenant_start']) ? date('m/d/Y', strtotime(str_replace('/', '-', $ch['tenant_start']))) : 'N/A';
+                $ch_end = !empty($ch['tenant_end']) ? date('m/d/Y', strtotime(str_replace('/', '-', $ch['tenant_end']))) : 'N/A';
+                $ch_total = floatval($ch['total_rent_cost'] ?? 0);
+                $ch_months = intval($ch['contract_months'] ?? 12);
+                $ch_rent = floatval($ch['monthly_rent'] ?? 0);
+            ?>
+                <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <div style="font-size: 14px; font-weight: 700; color: #0f172a;"><?php echo esc_html($ch_start . ' - ' . $ch_end); ?> · <?php echo $ch_months; ?> Months</div>
+                        <div style="font-size: 13px; color: #64748b; margin-top: 2px;">Rent: AED <?php echo number_format($ch_rent, 2); ?>/mo</div>
+                    </div>
+                    <div style="font-size: 15px; font-weight: 700; color: #0f172a;">
+                        AED <?php echo number_format($ch_total, 2); ?>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+        </div>
+    </div>
+    <?php endif; ?>
     <?php 
     wp_die(); 
 } 
