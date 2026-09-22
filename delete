@@ -1,0 +1,301 @@
+<?php
+if (!defined('ABSPATH')) exit;
+
+if (!function_exists('ef_get_id_from_any')) {
+    function ef_get_id_from_any($val) {
+        if (!$val) return 0;
+        $val = maybe_unserialize($val);
+        if (is_array($val)) {
+            $first = reset($val);
+            return ef_get_id_from_any($first);
+        }
+        if (is_object($val)) return intval($val->ID ?? $val->post_id ?? $val->id ?? 0);
+        return intval($val);
+    }
+}
+
+if (!function_exists('ef_get_payment_tenant_id')) {
+    function ef_get_payment_tenant_id($p_id) {
+        $t = get_field('associated_tenant', $p_id) ?: get_field('select_tenant', $p_id) ?: get_post_meta($p_id, 'associated_tenant', true) ?: get_post_meta($p_id, 'select_tenant', true) ?: get_post_meta($p_id, 'tenant_id', true) ?: get_post_meta($p_id, 'select_tenant_id', true);
+        return ef_get_id_from_any($t);
+    }
+}
+
+add_action('wp_ajax_ef_get_tenants_for_deletion', 'ef_handle_get_tenants_for_deletion');
+if (!function_exists('ef_handle_get_tenants_for_deletion')) {
+    function ef_handle_get_tenants_for_deletion() {
+        if (!is_user_logged_in() || (!current_user_can('manage_options') && !current_user_can('delete_posts') && !current_user_can('edit_others_posts'))) {
+            wp_send_json_error('Unauthorized access.', 403);
+        }
+
+        $tenants = get_posts([
+            'post_type' => 'ef_tenant',
+            'post_status' => 'any',
+            'posts_per_page' => -1,
+            'orderby' => 'title',
+            'order' => 'ASC'
+        ]);
+
+        $all_payments = get_posts([
+            'post_type' => 'payment',
+            'post_status' => 'any',
+            'posts_per_page' => -1
+        ]);
+
+        $payments_by_tenant = [];
+        foreach ($all_payments as $pay) {
+            $tid = ef_get_payment_tenant_id($pay->ID);
+            if ($tid) {
+                if (!isset($payments_by_tenant[$tid])) $payments_by_tenant[$tid] = 0;
+                $payments_by_tenant[$tid]++;
+            }
+        }
+
+        $data = [];
+        foreach ($tenants as $t) {
+            $tid = $t->ID;
+            $unit = get_field('tenant_unit', $tid) ?: get_post_meta($tid, 'tenant_unit', true) ?: '1A';
+            $status = get_post_meta($tid, 'tenant_status', true) ?: (function_exists('get_field') ? get_field('tenant_status', $tid) : '') ?: 'active';
+            $start = get_field('tenant_start', $tid) ?: get_post_meta($tid, 'tenant_start', true);
+            $end = get_field('tenant_end', $tid) ?: get_post_meta($tid, 'tenant_end', true);
+            $address = get_field('tenant_address', $tid) ?: get_post_meta($tid, 'tenant_address', true) ?: 'N/A';
+
+            $prop_field = get_field('property_id', $tid) ?: get_post_meta($tid, 'property_id', true);
+            $prop_id = is_object($prop_field) ? $prop_field->ID : (is_array($prop_field) ? ($prop_field['ID'] ?? $prop_field[0]->ID ?? 0) : intval($prop_field));
+            $prop_name = $prop_id ? get_the_title($prop_id) : 'No Property Assigned';
+
+            $tx_count = isset($payments_by_tenant[$tid]) ? $payments_by_tenant[$tid] : 0;
+
+            $data[] = [
+                'id' => $tid,
+                'name' => $t->post_title,
+                'unit' => $unit,
+                'status' => $status,
+                'property_name' => $prop_name,
+                'address' => $address,
+                'start_date' => $start ?: 'N/A',
+                'end_date' => $end ?: 'N/A',
+                'transactions' => $tx_count
+            ];
+        }
+
+        wp_send_json_success($data);
+    }
+}
+
+add_action('wp_ajax_ef_delete_tenant_forever', 'ef_handle_delete_tenant_forever');
+if (!function_exists('ef_handle_delete_tenant_forever')) {
+    function ef_handle_delete_tenant_forever() {
+        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'ef_delete_nonce')) {
+            wp_send_json_error('Invalid security token.', 403);
+        }
+        if (!is_user_logged_in() || (!current_user_can('manage_options') && !current_user_can('delete_posts') && !current_user_can('edit_others_posts'))) {
+            wp_send_json_error('Unauthorized access.', 403);
+        }
+
+        $tenant_id = intval($_POST['tenant_id'] ?? 0);
+        if (!$tenant_id) {
+            wp_send_json_error('Tenant ID is required.');
+        }
+
+        $tenant_post = get_post($tenant_id);
+        if (!$tenant_post) {
+            wp_send_json_error('Tenant record not found.');
+        }
+        $tenant_name = $tenant_post->post_title;
+
+        // Fetch and permanently delete all payment transactions for this tenant
+        $all_payments = get_posts([
+            'post_type' => 'payment',
+            'post_status' => 'any',
+            'posts_per_page' => -1
+        ]);
+
+        $deleted_tx_count = 0;
+        foreach ($all_payments as $pay) {
+            $pay_id = $pay->ID;
+            if (ef_get_payment_tenant_id($pay_id) === $tenant_id) {
+                if (wp_delete_post($pay_id, true)) {
+                    $deleted_tx_count++;
+                }
+            }
+        }
+
+        // Permanently delete the tenant post
+        $deleted_tenant = wp_delete_post($tenant_id, true);
+        if (!$deleted_tenant) {
+            wp_send_json_error('Failed to delete tenant post from database.');
+        }
+
+        if (function_exists('ef_purge_page_cache')) {
+            ef_purge_page_cache($tenant_id);
+        }
+
+        wp_send_json_success([
+            'tenant_id' => $tenant_id,
+            'tenant_name' => $tenant_name,
+            'deleted_transactions' => $deleted_tx_count
+        ]);
+    }
+}
+
+$delete_tenant_page_logic = function() {
+    ob_start();
+    ?>
+    <div id="ef-delete-page-wrapper" style="max-width: 1100px; margin: 0 auto; padding: 24px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #0f172a;">
+        <input type="hidden" id="ef_delete_nonce" value="<?php echo wp_create_nonce('ef_delete_nonce'); ?>">
+        
+        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 28px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); margin-bottom: 28px;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px; margin-bottom: 20px;">
+                <div>
+                    <h2 style="margin: 0 0 6px 0; font-size: 24px; font-weight: 800; color: #0f172a;">Delete Tenants Forever</h2>
+                    <p style="margin: 0; font-size: 14px; color: #64748b;">Permanently remove tenant profiles and all associated financial payment transaction records (new and old).</p>
+                </div>
+                <div style="background: #fef2f2; border: 1px solid #fca5a5; border-radius: 10px; padding: 10px 16px; color: #991b1b; font-size: 13px; font-weight: 600;">
+                    ⚠️ Permanent Action — Deleted records cannot be restored
+                </div>
+            </div>
+
+            <div>
+                <input type="text" id="efDeleteSearchInput" placeholder="🔍 Search tenant by name, unit, property or address..." style="width: 100%; padding: 12px 16px; border: 1px solid #cbd5e1; border-radius: 10px; font-size: 14px; outline: none; background: #ffffff; box-sizing: border-box;">
+            </div>
+        </div>
+
+        <div id="ef-delete-tenants-container">
+            <div style="padding: 40px; text-align: center; color: #64748b; font-size: 14px;">Loading tenants...</div>
+        </div>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const container = document.getElementById('ef-delete-tenants-container');
+        const searchInput = document.getElementById('efDeleteSearchInput');
+        const nonceEl = document.getElementById('ef_delete_nonce');
+        if (!container) return;
+
+        const ajaxUrl = '<?php echo admin_url("admin-ajax.php"); ?>';
+        let allTenants = [];
+
+        function loadTenants() {
+            container.innerHTML = '<div style="padding: 40px; text-align: center; color: #64748b; font-size: 14px;">Loading tenant directory...</div>';
+            
+            const fd = new FormData();
+            fd.append('action', 'ef_get_tenants_for_deletion');
+
+            fetch(ajaxUrl, { method: 'POST', body: fd })
+            .then(r => r.json())
+            .then(res => {
+                if (res.success) {
+                    allTenants = res.data;
+                    renderTenants();
+                } else {
+                    container.innerHTML = '<div style="padding: 40px; text-align: center; color: #dc2626; font-size: 14px;">Failed to load tenants.</div>';
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                container.innerHTML = '<div style="padding: 40px; text-align: center; color: #dc2626; font-size: 14px;">Network error loading tenants.</div>';
+            });
+        }
+
+        function renderTenants() {
+            const query = (searchInput ? searchInput.value : '').toLowerCase().trim();
+            const filtered = allTenants.filter(t => {
+                if (!query) return true;
+                return (t.name || '').toLowerCase().includes(query) ||
+                       (t.unit || '').toLowerCase().includes(query) ||
+                       (t.property_name || '').toLowerCase().includes(query) ||
+                       (t.address || '').toLowerCase().includes(query);
+            });
+
+            if (filtered.length === 0) {
+                container.innerHTML = '<div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 40px; text-align: center; color: #64748b; font-size: 14px;">No matching tenants found.</div>';
+                return;
+            }
+
+            container.innerHTML = filtered.map(t => {
+                const statusBadge = (t.status === 'finished')
+                    ? '<span style="border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600;">tenant contract ended</span>'
+                    : '<span style="border: 1px solid #a7f3d0; background: #ecfdf5; color: #059669; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600;">Active</span>';
+
+                return `
+                    <div id="ef-delete-row-${t.id}" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px 22px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
+                        <div style="flex: 1; min-width: 240px;">
+                            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
+                                <span style="font-size: 16px; font-weight: 700; color: #0f172a;">${t.name}</span>
+                                ${statusBadge}
+                            </div>
+                            <div style="font-size: 13px; color: #64748b; font-weight: 500;">
+                                ${t.property_name} · Unit ${t.unit}
+                            </div>
+                            <div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">
+                                Contract: ${t.start_date} to ${t.end_date} · <strong>${t.transactions} transactions</strong>
+                            </div>
+                        </div>
+
+                        <div>
+                            <button type="button" class="ef-btn-delete-forever" data-id="${t.id}" data-name="${t.name}" data-tx="${t.transactions}" style="background: #dc2626; border: none; color: #ffffff; padding: 10px 20px; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05);">
+                                🗑 Delete Forever
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            document.querySelectorAll('.ef-btn-delete-forever').forEach(btn => {
+                btn.onclick = function() {
+                    const tid = btn.dataset.id;
+                    const name = btn.dataset.name;
+                    const txCount = btn.dataset.tx;
+
+                    const confirmMsg = `PERMANENT DELETION WARNING:\n\nAre you sure you want to delete ${name} FOREVER?\n\nThis will permanently erase:\n1. Tenant profile & all contract history\n2. ALL ${txCount} recorded payment transactions (new and old)\n\nThis action CANNOT be undone! Proceed?`;
+                    
+                    if (confirm(confirmMsg)) {
+                        btn.disabled = true;
+                        btn.textContent = 'Deleting...';
+
+                        const fd = new FormData();
+                        fd.append('action', 'ef_delete_tenant_forever');
+                        fd.append('tenant_id', tid);
+                        if (nonceEl) fd.append('nonce', nonceEl.value);
+
+                        fetch(ajaxUrl, { method: 'POST', body: fd })
+                        .then(r => r.json())
+                        .then(res => {
+                            if (res.success) {
+                                alert(`Tenant "${name}" and all ${res.data.deleted_transactions} transaction records have been deleted forever.`);
+                                const row = document.getElementById('ef-delete-row-' + tid);
+                                if (row) row.remove();
+                                allTenants = allTenants.filter(item => item.id != tid);
+                                renderTenants();
+                            } else {
+                                alert(res.data || 'Failed to delete tenant.');
+                                btn.disabled = false;
+                                btn.textContent = '🗑 Delete Forever';
+                            }
+                        })
+                        .catch(err => {
+                            console.error(err);
+                            alert('Network error deleting tenant.');
+                            btn.disabled = false;
+                            btn.textContent = '🗑 Delete Forever';
+                        });
+                    }
+                };
+            });
+        }
+
+        if (searchInput) {
+            searchInput.addEventListener('input', renderTenants);
+        }
+
+        loadTenants();
+    });
+    </script>
+    <?php
+    return ob_get_clean();
+};
+
+add_shortcode('ef_delete_tenant_page', $delete_tenant_page_logic);
+add_shortcode('delete_tenant', $delete_tenant_page_logic);
+add_shortcode('delete', $delete_tenant_page_logic);
