@@ -579,6 +579,10 @@ function ef_handle_add_property_maintenance_fee() {
         update_post_meta($property_id, 'maintenance_fees', $m_fees);
     }
 
+    if (function_exists('ef_purge_page_cache')) {
+        ef_purge_page_cache($property_id);
+    }
+
     wp_send_json_success(['maintenance' => $m_fees]);
 }
 }
@@ -612,6 +616,10 @@ function ef_handle_update_property_maintenance_fee() {
         } else {
             update_post_meta($property_id, 'maintenance_fees', $m_fees);
         }
+
+        if (function_exists('ef_purge_page_cache')) {
+            ef_purge_page_cache($property_id);
+        }
     }
 
     wp_send_json_success(['maintenance' => $m_fees]);
@@ -639,6 +647,10 @@ function ef_handle_delete_property_maintenance_fee() {
             update_field('maintenance_fees', $m_fees, $property_id);
         } else {
             update_post_meta($property_id, 'maintenance_fees', $m_fees);
+        }
+
+        if (function_exists('ef_purge_page_cache')) {
+            ef_purge_page_cache($property_id);
         }
     }
 
