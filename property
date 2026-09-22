@@ -527,11 +527,120 @@ function ef_handle_get_property_tenants_simple() {
             }
         }
     } 
+    $raw_m = function_exists('get_field') ? get_field('maintenance_fees', $property_id) : get_post_meta($property_id, 'maintenance_fees', true);
+    if (!is_array($raw_m)) {
+        $raw_m = [];
+    }
+    $maintenance_fees = [];
+    foreach ($raw_m as $idx => $m) {
+        if (is_array($m)) {
+            $maintenance_fees[] = [
+                'index'   => $idx,
+                'fee'     => floatval($m['maintenance_fee'] ?? 0),
+                'details' => $m['maintenance_details'] ?? '',
+                'date'    => $m['maintenance_date'] ?? ''
+            ];
+        }
+    }
+
     wp_send_json_success([
-        'active' => $active_data,
-        'history' => $history_data
+        'active'      => $active_data,
+        'history'     => $history_data,
+        'maintenance' => $maintenance_fees
     ]); 
 } 
+}
+
+add_action('wp_ajax_add_property_maintenance_fee', 'ef_handle_add_property_maintenance_fee');
+if (!function_exists('ef_handle_add_property_maintenance_fee')) {
+function ef_handle_add_property_maintenance_fee() {
+    check_ajax_referer('ef_property_nonce', 'nonce');
+    if (!is_user_logged_in()) wp_send_json_error('Unauthorized');
+
+    $property_id = intval($_POST['property_id'] ?? 0);
+    $fee = floatval($_POST['fee'] ?? 0);
+    $details = sanitize_text_field($_POST['details'] ?? '');
+    $date = sanitize_text_field($_POST['date'] ?? '');
+
+    if (!$property_id) wp_send_json_error('Invalid property ID');
+
+    $m_fees = function_exists('get_field') ? get_field('maintenance_fees', $property_id) : get_post_meta($property_id, 'maintenance_fees', true);
+    if (!is_array($m_fees)) $m_fees = [];
+
+    $m_fees[] = [
+        'maintenance_fee'     => $fee,
+        'maintenance_details' => $details,
+        'maintenance_date'    => $date
+    ];
+
+    if (function_exists('update_field')) {
+        update_field('maintenance_fees', $m_fees, $property_id);
+    }
+    update_post_meta($property_id, 'maintenance_fees', $m_fees);
+
+    wp_send_json_success(['maintenance' => $m_fees]);
+}
+}
+
+add_action('wp_ajax_update_property_maintenance_fee', 'ef_handle_update_property_maintenance_fee');
+if (!function_exists('ef_handle_update_property_maintenance_fee')) {
+function ef_handle_update_property_maintenance_fee() {
+    check_ajax_referer('ef_property_nonce', 'nonce');
+    if (!is_user_logged_in()) wp_send_json_error('Unauthorized');
+
+    $property_id = intval($_POST['property_id'] ?? 0);
+    $index = intval($_POST['index'] ?? -1);
+    $fee = floatval($_POST['fee'] ?? 0);
+    $details = sanitize_text_field($_POST['details'] ?? '');
+    $date = sanitize_text_field($_POST['date'] ?? '');
+
+    if (!$property_id || $index < 0) wp_send_json_error('Invalid parameters');
+
+    $m_fees = function_exists('get_field') ? get_field('maintenance_fees', $property_id) : get_post_meta($property_id, 'maintenance_fees', true);
+    if (!is_array($m_fees)) $m_fees = [];
+
+    if (isset($m_fees[$index])) {
+        $m_fees[$index] = [
+            'maintenance_fee'     => $fee,
+            'maintenance_details' => $details,
+            'maintenance_date'    => $date
+        ];
+
+        if (function_exists('update_field')) {
+            update_field('maintenance_fees', $m_fees, $property_id);
+        }
+        update_post_meta($property_id, 'maintenance_fees', $m_fees);
+    }
+
+    wp_send_json_success(['maintenance' => $m_fees]);
+}
+}
+
+add_action('wp_ajax_delete_property_maintenance_fee', 'ef_handle_delete_property_maintenance_fee');
+if (!function_exists('ef_handle_delete_property_maintenance_fee')) {
+function ef_handle_delete_property_maintenance_fee() {
+    check_ajax_referer('ef_property_nonce', 'nonce');
+    if (!is_user_logged_in()) wp_send_json_error('Unauthorized');
+
+    $property_id = intval($_POST['property_id'] ?? 0);
+    $index = intval($_POST['index'] ?? -1);
+
+    if (!$property_id || $index < 0) wp_send_json_error('Invalid parameters');
+
+    $m_fees = function_exists('get_field') ? get_field('maintenance_fees', $property_id) : get_post_meta($property_id, 'maintenance_fees', true);
+    if (!is_array($m_fees)) $m_fees = [];
+
+    if (isset($m_fees[$index])) {
+        array_splice($m_fees, $index, 1);
+
+        if (function_exists('update_field')) {
+            update_field('maintenance_fees', $m_fees, $property_id);
+        }
+        update_post_meta($property_id, 'maintenance_fees', $m_fees);
+    }
+
+    wp_send_json_success(['maintenance' => $m_fees]);
+}
 }
 
 add_action('wp_ajax_eftm_restore_tenant_contract', 'eftm_execute_ajax_tenant_restore'); 
@@ -926,6 +1035,35 @@ add_action('wp_footer', function() { ?>
         </div>
     </div>
 
+    <div id="efMaintenanceModal" class="ef-popup-modal-container" style="display:none; position:fixed; inset:0; z-index:100002; background:rgba(15,23,42,0.5); backdrop-filter:blur(4px); justify-content:center; align-items:center;" onclick="if(event.target === this) { efCloseMaintenanceModal(); }">
+        <div class="ef-popup-modal-box" style="position: relative; max-width: 440px; width:90%; background:#fff; border-radius: 16px; padding: 28px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.1); box-sizing:border-box;">
+            <button type="button" onclick="efCloseMaintenanceModal()" style="position: absolute; top: 18px; right: 20px; border: none; background: transparent; font-size: 20px; cursor: pointer; color: #64748b;">✕</button>
+            <div style="margin-bottom: 20px;">
+                <h3 style="margin:0 0 4px 0; font-size: 20px; font-weight: 800; color: #0f172a;" id="efMaintenanceModalTitle">Add Maintenance Fee</h3>
+            </div>
+            <form id="efMaintenanceForm">
+                <input type="hidden" id="ef_m_property_id">
+                <input type="hidden" id="ef_m_index" value="-1">
+                <div class="ef-form-group" style="margin-bottom:14px;">
+                    <label style="font-weight:600; color:#334155; font-size:13px; display:block; margin-bottom:6px;">Maintenance Fee (AED)</label>
+                    <input type="number" id="ef_m_fee" class="ef-form-input-box" step="0.01" min="0" placeholder="0.00" style="width:100%; padding:10px 14px; border:1px solid #cbd5e1; border-radius:8px; box-sizing:border-box;" required>
+                </div>
+                <div class="ef-form-group" style="margin-bottom:14px;">
+                    <label style="font-weight:600; color:#334155; font-size:13px; display:block; margin-bottom:6px;">Fee Name / Note</label>
+                    <input type="text" id="ef_m_details" class="ef-form-input-box" placeholder="e.g. Plumbing repair, AC service" style="width:100%; padding:10px 14px; border:1px solid #cbd5e1; border-radius:8px; box-sizing:border-box;" required>
+                </div>
+                <div class="ef-form-group" style="margin-bottom:14px;">
+                    <label style="font-weight:600; color:#334155; font-size:13px; display:block; margin-bottom:6px;">Date Paid</label>
+                    <input type="date" id="ef_m_date" class="ef-form-input-box" style="width:100%; padding:10px 14px; border:1px solid #cbd5e1; border-radius:8px; box-sizing:border-box;" required>
+                </div>
+            </form>
+            <div style="display:flex; justify-content:flex-end; gap:12px; margin-top:24px;">
+                <button type="button" onclick="efCloseMaintenanceModal()" style="background:#fff; border:1px solid #cbd5e1; border-radius:10px; padding:10px 20px; font-size:14px; font-weight:600; color:#334155; cursor:pointer;">Cancel</button>
+                <button type="button" onclick="efSubmitMaintenanceForm()" id="efMaintenanceSaveBtn" style="background:#00a86b; border:none; border-radius:10px; padding:10px 24px; font-size:14px; font-weight:600; color:#fff; cursor:pointer;">Save Fee</button>
+            </div>
+        </div>
+    </div>
+
     <div id="efRenewContractModal" class="ef-popup-modal-container" style="display:none; position:fixed; inset:0; z-index:100001; background:rgba(15,23,42,0.5); backdrop-filter:blur(4px); justify-content:center; align-items:center;" onclick="if(event.target === this) { efCloseRenewModal(); }"> 
         <div class="ef-popup-modal-box" style="position: relative; max-width: 520px; width:90%; background:#fff; border-radius: 16px; padding: 28px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.1); box-sizing:border-box;"> 
             <button type="button" onclick="efCloseRenewModal()" style="position: absolute; top: 18px; right: 20px; border: none; background: transparent; font-size: 20px; cursor: pointer; color: #64748b;">✕</button> 
@@ -953,6 +1091,96 @@ add_action('wp_footer', function() { ?>
     </div>
 
     <script> 
+    window.efOpenAddMaintenanceModal = function(propertyId) {
+        document.getElementById('efMaintenanceModalTitle').innerText = 'Add Maintenance Fee';
+        document.getElementById('ef_m_property_id').value = propertyId;
+        document.getElementById('ef_m_index').value = -1;
+        document.getElementById('ef_m_fee').value = '';
+        document.getElementById('ef_m_details').value = '';
+        document.getElementById('ef_m_date').value = new Date().toISOString().split('T')[0];
+        document.getElementById('efMaintenanceModal').style.display = 'flex';
+    };
+
+    window.efOpenEditMaintenanceModal = function(propertyId, index, fee, details, date) {
+        document.getElementById('efMaintenanceModalTitle').innerText = 'Edit Maintenance Fee';
+        document.getElementById('ef_m_property_id').value = propertyId;
+        document.getElementById('ef_m_index').value = index;
+        document.getElementById('ef_m_fee').value = fee;
+        document.getElementById('ef_m_details').value = details;
+        document.getElementById('ef_m_date').value = date;
+        document.getElementById('efMaintenanceModal').style.display = 'flex';
+    };
+
+    window.efCloseMaintenanceModal = function() {
+        document.getElementById('efMaintenanceModal').style.display = 'none';
+    };
+
+    window.efSubmitMaintenanceForm = function() {
+        const propId = document.getElementById('ef_m_property_id').value;
+        const index = parseInt(document.getElementById('ef_m_index').value, 10);
+        const fee = document.getElementById('ef_m_fee').value;
+        const details = document.getElementById('ef_m_details').value;
+        const date = document.getElementById('ef_m_date').value;
+
+        if (!fee || !details || !date) {
+            alert('Please fill in all fields.');
+            return;
+        }
+
+        const action = index >= 0 ? 'update_property_maintenance_fee' : 'add_property_maintenance_fee';
+        const formData = new FormData();
+        formData.append('action', action);
+        const nonceEl = document.getElementById('ef_property_nonce');
+        if (nonceEl) formData.append('nonce', nonceEl.value);
+        formData.append('property_id', propId);
+        if (index >= 0) formData.append('index', index);
+        formData.append('fee', fee);
+        formData.append('details', details);
+        formData.append('date', date);
+
+        const saveBtn = document.getElementById('efMaintenanceSaveBtn');
+        if (saveBtn) { saveBtn.disabled = true; saveBtn.innerText = 'Saving...'; }
+
+        fetch(ajaxUrl, { method: 'POST', body: formData })
+            .then(r => r.json())
+            .then(res => {
+                if (saveBtn) { saveBtn.disabled = false; saveBtn.innerText = 'Save Fee'; }
+                if (res.success) {
+                    efCloseMaintenanceModal();
+                    // Re-trigger property details view refresh
+                    window.dispatchEvent(new CustomEvent('showPropertyDetails', { detail: { id: propId, name: document.querySelector('#properties-page-details h2')?.innerText || '' } }));
+                } else {
+                    alert(res.data || 'Failed to save maintenance fee.');
+                }
+            })
+            .catch(() => {
+                if (saveBtn) { saveBtn.disabled = false; saveBtn.innerText = 'Save Fee'; }
+                alert('An error occurred.');
+            });
+    };
+
+    window.efDeleteMaintenanceFee = function(propertyId, index) {
+        if (!confirm('Are you sure you want to delete this maintenance fee?')) return;
+
+        const formData = new FormData();
+        formData.append('action', 'delete_property_maintenance_fee');
+        const nonceEl = document.getElementById('ef_property_nonce');
+        if (nonceEl) formData.append('nonce', nonceEl.value);
+        formData.append('property_id', propertyId);
+        formData.append('index', index);
+
+        fetch(ajaxUrl, { method: 'POST', body: formData })
+            .then(r => r.json())
+            .then(res => {
+                if (res.success) {
+                    window.dispatchEvent(new CustomEvent('showPropertyDetails', { detail: { id: propertyId, name: document.querySelector('#properties-page-details h2')?.innerText || '' } }));
+                } else {
+                    alert(res.data || 'Failed to delete maintenance fee.');
+                }
+            })
+            .catch(() => alert('An error occurred.'));
+    };
+
     if (typeof window.efDownloadTenantPDF !== 'function') {
         window.efDownloadTenantPDF = function(tenantName, tenantData, type = 'yearly') {
             const fmtMoney = amount => (parseFloat(amount) || 0).toLocaleString('en-AE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -2015,6 +2243,33 @@ add_action('wp_footer', function() { ?>
                 `).join('') 
                 : `<div style="padding:12px 0; color:#9ca3af; font-size:13px;">No active tenants</div>`; 
 
+            const maintenanceFees = tenantRes.maintenance || [];
+            window.efCurrentPropertyMaintenance = maintenanceFees;
+            window.efCurrentPropertyId = prop.id;
+
+            const renderMaintenanceList = (mFees) => {
+                if (!mFees || !mFees.length) {
+                    return `<div style="padding:12px 0; color:#9ca3af; font-size:13px;">No maintenance fees recorded</div>`;
+                }
+                return mFees.map(m => `
+                    <div style="padding:12px 14px; background:#ffffff; border-radius:12px; margin-bottom:10px; border:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; gap:12px;">
+                        <div style="min-width:0; flex:1;">
+                            <div style="font-size:14px; font-weight:700; color:#0f172a; line-height:1.3; word-break:break-word;">${m.details || 'Maintenance Fee'}</div>
+                            <div style="font-size:12px; color:#64748b; margin-top:3px; font-weight:500;">${m.date || '—'}</div>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:10px; flex-shrink:0;">
+                            <div style="font-size:14px; font-weight:700; color:#0f172a;">${fmtMoney(m.fee)}</div>
+                            <button type="button" onclick="efOpenEditMaintenanceModal(${prop.id}, ${m.index}, ${m.fee}, '${(m.details || '').replace(/'/g, "\\'")}', '${m.date || ''}')" style="background:none; border:none; color:#64748b; cursor:pointer; padding:4px;" title="Edit">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                            </button>
+                            <button type="button" onclick="efDeleteMaintenanceFee(${prop.id}, ${m.index})" style="background:none; border:none; color:#ef4444; cursor:pointer; padding:4px;" title="Delete">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                            </button>
+                        </div>
+                    </div>
+                `).join('');
+            };
+
             const historyTenantsHtml = historyTenants.length
                 ? historyTenants.map(t => `
                     <div onclick="if(typeof efDispatchGlobalView==='function') efDispatchGlobalView(${t.id}, ${t.history_index !== undefined ? t.history_index : -1});" style="padding:14px 16px; background:#ffffff; border-radius:12px; margin-bottom:10px; border:1px solid #e2e8f0; cursor:pointer; display:flex; flex-direction:column; gap:10px;">
@@ -2042,10 +2297,6 @@ add_action('wp_footer', function() { ?>
  
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;"> 
                     <div style="background:#f9fafb;padding:12px;border-radius:8px;border:1px solid #e5e7eb;"> 
-                        <small style="color:#6b7280;text-transform:uppercase;font-size:10px;">Status</small> 
-                        <div style="font-weight:600;">${isAvailable ? '<span class="property-available">Available</span>' : '<span class="property-not-available">Full</span>'}</div> 
-                    </div> 
-                    <div style="background:#f9fafb;padding:12px;border-radius:8px;border:1px solid #e5e7eb;"> 
                         <small style="color:#6b7280;text-transform:uppercase;font-size:10px;">Total Units</small> 
                         <div style="font-weight:600;">${prop.units}</div> 
                     </div> 
@@ -2053,19 +2304,25 @@ add_action('wp_footer', function() { ?>
                         <small style="color:#6b7280;text-transform:uppercase;font-size:10px;">Occupied</small> 
                         <div style="font-weight:600;color:#dc2626;">${prop.occupied}</div> 
                     </div> 
-                    <div style="background:#f9fafb;padding:12px;border-radius:8px;border:1px solid #e5e7eb;"> 
-                        <small style="color:#6b7280;text-transform:uppercase;font-size:10px;">Available</small> 
-                        <div style="font-weight:600;color:#059669;">${available}</div> 
-                    </div> 
                 </div> 
  
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;"> 
+                <div style="display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:20px;">
                     <div style="background:#f9fafb;padding:12px;border-radius:8px;border:1px solid #e5e7eb;"> 
                         <small style="color:#6b7280;text-transform:uppercase;font-size:10px;">TOTAL CONTRACT AMOUNT</small> 
                         <div style="font-size:16px;font-weight:700;">${fmtMoney(prop.expected)}</div> 
                     </div> 
                 </div> 
  
+                <div style="margin-top:24px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                        <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:#64748b;">MAINTENANCE FEES</div>
+                        <button type="button" onclick="efOpenAddMaintenanceModal(${prop.id})" style="background:#00a86b; color:#ffffff; border:none; border-radius:6px; padding:4px 10px; font-size:12px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:4px;">
+                            <span style="font-size:14px; font-weight:700;">+</span> Add
+                        </button>
+                    </div>
+                    <div id="ef-maintenance-list-container" style="max-height:220px; overflow-y:auto;">${renderMaintenanceList(maintenanceFees)}</div>
+                </div>
+
                 <div style="margin-top:24px;">
                     <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:#64748b; margin-bottom:10px;">TENANTS</div>
                     <div style="max-height:220px; overflow-y:auto;">${activeTenantsHtml}</div>
