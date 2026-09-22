@@ -484,8 +484,8 @@ function ef_handle_get_property_tenants_simple() {
         $start_date = function_exists('get_field') ? get_field('tenant_start', $tid) : get_post_meta($tid, 'tenant_start', true);
         $end_date = function_exists('get_field') ? get_field('tenant_end', $tid) : get_post_meta($tid, 'tenant_end', true);
 
-        $start_fmt = $start_date ? date('n/j/Y', strtotime($start_date)) : '';
-        $end_fmt = $end_date ? date('n/j/Y', strtotime($end_date)) : '';
+        $start_fmt = $start_date ? date('m/d/Y', strtotime(str_replace('/', '-', $start_date))) : '';
+        $end_fmt = $end_date ? date('m/d/Y', strtotime(str_replace('/', '-', $end_date))) : '';
         $date_range = ($start_fmt && $end_fmt) ? ($start_fmt . ' - ' . $end_fmt) : ($start_fmt ?: $end_fmt);
 
         $item = [ 
@@ -509,8 +509,8 @@ function ef_handle_get_property_tenants_simple() {
         $ch_list = is_array($raw_ch) ? $raw_ch : (json_decode($raw_ch, true) ?: []);
         if (!empty($ch_list)) {
             foreach ($ch_list as $index => $ch) {
-                $ch_start = !empty($ch['tenant_start']) ? date('n/j/Y', strtotime($ch['tenant_start'])) : '';
-                $ch_end = !empty($ch['tenant_end']) ? date('n/j/Y', strtotime($ch['tenant_end'])) : '';
+                $ch_start = !empty($ch['tenant_start']) ? date('m/d/Y', strtotime(str_replace('/', '-', $ch['tenant_start']))) : '';
+                $ch_end = !empty($ch['tenant_end']) ? date('m/d/Y', strtotime(str_replace('/', '-', $ch['tenant_end']))) : '';
                 $ch_range = ($ch_start && $ch_end) ? ($ch_start . ' - ' . $ch_end) : ($ch_start ?: $ch_end);
                 $ch_rent = floatval($ch['monthly_rent'] ?? $rent);
 
@@ -590,19 +590,20 @@ function ef_handle_get_tenant_modal_details() {
     $total_contract = $total_rent_cost ?: ($monthly_rent * 12);
 
     // Fetch payment records
-    $payment_posts = get_posts([
+    $raw_payment_posts = get_posts([
         'post_type' => 'payment',
         'post_status' => ['publish', 'future', 'pending', 'draft', 'private'],
         'posts_per_page' => -1,
-        'meta_query' => [
-            'relation' => 'OR',
-            ['key' => 'associated_tenant', 'value' => $tenant_id, 'compare' => '='],
-            ['key' => 'select_tenant', 'value' => $tenant_id, 'compare' => '='],
-            ['key' => 'select_tenant', 'value' => '"' . $tenant_id . '"', 'compare' => 'LIKE'],
-        ],
         'orderby' => 'date',
         'order' => 'DESC'
     ]);
+
+    $payment_posts = [];
+    foreach ($raw_payment_posts as $raw_p) {
+        if (ef_get_payment_tenant_id($raw_p->ID) === intval($tenant_id)) {
+            $payment_posts[] = $raw_p;
+        }
+    }
 
     $payments = [];
     $total_paid = 0.00;
@@ -665,6 +666,11 @@ function ef_handle_get_tenant_modal_details() {
 
     $balance = max(0, $total_contract - $total_paid);
 
+    $end_ymd = $end ? (function_exists('ef_parse_date_to_ymd') ? ef_parse_date_to_ymd($end) : date('Y-m-d', strtotime(str_replace('/', '-', $end)))) : '';
+    if ($status !== 'finished' && $end_ymd && $end_ymd < date('Y-m-d')) {
+        $status = 'finished';
+    }
+
     if ($status !== 'finished' && $balance > 0.001) {
         $last_pay_end = function_exists('ef_get_tenant_last_payment_end_date') ? ef_get_tenant_last_payment_end_date($tenant_id) : $start;
         if ($last_pay_end && $last_pay_end < date('Y-m-d')) {
@@ -672,8 +678,8 @@ function ef_handle_get_tenant_modal_details() {
         }
     }
 
-    $start_fmt = $start ? date('n/j/Y', strtotime($start)) : 'N/A';
-    $end_fmt = $end ? date('n/j/Y', strtotime($end)) : 'N/A';
+    $start_fmt = $start ? date('m/d/Y', strtotime(str_replace('/', '-', $start))) : 'N/A';
+    $end_fmt = $end ? date('m/d/Y', strtotime(str_replace('/', '-', $end))) : 'N/A';
 
     $raw_history = get_post_meta($tenant_id, 'contract_history', true);
     $contract_history = is_array($raw_history) ? $raw_history : (json_decode($raw_history, true) ?: []);
@@ -696,11 +702,13 @@ function ef_handle_get_tenant_modal_details() {
         'end_date' => $end_fmt,
         'raw_start' => $start,
         'raw_end' => $end,
-        'finished_on' => ($status === 'finished') ? (
-            ($fin_date_meta = (function_exists('get_field') ? get_field('tenant_finished_date', $tenant_id) : null) ?: get_post_meta($tenant_id, 'tenant_finished_date', true))
-                ? date('n/j/Y', strtotime(str_replace('/', '-', $fin_date_meta)))
-                : ($end_fmt ?: '—')
-        ) : ($end_fmt ?: '—'),
+        'finished_on' => ($is_historical_view) ? ($end_fmt ?: '—') : (
+            ($status === 'finished') ? (
+                ($fin_date_meta = (function_exists('get_field') ? get_field('tenant_finished_date', $tenant_id) : null) ?: get_post_meta($tenant_id, 'tenant_finished_date', true))
+                    ? date('m/d/Y', strtotime(str_replace('/', '-', $fin_date_meta)))
+                    : ($end_fmt ?: '—')
+            ) : '—'
+        ),
         'contract_months' => $contract_months ? ($contract_months . ' Months') : '—',
         'contract_months_num' => intval($contract_months),
         'payments' => $payments
@@ -847,8 +855,8 @@ add_action('wp_footer', function() { ?>
         </div> 
     </div>
 
-    <div id="efTenantHistoryModal" onclick="if(event.target===this) efCloseTenantHistoryModal();">
-        <div class="ef-modal-card">
+    <div id="efTenantHistoryModal" class="ef-popup-modal-container" style="display: none; position: fixed; inset: 0; z-index: 100000; background: rgba(15, 23, 42, 0.5); backdrop-filter: blur(4px); justify-content: center; align-items: center;" onclick="if(event.target===this) efCloseTenantHistoryModal();">
+        <div class="ef-modal-card" style="background: #ffffff; border-radius: 16px; padding: 28px; width: 92%; max-width: 680px; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1); position: relative; box-sizing: border-box;">
             <button type="button" onclick="efCloseTenantHistoryModal()" style="position:absolute; top:20px; right:20px; background:none; border:none; font-size:20px; color:#94a3b8; cursor:pointer; font-weight:600; line-height:1; padding:4px;">✕</button>
             
             <div style="margin-bottom: 20px; padding-right: 30px;">
@@ -1025,7 +1033,7 @@ add_action('wp_footer', function() { ?>
                 address = tenantData.address || 'No Address Provided';
                 contractStart = tenantData.start_date || 'N/A';
                 contractEnd = tenantData.end_date || 'N/A';
-                statusLabel = (tenantData.status === 'finished') ? 'Contract ended' : 'Contract active';
+                statusLabel = (tenantData.status === 'finished') ? 'tenant contract ended' : 'Contract active';
                 payments = tenantData.payments || [];
                 paymentsCount = String(payments.length);
             }
